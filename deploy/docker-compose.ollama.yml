@@ -1,0 +1,32 @@
+services:
+  anti-scam-trainer-ollama:
+    image: ollama/ollama:0.32.6
+    container_name: anti-scam-trainer-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ${PROJECT_ROOT}/out/ollama-data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  anti-scam-trainer-ollama-init:
+    image: ollama/ollama:0.32.6
+    env_file:
+      - ${PROJECT_ROOT}/backend/.env
+    environment:
+      OLLAMA_HOST: http://anti-scam-trainer-ollama:11434
+    volumes:
+      - ${PROJECT_ROOT}/out/ollama-data:/root/.ollama
+    depends_on:
+      anti-scam-trainer-ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        test -n "$$OLLAMA_MODEL" || { echo "OLLAMA_MODEL is not set"; exit 1; }
+        ollama pull "$$OLLAMA_MODEL"
+    restart: "no"

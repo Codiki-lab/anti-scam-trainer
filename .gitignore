@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+!.example.env
+
+out/
+node_modules/
+dist/
+coverage/
+*.log
