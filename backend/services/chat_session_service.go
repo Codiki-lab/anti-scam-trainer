@@ -1,14 +1,12 @@
 package services
 
 import (
+	apperrors "anti-scam-trainer/backend/internal/errors"
 	"anti-scam-trainer/backend/models"
 	"anti-scam-trainer/backend/repositories"
-	"errors"
 
 	"github.com/go-pg/pg"
 )
-
-var ErrInvalidChatSessionStatusTransition = errors.New("invalid chat session status transition")
 
 func CreateChatSession(db *pg.DB, session *models.ChatSession) (*models.ChatSession, error) {
 	return repositories.CreateChatSession(db, session)
@@ -25,7 +23,7 @@ func UpdateChatSession(db *pg.DB, session *models.ChatSession) error {
 	}
 
 	if !isAllowedChatSessionStatusTransition(current.Status, session.Status) {
-		return ErrInvalidChatSessionStatusTransition
+		return apperrors.ErrInvalidChatSessionStatusTransition
 	}
 
 	return repositories.UpdateChatSession(db, session)
