@@ -2,7 +2,7 @@ package service
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
-	apperrors "anti-scam-trainer/backend/internal/errors"
+	apperrors "anti-scam-trainer/backend/internal/core/errors"
 )
 
 type Repository interface {

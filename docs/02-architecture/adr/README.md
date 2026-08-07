@@ -19,3 +19,4 @@ ADR фиксирует архитектурное решение вместе с
 | [0002 — Локальная генеративная модель через Ollama](0002-local-ai-through-ollama.md) | Принято |
 | [0003 — Четыре уровня и отдельная свободная игра](0003-four-levels-and-free-play.md) | Принято |
 | [0004 — Продуктовые модули внутри трёхслойного бэкенда](0004-feature-oriented-three-layer-backend.md) | Принято |
+| [0005 — Контейнеры core, features и tests](0005-core-features-tests-layout.md) | Принято |

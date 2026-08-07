@@ -2,7 +2,7 @@ package http
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
-	"anti-scam-trainer/backend/internal/httputil"
+	"anti-scam-trainer/backend/internal/core/transport/httputil"
 	"encoding/json"
 	"net/http"
 	"time"

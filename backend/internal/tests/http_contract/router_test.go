@@ -1,14 +1,14 @@
-package app_builder
+package http_contract_test
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
-	"anti-scam-trainer/backend/internal/httpserver"
-	chatshttp "anti-scam-trainer/backend/modules/chats/http"
-	chatsservice "anti-scam-trainer/backend/modules/chats/service"
-	sessionshttp "anti-scam-trainer/backend/modules/sessions/http"
-	sessionsservice "anti-scam-trainer/backend/modules/sessions/service"
-	usershttp "anti-scam-trainer/backend/modules/users/http"
-	usersservice "anti-scam-trainer/backend/modules/users/service"
+	"anti-scam-trainer/backend/internal/core/transport/httpserver"
+	chatshttp "anti-scam-trainer/backend/internal/features/chats/http"
+	chatsservice "anti-scam-trainer/backend/internal/features/chats/service"
+	sessionshttp "anti-scam-trainer/backend/internal/features/sessions/http"
+	sessionsservice "anti-scam-trainer/backend/internal/features/sessions/service"
+	usershttp "anti-scam-trainer/backend/internal/features/users/http"
+	usersservice "anti-scam-trainer/backend/internal/features/users/service"
 	"errors"
 	"net/http"
 	"net/http/httptest"

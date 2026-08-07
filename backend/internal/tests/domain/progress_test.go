@@ -1,6 +1,9 @@
-package domain
+package domain_test
 
-import "testing"
+import (
+	"anti-scam-trainer/backend/internal/core/domain"
+	"testing"
+)
 
 func TestStarsFromScore(t *testing.T) {
 	tests := []struct {
@@ -17,7 +20,7 @@ func TestStarsFromScore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("score", func(t *testing.T) {
-			if got := StarsFromScore(tt.score); got != tt.want {
+			if got := domain.StarsFromScore(tt.score); got != tt.want {
 				t.Fatalf("StarsFromScore(%d) = %d, want %d", tt.score, got, tt.want)
 			}
 		})

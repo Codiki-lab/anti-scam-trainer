@@ -1,7 +1,7 @@
 package postgres
 
 import (
-	"anti-scam-trainer/backend/internal/config"
+	"anti-scam-trainer/backend/internal/core/config"
 
 	"github.com/go-pg/pg"
 )

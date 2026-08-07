@@ -1,10 +1,10 @@
 package httpserver
 
 import (
-	"anti-scam-trainer/backend/internal/httputil"
-	chatshttp "anti-scam-trainer/backend/modules/chats/http"
-	sessionshttp "anti-scam-trainer/backend/modules/sessions/http"
-	usershttp "anti-scam-trainer/backend/modules/users/http"
+	"anti-scam-trainer/backend/internal/core/transport/httputil"
+	chatshttp "anti-scam-trainer/backend/internal/features/chats/http"
+	sessionshttp "anti-scam-trainer/backend/internal/features/sessions/http"
+	usershttp "anti-scam-trainer/backend/internal/features/users/http"
 	"fmt"
 	"net/http"
 )

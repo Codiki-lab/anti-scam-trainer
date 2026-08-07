@@ -1,7 +1,7 @@
 package main
 
 import (
-	"anti-scam-trainer/backend/app_builder"
+	"anti-scam-trainer/backend/internal/app_builder"
 	"log"
 )
 
