@@ -10,9 +10,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
 
     volumes:
-      - ${PROJECT_ROOT}/out/pgdata:/var/lib/postgresql/data
+      - ${PROJECT_ROOT}/out/pgdata:/var/lib/postgresql
 
     restart: always
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   anti-scam-trainer-migrate:
     image: migrate/migrate:v4.19.1
@@ -21,9 +27,37 @@ services:
       - ${PROJECT_ROOT}/backend/migrations:/migrations
 
     depends_on:
-      - anti-scam-trainer-postgres
+      anti-scam-trainer-postgres:
+        condition: service_healthy
 
-    entrypoint: ["migrate"]
+    command:
+      - -path=/migrations
+      - -database=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@anti-scam-trainer-postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - up
+
+    restart: "no"
+
+  anti-scam-trainer-backend:
+    build:
+      context: ${PROJECT_ROOT}
+      dockerfile: deploy/docker/backend.Dockerfile
+
+    environment:
+      POSTGRES_HOST: anti-scam-trainer-postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_NAME: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PORT: "8080"
+
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    depends_on:
+      anti-scam-trainer-migrate:
+        condition: service_completed_successfully
+
+    restart: unless-stopped
 
   port-forwarder:
     image: alpine/socat:1.8.0.3
@@ -37,4 +71,5 @@ services:
       - "127.0.0.1:5432:5432"
 
     depends_on:
-      - anti-scam-trainer-postgres
+      anti-scam-trainer-postgres:
+        condition: service_healthy

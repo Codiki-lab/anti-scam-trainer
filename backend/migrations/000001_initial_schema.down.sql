@@ -1,0 +1,10 @@
+DROP TABLE messages;
+DROP TABLE chat_sessions;
+DROP TABLE chat_options;
+DROP TABLE chat_steps;
+DROP TABLE user_achievements;
+DROP TABLE leaderboard;
+DROP TABLE statistics;
+DROP TABLE achievements;
+DROP TABLE chats;
+DROP TABLE users;
