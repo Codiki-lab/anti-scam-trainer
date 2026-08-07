@@ -24,7 +24,10 @@ func GetChatSessionByID(db *pg.DB, id int) (*models.ChatSession, error) {
 }
 
 func UpdateChatSession(db *pg.DB, session *models.ChatSession) error {
-	_, err := db.Model(session).WherePK().Update()
+	_, err := db.Model(session).
+		Column("user_id", "chat_id", "status", "started_at", "finished_at", "score").
+		WherePK().
+		Update()
 	return err
 }
 

@@ -24,7 +24,10 @@ func GetChatByID(db *pg.DB, id int) (*models.Chat, error) {
 }
 
 func UpdateChat(db *pg.DB, chat *models.Chat) error {
-	_, err := db.Model(chat).WherePK().Update()
+	_, err := db.Model(chat).
+		Column("title", "description", "difficulty", "role", "is_active").
+		WherePK().
+		Update()
 	return err
 }
 

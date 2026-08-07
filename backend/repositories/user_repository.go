@@ -33,7 +33,10 @@ func GetUserByExternalID(db *pg.DB, externalID string) (*models.User, error) {
 }
 
 func UpdateUser(db *pg.DB, user *models.User) error {
-	_, err := db.Model(user).WherePK().Update()
+	_, err := db.Model(user).
+		Column("user_id", "username", "completed_chats").
+		WherePK().
+		Update()
 	return err
 }
 

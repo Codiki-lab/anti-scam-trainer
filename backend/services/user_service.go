@@ -3,40 +3,30 @@ package services
 import (
 	"anti-scam-trainer/backend/models"
 	"anti-scam-trainer/backend/repositories"
+
+	"github.com/go-pg/pg"
 )
 
-func CreateUser(user *models.User) (*models.User, error) {
-	db := InitDB()
-	defer db.Close()
+func CreateUser(db *pg.DB, user *models.User) (*models.User, error) {
 	return repositories.CreateUser(db, user)
 }
 
-func GetUserByID(id int) (*models.User, error) {
-	db := InitDB()
-	defer db.Close()
+func GetUserByID(db *pg.DB, id int) (*models.User, error) {
 	return repositories.GetUserByID(db, id)
 }
 
-func GetUserByExternalID(externalID string) (*models.User, error) {
-	db := InitDB()
-	defer db.Close()
+func GetUserByExternalID(db *pg.DB, externalID string) (*models.User, error) {
 	return repositories.GetUserByExternalID(db, externalID)
 }
 
-func UpdateUser(user *models.User) error {
-	db := InitDB()
-	defer db.Close()
+func UpdateUser(db *pg.DB, user *models.User) error {
 	return repositories.UpdateUser(db, user)
 }
 
-func DeleteUser(id int) error {
-	db := InitDB()
-	defer db.Close()
+func DeleteUser(db *pg.DB, id int) error {
 	return repositories.DeleteUser(db, id)
 }
 
-func ListUsers() ([]models.User, error) {
-	db := InitDB()
-	defer db.Close()
+func ListUsers(db *pg.DB) ([]models.User, error) {
 	return repositories.ListUsers(db)
 }

@@ -2,7 +2,6 @@
 .env.*
 !.env.example
 !.example.env
-.vscode
 
 out/
 node_modules/
