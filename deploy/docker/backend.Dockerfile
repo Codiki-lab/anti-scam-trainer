@@ -6,7 +6,7 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
 COPY backend ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o /anti-scam-trainer-backend .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /anti-scam-trainer-backend ./cmd/api
 
 FROM gcr.io/distroless/static-debian12:nonroot
 

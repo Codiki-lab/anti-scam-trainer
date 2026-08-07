@@ -19,13 +19,15 @@ make setup
 
 Команда создаёт `backend/.env` и `frontend/.env` из примеров и загружает Go-модули. Если `frontend/package.json` отсутствует, установка фронтенда пропускается.
 
-`make up` передаёт контейнеру API параметры соединения сам. Пример окружения уже содержит параметры, нужные для запуска API на машине через `go run .`:
+`make up` передаёт контейнеру API параметры соединения сам. Пример окружения уже содержит параметры, нужные для запуска API на машине через `go run ./cmd/api`:
 
 ```dotenv
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_NAME=antiscam
 PORT=8080
+LOG_LEVEL=debug
+LOG_FOLDER=out/logs
 ```
 
 `POSTGRES_NAME` должен совпадать с `POSTGRES_DB`.
@@ -58,7 +60,7 @@ make migrate-down
 ```bash
 make up
 cd backend
-PORT=8081 go run .
+PORT=8081 go run ./cmd/api
 ```
 
 В этом случае контейнерный API остаётся на порту `8080`, а локальный — на `8081`.
@@ -90,7 +92,7 @@ make ollama-init
 make logs-ollama
 ```
 
-Пока бэкенд не обращается к Ollama, поэтому успешный запуск контейнера проверяет только инфраструктуру.
+Технический AI provider создаётся при старте бэкенда, но не выполняет запрос к Ollama, пока будущий сервис диалога не вызовет его. Настройки адреса, модели, таймаута и бюджета окна задаются переменными `OLLAMA_*` из `backend/.env`; их полный список и правила риска описаны в [архитектуре AI provider](../02-architecture/ai-provider.md).
 
 ## Остановка
 
