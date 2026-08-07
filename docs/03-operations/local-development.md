@@ -26,6 +26,8 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_NAME=antiscam
 PORT=8080
+LOG_LEVEL=debug
+LOG_FOLDER=out/logs
 ```
 
 `POSTGRES_NAME` должен совпадать с `POSTGRES_DB`.

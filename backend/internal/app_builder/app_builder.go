@@ -3,7 +3,9 @@ package app_builder
 import (
 	"anti-scam-trainer/backend/internal/core/aiprovider"
 	"anti-scam-trainer/backend/internal/core/config"
+	"anti-scam-trainer/backend/internal/core/logger"
 	"anti-scam-trainer/backend/internal/core/postgres"
+	"anti-scam-trainer/backend/internal/core/transport/http/middleware"
 	"anti-scam-trainer/backend/internal/core/transport/httpserver"
 	chatshttp "anti-scam-trainer/backend/internal/features/chats/http"
 	chatsrepository "anti-scam-trainer/backend/internal/features/chats/repository"
@@ -25,7 +27,9 @@ import (
 
 type App struct {
 	DB         *pg.DB
+	Log        *logger.Logger
 	Router     *http.ServeMux
+	Handler    http.Handler
 	Port       string
 	AIProvider aiprovider.Provider
 }
@@ -33,6 +37,16 @@ type App struct {
 func NewApp() (*App, error) {
 	_ = godotenv.Load()
 	cfg := config.Load()
+	log, err := logger.New(cfg.LogLevel, cfg.LogFolder)
+	if err != nil {
+		return nil, fmt.Errorf("create logger: %w", err)
+	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = log.Close()
+		}
+	}()
 	provider, err := aiprovider.NewOllama(aiprovider.Config{
 		URL:                 cfg.OllamaURL,
 		Model:               cfg.OllamaModel,
@@ -54,11 +68,26 @@ func NewApp() (*App, error) {
 	chats := chatsservice.New(chatsrepository.NewPostgres(db))
 	sessions := sessionsservice.New(sessionsrepository.NewPostgres(db))
 	_ = progressservice.New(progressrepository.NewPostgres(db))
-	return &App{DB: db, Router: httpserver.NewRouter(usershttp.New(users), chatshttp.New(chats), sessionshttp.New(sessions)), Port: cfg.Port, AIProvider: provider}, nil
+	router := httpserver.NewRouter(usershttp.New(users), chatshttp.New(chats), sessionshttp.New(sessions))
+	app := &App{
+		DB:         db,
+		Log:        log,
+		Router:     router,
+		Handler:    middleware.Chain(router, middleware.RequestID(), middleware.Logger(log), middleware.Panic(), middleware.Trace()),
+		Port:       cfg.Port,
+		AIProvider: provider,
+	}
+	initialized = true
+	return app, nil
 }
 
-func (a *App) Run() error { return http.ListenAndServe(":"+a.Port, a.Router) }
+func (a *App) Run() error { return http.ListenAndServe(":"+a.Port, a.Handler) }
 func (a *App) Close() error {
+	if a.Log != nil {
+		if err := a.Log.Close(); err != nil {
+			return err
+		}
+	}
 	if a.DB != nil {
 		return a.DB.Close()
 	}

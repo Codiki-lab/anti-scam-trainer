@@ -13,6 +13,8 @@ type Config struct {
 	DatabasePassword          string
 	DatabaseName              string
 	Port                      string
+	LogLevel                  string
+	LogFolder                 string
 	OllamaURL                 string
 	OllamaModel               string
 	OllamaTimeout             time.Duration
@@ -34,6 +36,8 @@ func Load() Config {
 		DatabasePassword:          os.Getenv("POSTGRES_PASSWORD"),
 		DatabaseName:              os.Getenv("POSTGRES_NAME"),
 		Port:                      port,
+		LogLevel:                  envString("LOG_LEVEL", "debug"),
+		LogFolder:                 envString("LOG_FOLDER", "out/logs"),
 		OllamaURL:                 envString("OLLAMA_URL", "http://localhost:11434"),
 		OllamaModel:               envString("OLLAMA_MODEL", "llama3.2:3b"),
 		OllamaTimeout:             envDuration("OLLAMA_REQUEST_TIMEOUT", 30*time.Second),
