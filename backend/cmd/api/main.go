@@ -1,12 +1,12 @@
 package main
 
 import (
-	"anti-scam-trainer/backend/internal/app_builder"
+	"anti-scam-trainer/backend/internal/core/app"
 	"log"
 )
 
 func main() {
-	app, err := app_builder.NewApp()
+	app, err := app.New()
 	if err != nil {
 		log.Fatalf("failed to build app: %v", err)
 	}
