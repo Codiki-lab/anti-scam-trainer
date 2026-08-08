@@ -56,6 +56,7 @@ func TestOpenAPIDocumentationRequiresSeparateBasicAuthentication(t *testing.T) {
 func TestSwaggerAuthenticationIsIndependentFromUserCookieAuthentication(t *testing.T) {
 	routes := http.NewServeMux()
 	documentationHandler := middleware.RequireSwaggerAuthentication("docs-user", "docs-password")(openapidocs.NewHandler())
+	routes.Handle("/swagger", http.RedirectHandler("/swagger/", http.StatusTemporaryRedirect))
 	routes.Handle("/swagger/", documentationHandler)
 	routes.Handle("/openapi/", documentationHandler)
 	routes.Handle("/", router.New())
@@ -67,6 +68,12 @@ func TestSwaggerAuthenticationIsIndependentFromUserCookieAuthentication(t *testi
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("OpenAPI endpoint behind application authentication = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	swaggerRedirect := httptest.NewRecorder()
+	handler.ServeHTTP(swaggerRedirect, httptest.NewRequest(http.MethodGet, "/swagger", nil))
+	if swaggerRedirect.Code != http.StatusTemporaryRedirect || swaggerRedirect.Header().Get("Location") != "/swagger/" {
+		t.Fatalf("Swagger URL without trailing slash = (%d, %q), want redirect to /swagger/", swaggerRedirect.Code, swaggerRedirect.Header().Get("Location"))
 	}
 
 	protected := httptest.NewRecorder()
