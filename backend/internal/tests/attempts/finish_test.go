@@ -64,10 +64,10 @@ type attemptRepository struct{ attempt domain.Attempt }
 func (r *attemptRepository) Create(domain.Attempt) (domain.Attempt, error) {
 	return domain.Attempt{}, nil
 }
-func (r *attemptRepository) GetByID(int) (domain.Attempt, error) { return r.attempt, nil }
-func (r *attemptRepository) Update(domain.Attempt) error         { return nil }
-func (r *attemptRepository) Delete(int) error                    { return nil }
-func (r *attemptRepository) List() ([]domain.Attempt, error)     { return nil, nil }
+func (r *attemptRepository) GetByID(int) (domain.Attempt, error)        { return r.attempt, nil }
+func (r *attemptRepository) Update(domain.Attempt) error                { return nil }
+func (r *attemptRepository) Delete(int) error                           { return nil }
+func (r *attemptRepository) ListByUserID(int) ([]domain.Attempt, error) { return nil, nil }
 
 type transactionalCompletionRepository struct {
 	attempt           domain.Attempt

@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var ErrAttemptNotFound = apperrors.ErrAttemptNotFound
+
 type Service struct {
 	repository Repository
 	completion CompletionRepository
@@ -21,6 +23,19 @@ func (s *Service) Create(attempt domain.Attempt) (domain.Attempt, error) {
 
 func (s *Service) GetByID(id int) (domain.Attempt, error) { return s.repository.GetByID(id) }
 
+func (s *Service) GetByIDForUser(userID, attemptID int) (domain.Attempt, error) {
+	attempt, err := s.repository.GetByID(attemptID)
+	if err != nil || attempt.UserID != userID {
+		return domain.Attempt{}, ErrAttemptNotFound
+	}
+	return attempt, nil
+}
+
+func (s *Service) CreateForUser(userID int, attempt domain.Attempt) (domain.Attempt, error) {
+	attempt.UserID = userID
+	return s.repository.Create(attempt)
+}
+
 func (s *Service) Update(attempt domain.Attempt) error {
 	current, err := s.repository.GetByID(attempt.ID)
 	if err != nil {
@@ -30,6 +45,15 @@ func (s *Service) Update(attempt domain.Attempt) error {
 		return apperrors.ErrInvalidAttemptStatusTransition
 	}
 	return s.repository.Update(attempt)
+}
+
+func (s *Service) UpdateForUser(userID int, attempt domain.Attempt) error {
+	current, err := s.GetByIDForUser(userID, attempt.ID)
+	if err != nil {
+		return err
+	}
+	attempt.UserID = current.UserID
+	return s.Update(attempt)
 }
 
 // Finish records a completed attempt and its resulting level progress atomically.
@@ -66,5 +90,15 @@ func (s *Service) Finish(attempt domain.Attempt, progress domain.Progress) error
 	})
 }
 
-func (s *Service) Delete(id int) error             { return s.repository.Delete(id) }
-func (s *Service) List() ([]domain.Attempt, error) { return s.repository.List() }
+func (s *Service) Delete(id int) error { return s.repository.Delete(id) }
+
+func (s *Service) DeleteForUser(userID, attemptID int) error {
+	if _, err := s.GetByIDForUser(userID, attemptID); err != nil {
+		return err
+	}
+	return s.repository.Delete(attemptID)
+}
+
+func (s *Service) ListForUser(userID int) ([]domain.Attempt, error) {
+	return s.repository.ListByUserID(userID)
+}

@@ -14,12 +14,13 @@ import (
 	attemptsrepository "anti-scam-trainer/backend/internal/features/attempts/repository"
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
+	authservice "anti-scam-trainer/backend/internal/features/auth/service"
+	authhttp "anti-scam-trainer/backend/internal/features/auth/transport/http"
 	scenariosrepository "anti-scam-trainer/backend/internal/features/scenarios/repository"
 	scenariosservice "anti-scam-trainer/backend/internal/features/scenarios/service"
 	scenarioshttp "anti-scam-trainer/backend/internal/features/scenarios/transport/http"
 	usersrepository "anti-scam-trainer/backend/internal/features/users/repository"
 	usersservice "anti-scam-trainer/backend/internal/features/users/service"
-	usershttp "anti-scam-trainer/backend/internal/features/users/transport/http"
 	"context"
 	"fmt"
 	"net/http"
@@ -40,7 +41,10 @@ type App struct {
 
 func New() (*App, error) {
 	_ = godotenv.Load()
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
 	log, err := logger.New(cfg.LogLevel, cfg.LogFolder)
 	if err != nil {
 		return nil, fmt.Errorf("create logger: %w", err)
@@ -65,15 +69,23 @@ func New() (*App, error) {
 	}
 
 	users := usersservice.New(usersrepository.NewPostgres(db))
+	if _, err := users.EnsureAdmin(cfg.AdminUsername, cfg.AdminPassword); err != nil {
+		return nil, fmt.Errorf("bootstrap admin: %w", err)
+	}
+	tokens, err := authservice.NewJWTManager(cfg.JWTSecret)
+	if err != nil {
+		return nil, err
+	}
+	authentication := authservice.New(users, tokens)
 	scenarios := scenariosservice.New(scenariosrepository.NewPostgres(db))
 	attemptRepository := attemptsrepository.NewPostgres(db)
 	attempts := attemptsservice.New(attemptRepository, attemptRepository)
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, []router.Route{{Path: "/health", Handler: health}})
-	versionedRouter.Register(router.V1, usershttp.New(users).Routes())
+	versionedRouter.Register(router.V1, authhttp.New(authentication).Routes())
 	versionedRouter.Register(router.V1, scenarioshttp.New(scenarios).Routes())
 	versionedRouter.Register(router.V1, attemptshttp.New(attempts).Routes())
-	handler := middleware.Chain(versionedRouter, middleware.RequestID(), middleware.Logger(log), middleware.Panic(), middleware.Trace())
+	handler := middleware.Chain(versionedRouter, middleware.RequestID(), middleware.Logger(log), middleware.Panic(), middleware.Trace(), authhttp.RequireAuthentication(tokens))
 	app := &App{DB: db, Log: log, Handler: handler, Port: cfg.Port, AIProvider: provider}
 	app.server = serverruntime.New(server.Config{Addr: ":" + cfg.Port, Handler: handler})
 	initialized = true

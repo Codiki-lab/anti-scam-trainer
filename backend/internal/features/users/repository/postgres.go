@@ -2,6 +2,7 @@ package repository
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
+	apperrors "anti-scam-trainer/backend/internal/core/errors"
 
 	"github.com/go-pg/pg"
 )
@@ -9,11 +10,11 @@ import (
 type PostgresRepository struct{ db *pg.DB }
 
 type userRecord struct {
-	tableName      struct{} `sql:"users"`
-	ID             int      `pg:"id,pk"`
-	ExternalID     string   `pg:"user_id,notnull"`
-	Username       string   `pg:"username,notnull"`
-	CompletedChats int      `pg:"completed_chats"`
+	tableName    struct{} `sql:"users"`
+	ID           int      `pg:"id,pk"`
+	Username     string   `pg:"username,notnull"`
+	PasswordHash string   `pg:"password_hash,notnull"`
+	AccessRole   string   `pg:"access_role,notnull"`
 }
 
 func NewPostgres(db *pg.DB) *PostgresRepository { return &PostgresRepository{db: db} }
@@ -29,46 +30,29 @@ func (r *PostgresRepository) Create(user domain.User) (domain.User, error) {
 func (r *PostgresRepository) GetByID(id int) (domain.User, error) {
 	var record userRecord
 	if err := r.db.Model(&record).Where("id = ?", id).Select(); err != nil {
+		if err == pg.ErrNoRows {
+			return domain.User{}, apperrors.ErrUserNotFound
+		}
 		return domain.User{}, err
 	}
 	return toDomain(record), nil
 }
 
-func (r *PostgresRepository) GetByExternalID(id string) (domain.User, error) {
+func (r *PostgresRepository) GetByUsername(username string) (domain.User, error) {
 	var record userRecord
-	if err := r.db.Model(&record).Where("user_id = ?", id).Select(); err != nil {
+	if err := r.db.Model(&record).Where("username = ?", username).Select(); err != nil {
+		if err == pg.ErrNoRows {
+			return domain.User{}, apperrors.ErrUserNotFound
+		}
 		return domain.User{}, err
 	}
 	return toDomain(record), nil
-}
-
-func (r *PostgresRepository) Update(user domain.User) error {
-	record := toRecord(user)
-	_, err := r.db.Model(&record).Column("user_id", "username", "completed_chats").WherePK().Update()
-	return err
-}
-
-func (r *PostgresRepository) Delete(id int) error {
-	_, err := r.db.Model(&userRecord{}).Where("id = ?", id).Delete()
-	return err
-}
-
-func (r *PostgresRepository) List() ([]domain.User, error) {
-	var records []userRecord
-	if err := r.db.Model(&records).Select(); err != nil {
-		return nil, err
-	}
-	users := make([]domain.User, len(records))
-	for index, record := range records {
-		users[index] = toDomain(record)
-	}
-	return users, nil
 }
 
 func toRecord(user domain.User) userRecord {
-	return userRecord{ID: user.ID, ExternalID: user.ExternalID, Username: user.Username, CompletedChats: user.CompletedChats}
+	return userRecord{ID: user.ID, Username: user.Username, PasswordHash: user.PasswordHash, AccessRole: string(user.AccessRole)}
 }
 
 func toDomain(record userRecord) domain.User {
-	return domain.User{ID: record.ID, ExternalID: record.ExternalID, Username: record.Username, CompletedChats: record.CompletedChats}
+	return domain.User{ID: record.ID, Username: record.Username, PasswordHash: record.PasswordHash, AccessRole: domain.AccessRole(record.AccessRole)}
 }

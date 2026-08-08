@@ -62,9 +62,9 @@ func (r *PostgresRepository) Delete(id int) error {
 	return err
 }
 
-func (r *PostgresRepository) List() ([]domain.Attempt, error) {
+func (r *PostgresRepository) ListByUserID(userID int) ([]domain.Attempt, error) {
 	var records []attemptRecord
-	if err := r.db.Model(&records).Select(); err != nil {
+	if err := r.db.Model(&records).Where("user_id = ?", userID).Select(); err != nil {
 		return nil, err
 	}
 	attempts := make([]domain.Attempt, len(records))
