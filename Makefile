@@ -9,12 +9,13 @@ COMPOSE_OLLAMA := docker compose \
 	-f deploy/docker-compose.yml \
 	-f deploy/docker-compose.ollama.yml
 
-.PHONY: help setup up down logs lint test \
+.PHONY: help env setup up down logs lint test \
 	up-ollama down-ollama logs-ollama ollama-init ollama-reset \
 	migrate-create migrate-up migrate-down clean
 
 help:
 	@echo "Available commands:"
+	@echo "  make env                    Create backend/.env and add missing template variables"
 	@echo "  make setup                  Initial project setup"
 	@echo "  make up                     Start infrastructure without Ollama"
 	@echo "  make up-ollama              Start infrastructure with Ollama"
@@ -29,12 +30,20 @@ help:
 	@echo "  make migrate-down           Rollback migrations"
 	@echo "  make clean                  Remove containers and volumes"
 
-setup:
-	@if [ ! -f backend/.env ]; then \
-		if [ -f backend/.env.example ]; then cp backend/.env.example backend/.env; \
-		elif [ -f backend/.example.env ]; then cp backend/.example.env backend/.env; \
-		else echo "Missing backend/.env.example"; exit 1; fi; \
+env:
+	@if [ ! -f backend/.env.example ]; then \
+		echo "Missing backend/.env.example"; exit 1; \
 	fi
+	@touch backend/.env
+	@while IFS= read -r line || [ -n "$$line" ]; do \
+		case "$$line" in ''|\#*) continue ;; esac; \
+		key=$${line%%=*}; \
+		if ! grep -q "^[[:space:]]*$$key=" backend/.env; then \
+			printf '%s\n' "$$line" >> backend/.env; \
+		fi; \
+	done < backend/.env.example
+
+setup: env
 	@if [ ! -f frontend/.env ]; then \
 		if [ -f frontend/.env.example ]; then cp frontend/.env.example frontend/.env; \
 		else echo "Missing frontend/.env.example"; exit 1; fi; \
@@ -42,10 +51,10 @@ setup:
 	@if [ -f backend/go.mod ]; then cd backend && go mod download; else echo "backend/go.mod not found; Go setup skipped"; fi
 	@if [ -f frontend/package.json ]; then cd frontend && npm install; else echo "frontend/package.json not found; frontend setup skipped"; fi
 
-up:
+up: env
 	@$(COMPOSE) up -d
 
-up-ollama:
+up-ollama: env
 	@$(COMPOSE_OLLAMA) up -d
 
 down:
