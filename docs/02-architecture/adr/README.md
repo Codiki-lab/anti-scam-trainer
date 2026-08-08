@@ -24,3 +24,4 @@ ADR фиксирует архитектурное решение вместе с
 | [0007 — Трёхслойные продуктовые модули и локальные порты](0007-feature-layers-and-local-ports.md) | Принято |
 | [0008 — Атомарное завершение прохождения и обновление прогресса](0008-atomic-attempt-completion.md) | Принято |
 | [0009 — Подписанный JWT access token в cookie](0009-signed-access-token-in-cookie.md) | Принято |
+| [0010 — Версионированные OpenAPI-спецификации как API-контракт](0010-versioned-openapi-spec-first.md) | Принято |

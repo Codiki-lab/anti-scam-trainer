@@ -25,6 +25,8 @@ type Config struct {
 	JWTSecret                 string
 	AdminUsername             string
 	AdminPassword             string
+	SwaggerUsername           string
+	SwaggerPassword           string
 }
 
 func Load() (Config, error) {
@@ -51,12 +53,17 @@ func Load() (Config, error) {
 		JWTSecret:                 os.Getenv("JWT_SECRET"),
 		AdminUsername:             os.Getenv("ADMIN_USERNAME"),
 		AdminPassword:             os.Getenv("ADMIN_PASSWORD"),
+		SwaggerUsername:           os.Getenv("SWAGGER_USERNAME"),
+		SwaggerPassword:           os.Getenv("SWAGGER_PASSWORD"),
 	}
 	if cfg.JWTSecret == "" {
 		return Config{}, fmt.Errorf("JWT_SECRET is required")
 	}
 	if cfg.AdminUsername == "" || cfg.AdminPassword == "" {
 		return Config{}, fmt.Errorf("ADMIN_USERNAME and ADMIN_PASSWORD are required")
+	}
+	if cfg.SwaggerUsername == "" || cfg.SwaggerPassword == "" {
+		return Config{}, fmt.Errorf("SWAGGER_USERNAME and SWAGGER_PASSWORD are required")
 	}
 	return cfg, nil
 }

@@ -4,6 +4,7 @@ import (
 	"anti-scam-trainer/backend/internal/core/server/response"
 	auth "anti-scam-trainer/backend/internal/features/auth/service"
 	"net/http"
+	"strings"
 )
 
 func RequireAuthentication(tokens auth.Tokens) func(http.Handler) http.Handler {
@@ -29,5 +30,5 @@ func RequireAuthentication(tokens auth.Tokens) func(http.Handler) http.Handler {
 }
 
 func isPublicPath(path string) bool {
-	return path == "/api/v1/health" || path == "/api/v1/auth/register" || path == "/api/v1/auth/login" || path == "/api/v1/auth/logout"
+	return path == "/api/v1/health" || path == "/api/v1/auth/register" || path == "/api/v1/auth/login" || path == "/api/v1/auth/logout" || path == "/swagger/" || strings.HasPrefix(path, "/openapi/")
 }
