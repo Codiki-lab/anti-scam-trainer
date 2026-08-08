@@ -88,6 +88,7 @@ func New() (*App, error) {
 	versionedRouter.Register(router.V1, attemptshttp.New(attempts).Routes())
 	routes := http.NewServeMux()
 	documentationHandler := middleware.RequireSwaggerAuthentication(cfg.SwaggerUsername, cfg.SwaggerPassword)(openapidocs.NewHandler())
+	routes.Handle("/swagger", http.RedirectHandler("/swagger/", http.StatusTemporaryRedirect))
 	routes.Handle("/swagger/", documentationHandler)
 	routes.Handle("/openapi/", documentationHandler)
 	routes.Handle("/", versionedRouter)

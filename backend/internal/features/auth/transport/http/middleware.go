@@ -30,5 +30,5 @@ func RequireAuthentication(tokens auth.Tokens) func(http.Handler) http.Handler {
 }
 
 func isPublicPath(path string) bool {
-	return path == "/api/v1/health" || path == "/api/v1/auth/register" || path == "/api/v1/auth/login" || path == "/api/v1/auth/logout" || path == "/swagger/" || strings.HasPrefix(path, "/openapi/")
+	return path == "/api/v1/health" || path == "/api/v1/auth/register" || path == "/api/v1/auth/login" || path == "/api/v1/auth/logout" || path == "/swagger" || path == "/swagger/" || strings.HasPrefix(path, "/openapi/")
 }

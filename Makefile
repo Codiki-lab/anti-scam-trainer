@@ -4,21 +4,24 @@
 export
 export PROJECT_ROOT := $(CURDIR)
 
-COMPOSE := docker compose -f deploy/docker-compose.yml
+COMPOSE := docker compose --env-file backend/.env -f deploy/docker-compose.yml
 COMPOSE_OLLAMA := docker compose \
+	--env-file backend/.env \
 	-f deploy/docker-compose.yml \
 	-f deploy/docker-compose.ollama.yml
 
-.PHONY: help env setup up down logs lint test \
-	up-ollama down-ollama logs-ollama ollama-init ollama-reset \
+.PHONY: help env setup build up down logs lint test \
+	build-ollama up-ollama down-ollama logs-ollama ollama-init ollama-reset \
 	migrate-create migrate-up migrate-down clean
 
 help:
 	@echo "Available commands:"
 	@echo "  make env                    Create backend/.env and add missing template variables"
 	@echo "  make setup                  Initial project setup"
-	@echo "  make up                     Start infrastructure without Ollama"
-	@echo "  make up-ollama              Start infrastructure with Ollama"
+	@echo "  make build                  Build images without starting containers"
+	@echo "  make build-ollama           Build images with the Ollama configuration"
+	@echo "  make up                     Start previously built infrastructure without Ollama"
+	@echo "  make up-ollama              Start previously built infrastructure with Ollama"
 	@echo "  make down                   Stop infrastructure without Ollama"
 	@echo "  make down-ollama            Stop infrastructure with Ollama"
 	@echo "  make logs                   Show infrastructure logs"
@@ -51,11 +54,17 @@ setup: env
 	@if [ -f backend/go.mod ]; then cd backend && go mod download; else echo "backend/go.mod not found; Go setup skipped"; fi
 	@if [ -f frontend/package.json ]; then cd frontend && npm install; else echo "frontend/package.json not found; frontend setup skipped"; fi
 
+build: env
+	@$(COMPOSE) build
+
+build-ollama: env
+	@$(COMPOSE_OLLAMA) build
+
 up: env
-	@$(COMPOSE) up -d --build
+	@$(COMPOSE) up -d --no-build
 
 up-ollama: env
-	@$(COMPOSE_OLLAMA) up -d --build
+	@$(COMPOSE_OLLAMA) up -d --no-build
 
 down:
 	@$(COMPOSE) down
