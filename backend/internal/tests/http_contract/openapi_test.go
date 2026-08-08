@@ -51,6 +51,9 @@ func TestOpenAPIDocumentationRequiresSeparateBasicAuthentication(t *testing.T) {
 	if ui.Code != http.StatusOK || !strings.Contains(ui.Body.String(), `name: "v1"`) || !strings.Contains(ui.Body.String(), `url: "/openapi/v1.yaml"`) {
 		t.Fatalf("Swagger UI = (%d, %q), want v1 selector configuration", ui.Code, ui.Body.String())
 	}
+	if !strings.Contains(ui.Body.String(), "swagger-ui-standalone-preset.js") || !strings.Contains(ui.Body.String(), "SwaggerUIStandalonePreset") {
+		t.Fatal("Swagger UI does not include the standalone preset required to select a specification from urls")
+	}
 }
 
 func TestSwaggerAuthenticationIsIndependentFromUserCookieAuthentication(t *testing.T) {
@@ -112,6 +115,11 @@ func TestOpenAPIV1SpecificationIsValid(t *testing.T) {
 	}
 	if !strings.Contains(specification, "X-Request-ID: { $ref: '#/components/headers/RequestID' }") {
 		t.Fatal("OpenAPI v1 does not attach X-Request-ID to responses")
+	}
+	for _, tag := range []string{"Состояние сервиса", "Аутентификация", "Сценарии", "Прохождения"} {
+		if !strings.Contains(specification, "- name: "+tag) || !strings.Contains(specification, "tags: ["+tag+"]") {
+			t.Fatalf("OpenAPI v1 does not declare and assign the %q Swagger tag", tag)
+		}
 	}
 }
 
