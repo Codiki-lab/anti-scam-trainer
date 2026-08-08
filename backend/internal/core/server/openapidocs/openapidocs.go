@@ -33,13 +33,14 @@ const swaggerUI = `<!doctype html>
   <body>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
     <script>
       window.ui = SwaggerUIBundle({
         urls: [{ name: "v1", url: "/openapi/v1.yaml" }],
         "urls.primaryName": "v1",
         dom_id: "#swagger-ui",
-        presets: [SwaggerUIBundle.presets.apis],
-        layout: "BaseLayout"
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout"
       });
     </script>
   </body>
