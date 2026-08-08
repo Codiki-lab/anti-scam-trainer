@@ -20,3 +20,6 @@ ADR фиксирует архитектурное решение вместе с
 | [0003 — Четыре уровня и отдельная свободная игра](0003-four-levels-and-free-play.md) | Принято |
 | [0004 — Продуктовые модули внутри трёхслойного бэкенда](0004-feature-oriented-three-layer-backend.md) | Принято |
 | [0005 — Контейнеры core, features и tests](0005-core-features-tests-layout.md) | Принято |
+| [0006 — core/server и версионированные HTTP-маршруты](0006-core-server-and-versioned-routes.md) | Принято |
+| [0007 — Трёхслойные продуктовые модули и локальные порты](0007-feature-layers-and-local-ports.md) | Принято |
+| [0008 — Атомарное завершение прохождения и обновление прогресса](0008-atomic-attempt-completion.md) | Принято |

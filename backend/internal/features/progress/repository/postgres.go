@@ -10,6 +10,7 @@ import (
 type PostgresRepository struct{ db *pg.DB }
 
 type progressRecord struct {
+	tableName struct{}  `sql:"user_level_progress"`
 	ID        int       `pg:"id,pk"`
 	UserID    int       `pg:"user_id"`
 	LevelID   int       `pg:"level_id"`
@@ -28,22 +29,6 @@ func (r *PostgresRepository) Get(userID, levelID int, userRole string) (domain.P
 		return domain.Progress{}, err
 	}
 	return toDomain(record), nil
-}
-
-func (r *PostgresRepository) Save(progress domain.Progress) error {
-	record := toRecord(progress)
-	_, err := r.db.Model(&record).
-		OnConflict("(user_id, user_role, level_id) DO UPDATE").
-		Set("best_score = EXCLUDED.best_score").
-		Set("stars = EXCLUDED.stars").
-		Set("attempts = EXCLUDED.attempts").
-		Set("passed_at = EXCLUDED.passed_at").
-		Insert()
-	return err
-}
-
-func toRecord(progress domain.Progress) progressRecord {
-	return progressRecord{UserID: progress.UserID, LevelID: progress.LevelID, UserRole: progress.UserRole, BestScore: progress.BestScore, Stars: progress.Stars, Attempts: progress.Attempts, PassedAt: progress.PassedAt}
 }
 
 func toDomain(record progressRecord) domain.Progress {

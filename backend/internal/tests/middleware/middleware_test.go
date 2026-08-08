@@ -2,7 +2,7 @@ package middleware_test
 
 import (
 	"anti-scam-trainer/backend/internal/core/logger"
-	"anti-scam-trainer/backend/internal/core/transport/http/middleware"
+	"anti-scam-trainer/backend/internal/core/server/middleware"
 	"net/http"
 	"net/http/httptest"
 	"testing"

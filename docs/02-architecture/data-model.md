@@ -94,7 +94,7 @@ erDiagram
     }
 ```
 
-Go-модели и CRUD сейчас существуют только для `users`, `chats` и `chat_sessions`.
+Go-модели и CRUD сейчас существуют только для `users`, `scenarios` и `attempts`; PostgreSQL-адаптеры сохраняют исторические имена таблиц `chats` и `chat_sessions` как техническую деталь.
 
 ## Принятая целевая модель
 

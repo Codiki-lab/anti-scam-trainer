@@ -70,7 +70,7 @@ PORT=8081 go run ./cmd/api
 Проверка:
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8080/api/v1/health
 ```
 
 Ожидаемый ответ:

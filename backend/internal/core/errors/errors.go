@@ -2,4 +2,4 @@ package errors
 
 import "errors"
 
-var ErrInvalidChatSessionStatusTransition = errors.New("invalid chat session status transition")
+var ErrInvalidAttemptStatusTransition = errors.New("invalid attempt status transition")
