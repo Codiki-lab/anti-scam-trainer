@@ -6,6 +6,7 @@ import (
 	"anti-scam-trainer/backend/internal/core/server/response"
 	"anti-scam-trainer/backend/internal/core/server/router"
 	"anti-scam-trainer/backend/internal/features/attempts/service"
+	auth "anti-scam-trainer/backend/internal/features/auth/service"
 	"net/http"
 	"time"
 )
@@ -14,7 +15,7 @@ type Handler struct{ service *service.Service }
 
 type attemptDTO struct {
 	ID         int       `json:"id"`
-	UserID     int       `json:"user_id"`
+	UserID     int       `json:"-"`
 	ScenarioID int       `json:"scenario_id"`
 	Status     string    `json:"status"`
 	StartedAt  time.Time `json:"started_at"`
@@ -31,7 +32,12 @@ func (h *Handler) Routes() []router.Route {
 func (h *Handler) collection(writer http.ResponseWriter, httpRequest *http.Request) {
 	switch httpRequest.Method {
 	case http.MethodGet:
-		attempts, err := h.service.List()
+		identity, ok := auth.IdentityFromContext(httpRequest.Context())
+		if !ok {
+			response.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		attempts, err := h.service.ListForUser(identity.UserID)
 		if err != nil {
 			response.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
@@ -42,12 +48,17 @@ func (h *Handler) collection(writer http.ResponseWriter, httpRequest *http.Reque
 		}
 		response.JSON(writer, result)
 	case http.MethodPost:
+		identity, ok := auth.IdentityFromContext(httpRequest.Context())
+		if !ok {
+			response.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		var input attemptDTO
 		if err := request.DecodeJSON(httpRequest, &input); err != nil {
 			response.Error(writer, "invalid JSON", http.StatusBadRequest)
 			return
 		}
-		created, err := h.service.Create(toDomain(input))
+		created, err := h.service.CreateForUser(identity.UserID, toDomain(input))
 		if err != nil {
 			response.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
@@ -66,13 +77,23 @@ func (h *Handler) item(writer http.ResponseWriter, httpRequest *http.Request) {
 	}
 	switch httpRequest.Method {
 	case http.MethodGet:
-		attempt, err := h.service.GetByID(id)
+		identity, ok := auth.IdentityFromContext(httpRequest.Context())
+		if !ok {
+			response.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		attempt, err := h.service.GetByIDForUser(identity.UserID, id)
 		if err != nil {
 			response.Error(writer, err.Error(), http.StatusNotFound)
 			return
 		}
 		response.JSON(writer, fromDomain(attempt))
 	case http.MethodPut:
+		identity, ok := auth.IdentityFromContext(httpRequest.Context())
+		if !ok {
+			response.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		var input attemptDTO
 		if err := request.DecodeJSON(httpRequest, &input); err != nil {
 			response.Error(writer, "invalid JSON", http.StatusBadRequest)
@@ -80,13 +101,18 @@ func (h *Handler) item(writer http.ResponseWriter, httpRequest *http.Request) {
 		}
 		attempt := toDomain(input)
 		attempt.ID = id
-		if err := h.service.Update(attempt); err != nil {
+		if err := h.service.UpdateForUser(identity.UserID, attempt); err != nil {
 			response.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		response.JSON(writer, fromDomain(attempt))
 	case http.MethodDelete:
-		if err := h.service.Delete(id); err != nil {
+		identity, ok := auth.IdentityFromContext(httpRequest.Context())
+		if !ok {
+			response.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if err := h.service.DeleteForUser(identity.UserID, id); err != nil {
 			response.Error(writer, err.Error(), http.StatusInternalServerError)
 			return
 		}

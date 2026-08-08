@@ -23,3 +23,4 @@ ADR фиксирует архитектурное решение вместе с
 | [0006 — core/server и версионированные HTTP-маршруты](0006-core-server-and-versioned-routes.md) | Принято |
 | [0007 — Трёхслойные продуктовые модули и локальные порты](0007-feature-layers-and-local-ports.md) | Принято |
 | [0008 — Атомарное завершение прохождения и обновление прогресса](0008-atomic-attempt-completion.md) | Принято |
+| [0009 — Подписанный JWT access token в cookie](0009-signed-access-token-in-cookie.md) | Принято |

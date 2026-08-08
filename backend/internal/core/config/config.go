@@ -22,15 +22,18 @@ type Config struct {
 	OllamaOutputReserveTokens int
 	OllamaMediumRiskThreshold float64
 	OllamaHighRiskThreshold   float64
+	JWTSecret                 string
+	AdminUsername             string
+	AdminPassword             string
 }
 
-func Load() Config {
+func Load() (Config, error) {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	return Config{
+	cfg := Config{
 		DatabaseAddress:           fmt.Sprintf("%s:%s", os.Getenv("POSTGRES_HOST"), os.Getenv("POSTGRES_PORT")),
 		DatabaseUser:              os.Getenv("POSTGRES_USER"),
 		DatabasePassword:          os.Getenv("POSTGRES_PASSWORD"),
@@ -45,7 +48,17 @@ func Load() Config {
 		OllamaOutputReserveTokens: envInt("OLLAMA_OUTPUT_RESERVE_TOKENS", 0),
 		OllamaMediumRiskThreshold: envFloat("OLLAMA_MEDIUM_RISK_THRESHOLD", 0.60),
 		OllamaHighRiskThreshold:   envFloat("OLLAMA_HIGH_RISK_THRESHOLD", 0.75),
+		JWTSecret:                 os.Getenv("JWT_SECRET"),
+		AdminUsername:             os.Getenv("ADMIN_USERNAME"),
+		AdminPassword:             os.Getenv("ADMIN_PASSWORD"),
 	}
+	if cfg.JWTSecret == "" {
+		return Config{}, fmt.Errorf("JWT_SECRET is required")
+	}
+	if cfg.AdminUsername == "" || cfg.AdminPassword == "" {
+		return Config{}, fmt.Errorf("ADMIN_USERNAME and ADMIN_PASSWORD are required")
+	}
+	return cfg, nil
 }
 
 func envString(key, fallback string) string {

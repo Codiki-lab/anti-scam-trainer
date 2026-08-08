@@ -2,137 +2,210 @@ package http_contract_test
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
-	"anti-scam-trainer/backend/internal/core/logger"
-	"anti-scam-trainer/backend/internal/core/server/middleware"
 	"anti-scam-trainer/backend/internal/core/server/router"
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
-	scenariosservice "anti-scam-trainer/backend/internal/features/scenarios/service"
-	scenarioshttp "anti-scam-trainer/backend/internal/features/scenarios/transport/http"
+	authservice "anti-scam-trainer/backend/internal/features/auth/service"
+	authhttp "anti-scam-trainer/backend/internal/features/auth/transport/http"
 	usersservice "anti-scam-trainer/backend/internal/features/users/service"
-	usershttp "anti-scam-trainer/backend/internal/features/users/transport/http"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
-func TestRouterServesVersionedProductRoutesWithoutPostgres(t *testing.T) {
+func TestRouterRegistersUserWithoutExposingCredentialsOrUsersCRUD(t *testing.T) {
+	accounts := usersservice.New(&fakeAccounts{})
 	versionedRouter := router.New()
-	versionedRouter.Register(router.V1, usershttp.New(usersservice.New(fakeUsers{})).Routes())
-	versionedRouter.Register(router.V1, scenarioshttp.New(scenariosservice.New(fakeScenarios{})).Routes())
-	versionedRouter.Register(router.V1, attemptshttp.New(attemptsservice.New(fakeAttempts{}, fakeCompletionRepository{})).Routes())
-	tests := []struct {
-		name       string
-		method     string
-		path       string
-		body       string
-		wantStatus int
-		wantBody   string
-	}{
-		{name: "lists users", method: http.MethodGet, path: "/api/v1/users", wantStatus: 200, wantBody: `[{"id":1,"user_id":"external-42","username":"alex","completed_chats":0}]`},
-		{name: "creates scenario", method: http.MethodPost, path: "/api/v1/scenarios", body: `{"title":"Поддельная доставка","description":"Тренировка","difficulty":"easy","role":"seller","is_active":true}`, wantStatus: 200, wantBody: `{"id":2,"title":"Поддельная доставка","description":"Тренировка","difficulty":"easy","role":"seller","is_active":true}`},
-		{name: "returns an attempt", method: http.MethodGet, path: "/api/v1/attempts/1", wantStatus: 200, wantBody: `{"id":1,"user_id":1,"scenario_id":1,"status":"IN_PROGRESS","started_at":"2026-08-07T18:00:00Z","finished_at":"0001-01-01T00:00:00Z","score":0}`},
-		{name: "rejects invalid attempt transition", method: http.MethodPut, path: "/api/v1/attempts/2", body: `{"user_id":1,"scenario_id":1,"status":"IN_PROGRESS","started_at":"2026-08-07T18:00:00Z","finished_at":"0001-01-01T00:00:00Z","score":0}`, wantStatus: 500, wantBody: "invalid attempt status transition"},
-		{name: "rejects invalid identifier", method: http.MethodGet, path: "/api/v1/users/nope", wantStatus: 400, wantBody: "invalid user id"},
+	versionedRouter.Register(router.V1, authhttp.New(authservice.New(accounts, fakeTokens{})).Routes())
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"username":"Alex","password":"secret"}`))
+	recorder := httptest.NewRecorder()
+	versionedRouter.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusCreated)
+	}
+	if got, want := strings.TrimSpace(recorder.Body.String()), `{"id":1,"username":"alex","access_role":"user"}`; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+	if strings.Contains(recorder.Body.String(), "password") {
+		t.Fatalf("registration response leaks credentials: %q", recorder.Body.String())
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
-			recorder := httptest.NewRecorder()
-			versionedRouter.ServeHTTP(recorder, request)
-			if recorder.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d", recorder.Code, tt.wantStatus)
-			}
-			if got := strings.TrimSpace(recorder.Body.String()); got != tt.wantBody {
-				t.Fatalf("body = %q, want %q", got, tt.wantBody)
-			}
-		})
+	oldUsersRequest := httptest.NewRequest(http.MethodGet, "/api/v1/users", nil)
+	oldUsersRecorder := httptest.NewRecorder()
+	versionedRouter.ServeHTTP(oldUsersRecorder, oldUsersRequest)
+	if oldUsersRecorder.Code != http.StatusNotFound {
+		t.Fatalf("old users endpoint status = %d, want %d", oldUsersRecorder.Code, http.StatusNotFound)
 	}
 }
 
-func TestVersionedRouterPreservesRequestID(t *testing.T) {
+func TestRouterUsesCookieIdentityForCurrentUserAndAttempts(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountsStore := &accountStore{users: map[string]domain.User{"alex": {ID: 1, Username: "alex", PasswordHash: string(hash), AccessRole: domain.AccessRoleUser}}}
+	accounts := usersservice.New(accountsStore)
+	tokens, err := authservice.NewJWTManager("test-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
 	versionedRouter := router.New()
-	versionedRouter.Register(router.V1, []router.Route{{Path: "/health", Handler: func(writer http.ResponseWriter, _ *http.Request) {
-		writer.WriteHeader(http.StatusNoContent)
-	}}})
-	handler := middleware.Chain(versionedRouter, middleware.RequestID(), middleware.Logger(&logger.Logger{Logger: zap.NewNop()}), middleware.Panic(), middleware.Trace())
+	versionedRouter.Register(router.V1, authhttp.New(authservice.New(accounts, tokens)).Routes())
+	attemptStore := &attemptStore{attempts: map[int]domain.Attempt{9: {ID: 9, UserID: 2, ScenarioID: 1, Status: domain.AttemptStatusInProgress}}}
+	versionedRouter.Register(router.V1, attemptshttp.New(attemptsservice.New(attemptStore, noCompletion{})).Routes())
+	handler := authhttp.RequireAuthentication(tokens)(versionedRouter)
 
-	for _, requestID := range []string{"", "request-42"} {
-		request := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
-		if requestID != "" {
-			request.Header.Set(middleware.RequestIDHeader, requestID)
-		}
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, request)
+	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"Alex","password":"secret"}`))
+	loginRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(loginRecorder, login)
+	if loginRecorder.Code != http.StatusNoContent {
+		t.Fatalf("login status = %d, want %d", loginRecorder.Code, http.StatusNoContent)
+	}
+	loginCookie := loginRecorder.Result().Cookies()[0]
+	if !loginCookie.HttpOnly || loginCookie.MaxAge != int(authservice.TokenLifetime.Seconds()) {
+		t.Fatalf("login cookie = %#v, want an HttpOnly seven-day cookie", loginCookie)
+	}
 
-		if recorder.Code != http.StatusNoContent {
-			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
-		}
-		got := recorder.Header().Get(middleware.RequestIDHeader)
-		if got == "" {
-			t.Fatal("response has no request ID")
-		}
-		if requestID != "" && got != requestID {
-			t.Fatalf("response request ID = %q, want %q", got, requestID)
-		}
+	me := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	me.AddCookie(loginCookie)
+	meRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(meRecorder, me)
+	if got, want := strings.TrimSpace(meRecorder.Body.String()), `{"id":1,"username":"alex","access_role":"user"}`; meRecorder.Code != http.StatusOK || got != want {
+		t.Fatalf("me = (%d, %q), want (%d, %q)", meRecorder.Code, got, http.StatusOK, want)
+	}
+
+	withoutCookie := httptest.NewRecorder()
+	handler.ServeHTTP(withoutCookie, httptest.NewRequest(http.MethodGet, "/api/v1/attempts", nil))
+	if withoutCookie.Code != http.StatusUnauthorized {
+		t.Fatalf("attempts without cookie = %d, want %d", withoutCookie.Code, http.StatusUnauthorized)
+	}
+
+	createAttempt := httptest.NewRequest(http.MethodPost, "/api/v1/attempts", strings.NewReader(`{"user_id":99,"scenario_id":1,"status":"IN_PROGRESS"}`))
+	createAttempt.AddCookie(loginCookie)
+	createdRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(createdRecorder, createAttempt)
+	if got := strings.TrimSpace(createdRecorder.Body.String()); createdRecorder.Code != http.StatusOK || strings.Contains(got, "user_id") || attemptStore.attempts[11].UserID != 1 {
+		t.Fatalf("created attempt = (%d, %q), want owner from JWT without user_id in API", createdRecorder.Code, got)
+	}
+
+	foreignAttempt := httptest.NewRequest(http.MethodGet, "/api/v1/attempts/9", nil)
+	foreignAttempt.AddCookie(loginCookie)
+	foreignRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(foreignRecorder, foreignAttempt)
+	if foreignRecorder.Code != http.StatusNotFound {
+		t.Fatalf("foreign attempt = %d, want %d", foreignRecorder.Code, http.StatusNotFound)
+	}
+
+	expiredToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "1", "access_role": "user", "iat": time.Now().Add(-2 * time.Hour).Unix(), "exp": time.Now().Add(-time.Hour).Unix()}).SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiredRequest := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	expiredRequest.AddCookie(&http.Cookie{Name: authhttp.AccessTokenCookie, Value: expiredToken})
+	expiredRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(expiredRecorder, expiredRequest)
+	if expiredRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expired token = %d, want %d", expiredRecorder.Code, http.StatusUnauthorized)
+	}
+
+	invalidRequest := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	invalidRequest.AddCookie(&http.Cookie{Name: authhttp.AccessTokenCookie, Value: "not-a-jwt"})
+	invalidRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(invalidRecorder, invalidRequest)
+	if invalidRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid token = %d, want %d", invalidRecorder.Code, http.StatusUnauthorized)
+	}
+
+	logout := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	logoutRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(logoutRecorder, logout)
+	if logoutRecorder.Code != http.StatusNoContent || logoutRecorder.Result().Cookies()[0].MaxAge >= 0 {
+		t.Fatalf("logout = (%d, %#v), want expired cookie", logoutRecorder.Code, logoutRecorder.Result().Cookies())
 	}
 }
 
-type fakeUsers struct{}
+type fakeAccounts struct{}
 
-func (fakeUsers) Create(user domain.User) (domain.User, error) { user.ID = 1; return user, nil }
-func (fakeUsers) GetByID(id int) (domain.User, error) {
-	return domain.User{ID: id, ExternalID: "external-42", Username: "alex"}, nil
-}
-func (fakeUsers) GetByExternalID(string) (domain.User, error) {
-	return domain.User{}, errors.New("not found")
-}
-func (fakeUsers) Update(domain.User) error { return nil }
-func (fakeUsers) Delete(int) error         { return nil }
-func (fakeUsers) List() ([]domain.User, error) {
-	return []domain.User{{ID: 1, ExternalID: "external-42", Username: "alex"}}, nil
+func (*fakeAccounts) Create(user domain.User) (domain.User, error) {
+	user.ID = 1
+	return user, nil
 }
 
-type fakeScenarios struct{}
-
-func (fakeScenarios) Create(scenario domain.Scenario) (domain.Scenario, error) {
-	scenario.ID = 2
-	return scenario, nil
+func (*fakeAccounts) GetByID(int) (domain.User, error) { return domain.User{}, nil }
+func (*fakeAccounts) GetByUsername(string) (domain.User, error) {
+	return domain.User{}, usersservice.ErrNotFound
 }
-func (fakeScenarios) GetByID(id int) (domain.Scenario, error) { return domain.Scenario{ID: id}, nil }
-func (fakeScenarios) Update(domain.Scenario) error            { return nil }
-func (fakeScenarios) Delete(int) error                        { return nil }
-func (fakeScenarios) List() ([]domain.Scenario, error)        { return nil, nil }
 
-type fakeAttempts struct{}
+type fakeTokens struct{}
 
-func (fakeAttempts) Create(attempt domain.Attempt) (domain.Attempt, error) {
-	attempt.ID = 1
+func (fakeTokens) Issue(domain.User) (string, error) { return "token", nil }
+func (fakeTokens) Parse(string) (authservice.Identity, error) {
+	return authservice.Identity{}, nil
+}
+
+type accountStore struct {
+	users map[string]domain.User
+}
+
+func (s *accountStore) Create(user domain.User) (domain.User, error) {
+	user.ID = len(s.users) + 1
+	s.users[user.Username] = user
+	return user, nil
+}
+func (s *accountStore) GetByID(id int) (domain.User, error) {
+	for _, user := range s.users {
+		if user.ID == id {
+			return user, nil
+		}
+	}
+	return domain.User{}, usersservice.ErrNotFound
+}
+func (s *accountStore) GetByUsername(username string) (domain.User, error) {
+	user, ok := s.users[username]
+	if !ok {
+		return domain.User{}, usersservice.ErrNotFound
+	}
+	return user, nil
+}
+
+type attemptStore struct {
+	attempts map[int]domain.Attempt
+}
+
+func (s *attemptStore) Create(attempt domain.Attempt) (domain.Attempt, error) {
+	attempt.ID = len(s.attempts) + 10
+	s.attempts[attempt.ID] = attempt
 	return attempt, nil
 }
-func (fakeAttempts) GetByID(id int) (domain.Attempt, error) {
-	status := domain.AttemptStatusInProgress
-	if id == 2 {
-		status = domain.AttemptStatusCompleted
+func (s *attemptStore) GetByID(id int) (domain.Attempt, error) {
+	attempt, ok := s.attempts[id]
+	if !ok {
+		return domain.Attempt{}, attemptsservice.ErrAttemptNotFound
 	}
-	return domain.Attempt{ID: id, UserID: 1, ScenarioID: 1, Status: status, StartedAt: mustTime("2026-08-07T18:00:00Z")}, nil
+	return attempt, nil
 }
-func (fakeAttempts) Update(domain.Attempt) error     { return nil }
-func (fakeAttempts) Delete(int) error                { return nil }
-func (fakeAttempts) List() ([]domain.Attempt, error) { return nil, nil }
-
-type fakeCompletionRepository struct{}
-
-func (fakeCompletionRepository) InTransaction(func(attemptsservice.CompletionStore) error) error {
+func (s *attemptStore) Update(attempt domain.Attempt) error {
+	s.attempts[attempt.ID] = attempt
 	return nil
 }
-func mustTime(value string) (parsedTime time.Time) {
-	parsedTime, _ = time.Parse(time.RFC3339, value)
-	return parsedTime
+func (s *attemptStore) Delete(id int) error { delete(s.attempts, id); return nil }
+func (s *attemptStore) ListByUserID(userID int) ([]domain.Attempt, error) {
+	result := make([]domain.Attempt, 0, len(s.attempts))
+	for _, attempt := range s.attempts {
+		if attempt.UserID == userID {
+			result = append(result, attempt)
+		}
+	}
+	return result, nil
 }
+
+type noCompletion struct{}
+
+func (noCompletion) InTransaction(func(attemptsservice.CompletionStore) error) error { return nil }

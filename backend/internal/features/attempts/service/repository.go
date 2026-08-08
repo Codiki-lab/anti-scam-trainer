@@ -7,5 +7,5 @@ type Repository interface {
 	GetByID(int) (domain.Attempt, error)
 	Update(domain.Attempt) error
 	Delete(int) error
-	List() ([]domain.Attempt, error)
+	ListByUserID(int) ([]domain.Attempt, error)
 }
