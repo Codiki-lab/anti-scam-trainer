@@ -52,10 +52,10 @@ setup: env
 	@if [ -f frontend/package.json ]; then cd frontend && npm install; else echo "frontend/package.json not found; frontend setup skipped"; fi
 
 up: env
-	@$(COMPOSE) up -d
+	@$(COMPOSE) up -d --build
 
 up-ollama: env
-	@$(COMPOSE_OLLAMA) up -d
+	@$(COMPOSE_OLLAMA) up -d --build
 
 down:
 	@$(COMPOSE) down
