@@ -42,9 +42,13 @@ LOG_FOLDER=out/logs
 JWT_SECRET=<случайный секрет подписи JWT>
 ADMIN_USERNAME=<логин единственного администратора>
 ADMIN_PASSWORD=<пароль единственного администратора>
+SWAGGER_USERNAME=<логин для документации API>
+SWAGGER_PASSWORD=<пароль для документации API>
 ```
 
-При отсутствии любой из `JWT_SECRET`, `ADMIN_USERNAME` или `ADMIN_PASSWORD` API завершает запуск с ошибкой. При старте приложение создаёт единственную учётную запись с ролью `admin`, если её ещё нет. Обычная регистрация создаёт только пользователей с ролью `user`.
+При отсутствии любой из `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SWAGGER_USERNAME` или `SWAGGER_PASSWORD` API завершает запуск с ошибкой. При старте приложение создаёт единственную учётную запись с ролью `admin`, если её ещё нет. Обычная регистрация создаёт только пользователей с ролью `user`.
+
+`SWAGGER_USERNAME` и `SWAGGER_PASSWORD` защищают только документацию: они не создают учётную запись Пользователя и не заменяют JWT-cookie. После запуска Swagger UI доступен по `http://localhost:8080/swagger/`, а OpenAPI v1 — по `http://localhost:8080/openapi/v1.yaml`; оба URL запрашивают HTTP Basic Auth. Полный контракт хранится в `backend/openapi/v1/openapi.yaml`.
 
 ## PostgreSQL
 

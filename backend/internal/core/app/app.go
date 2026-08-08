@@ -8,6 +8,7 @@ import (
 	"anti-scam-trainer/backend/internal/core/postgres"
 	"anti-scam-trainer/backend/internal/core/server"
 	"anti-scam-trainer/backend/internal/core/server/middleware"
+	"anti-scam-trainer/backend/internal/core/server/openapidocs"
 	"anti-scam-trainer/backend/internal/core/server/response"
 	"anti-scam-trainer/backend/internal/core/server/router"
 	serverruntime "anti-scam-trainer/backend/internal/core/server/runtime"
@@ -85,7 +86,12 @@ func New() (*App, error) {
 	versionedRouter.Register(router.V1, authhttp.New(authentication).Routes())
 	versionedRouter.Register(router.V1, scenarioshttp.New(scenarios).Routes())
 	versionedRouter.Register(router.V1, attemptshttp.New(attempts).Routes())
-	handler := middleware.Chain(versionedRouter, middleware.RequestID(), middleware.Logger(log), middleware.Panic(), middleware.Trace(), authhttp.RequireAuthentication(tokens))
+	routes := http.NewServeMux()
+	documentationHandler := middleware.RequireSwaggerAuthentication(cfg.SwaggerUsername, cfg.SwaggerPassword)(openapidocs.NewHandler())
+	routes.Handle("/swagger/", documentationHandler)
+	routes.Handle("/openapi/", documentationHandler)
+	routes.Handle("/", versionedRouter)
+	handler := middleware.Chain(routes, middleware.RequestID(), middleware.Logger(log), middleware.Panic(), middleware.Trace(), authhttp.RequireAuthentication(tokens))
 	app := &App{DB: db, Log: log, Handler: handler, Port: cfg.Port, AIProvider: provider}
 	app.server = serverruntime.New(server.Config{Addr: ":" + cfg.Port, Handler: handler})
 	initialized = true

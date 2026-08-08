@@ -1,0 +1,129 @@
+openapi: 3.1.0
+info:
+  title: Anti-scam trainer API
+  version: v1
+  description: |
+    Контракт фактически реализованного API тренажёра. Роль доступа учётной записи
+    (`user` или `admin`) не является ролью Пользователя в Сценарии (`buyer` или `seller`).
+    Каждый ответ приложения содержит заголовок `X-Request-ID`.
+servers:
+  - url: /
+paths:
+  /api/v1/health:
+    get:
+      summary: Проверка состояния
+      responses:
+        '200': { description: Сервис работает, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } }
+  /api/v1/auth/register:
+    post:
+      summary: Регистрация Пользователя
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Credentials' } } } }
+      responses:
+        '201': { description: Учётная запись создана, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /api/v1/auth/login:
+    post:
+      summary: Вход Пользователя
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Credentials' } } } }
+      responses:
+        '204': { description: Cookie access_token установлена, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /api/v1/auth/logout:
+    post:
+      summary: Выход Пользователя
+      responses:
+        '204': { description: Cookie access_token удалена, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /api/v1/auth/me:
+    get:
+      summary: Текущая учётная запись
+      security: [{ accessToken: [] }]
+      responses:
+        '200': { description: Текущая учётная запись, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /api/v1/scenarios:
+    get:
+      summary: Список Сценариев
+      security: [{ accessToken: [] }]
+      responses:
+        '200': { description: Сценарии, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Scenario' } } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+    post:
+      summary: Создать Сценарий
+      security: [{ accessToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ScenarioInput' } } } }
+      responses:
+        '200': { description: Сценарий создан, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Scenario' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /api/v1/scenarios/{id}:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    get:
+      summary: Получить Сценарий
+      security: [{ accessToken: [] }]
+      responses: { '200': { description: Сценарий, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Scenario' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+    put:
+      summary: Полностью обновить Сценарий
+      security: [{ accessToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ScenarioInput' } } } }
+      responses: { '200': { description: Сценарий обновлён, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Scenario' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '500': { $ref: '#/components/responses/InternalServerError' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+    delete:
+      summary: Удалить Сценарий
+      security: [{ accessToken: [] }]
+      responses: { '204': { description: Сценарий удалён, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '500': { $ref: '#/components/responses/InternalServerError' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+  /api/v1/attempts:
+    get:
+      summary: Список Прохождений текущего Пользователя
+      security: [{ accessToken: [] }]
+      responses: { '200': { description: Прохождения, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Attempt' } } } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '500': { $ref: '#/components/responses/InternalServerError' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+    post:
+      summary: Создать Прохождение текущего Пользователя
+      security: [{ accessToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptInput' } } } }
+      responses: { '200': { description: Прохождение создано, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '500': { $ref: '#/components/responses/InternalServerError' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+  /api/v1/attempts/{id}:
+    parameters: [{ $ref: '#/components/parameters/ID' }]
+    get:
+      summary: Получить собственное Прохождение
+      security: [{ accessToken: [] }]
+      responses: { '200': { description: Прохождение, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+    put:
+      summary: Полностью обновить собственное Прохождение
+      security: [{ accessToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttemptInput' } } } }
+      responses: { '200': { description: Прохождение обновлено, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '500': { $ref: '#/components/responses/InternalServerError' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+    delete:
+      summary: Удалить собственное Прохождение
+      security: [{ accessToken: [] }]
+      responses: { '204': { description: Прохождение удалено, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '500': { $ref: '#/components/responses/InternalServerError' }, '405': { $ref: '#/components/responses/MethodNotAllowed' } }
+components:
+  headers:
+    RequestID: { description: Идентификатор HTTP-запроса, schema: { type: string } }
+  securitySchemes:
+    accessToken: { type: apiKey, in: cookie, name: access_token, description: Подписанная JWT cookie; устанавливается после входа. }
+  parameters:
+    ID: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+  responses:
+    BadRequest: { description: Некорректный JSON, пустые обязательные поля или неверный ID, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
+    Unauthorized: { description: Отсутствующая, невалидная или истёкшая cookie access_token, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
+    Conflict: { description: Логин уже занят, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
+    NotFound: { description: Ресурс не найден или Прохождение принадлежит другому Пользователю, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
+    MethodNotAllowed: { description: Метод не поддерживается, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
+    InternalServerError: { description: Внутренняя ошибка, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
+  schemas:
+    Health: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
+    Credentials: { type: object, required: [username, password], properties: { username: { type: string, minLength: 1, example: alex }, password: { type: string, minLength: 1, format: password, writeOnly: true, example: secret } } }
+    Account: { type: object, required: [id, username, access_role], properties: { id: { type: integer, example: 1 }, username: { type: string, example: alex }, access_role: { type: string, enum: [user, admin], description: Роль доступа учётной записи. } } }
+    ScenarioInput: { type: object, required: [title, description, difficulty, role, is_active], properties: { title: { type: string, example: Безопасная доставка }, description: { type: string, example: Покупатель обсуждает доставку товара. }, difficulty: { type: string, example: '1' }, role: { type: string, enum: [buyer, seller], description: Роль Пользователя в Сценарии, а не роль доступа учётной записи. }, is_active: { type: boolean, example: true } } }
+    Scenario: { allOf: [{ $ref: '#/components/schemas/ScenarioInput' }, { type: object, required: [id], properties: { id: { type: integer, example: 1 } } }] }
+    AttemptInput: { type: object, required: [scenario_id, status, started_at, finished_at, score], properties: { scenario_id: { type: integer, example: 1 }, status: { type: string, example: IN_PROGRESS }, started_at: { type: string, format: date-time, example: '2026-08-07T18:00:00Z' }, finished_at: { type: string, format: date-time, example: '0001-01-01T00:00:00Z' }, score: { type: integer, example: 0 } } }
+    Attempt: { allOf: [{ $ref: '#/components/schemas/AttemptInput' }, { type: object, required: [id], properties: { id: { type: integer, example: 1 } } }] }
