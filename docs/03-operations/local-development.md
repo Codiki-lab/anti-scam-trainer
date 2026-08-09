@@ -7,7 +7,7 @@
 - `make`;
 - свободные локальные порты `3000`, `5432`, `8080` и, при работе с моделью, `11434`.
 
-Node.js нужен только для сборки отдельно поставляемого веб-клиента. Gateway ожидает готовые файлы в `frontend/dist`.
+Docker-сборка включает Node.js и собирает веб-клиент внутри образа gateway, поэтому для запуска Compose Node.js на машине не нужен. Node.js нужен только для локальной разработки и запуска проверок фронтенда.
 
 ## Подготовка
 
@@ -65,7 +65,7 @@ make build
 make up
 ```
 
-`make build` собирает образы, а `make up` запускает только уже собранные образы и не выполняет неявную пересборку. Перед стартом одноразовый контейнер `anti-scam-trainer-migrate` применяет все ещё не применённые миграции из `backend/migrations`; API ждёт его успешного завершения. После изменения кода или Dockerfile снова выполните `make build`, затем `make up`.
+`make build` собирает образы, включая production-сборку веб-клиента внутри образа Nginx gateway. `make up` запускает только уже собранные образы и не выполняет неявную пересборку. Перед стартом одноразовый контейнер `anti-scam-trainer-migrate` применяет все ещё не применённые миграции из `backend/migrations`; API ждёт его успешного завершения. После изменения кода или Dockerfile снова выполните `make build`, затем `make up`.
 
 PostgreSQL доступен на `localhost:5432` через контейнер `port-forwarder`, а API — на `http://localhost:8080`. Данные сохраняются в `out/pgdata`.
 
@@ -135,7 +135,7 @@ make down-ollama
 
 ## Веб-клиент и публичное демо
 
-Соберите веб-клиент в `frontend/dist`, используя `VITE_API_BASE_URL=/api`. Compose запускает Nginx gateway на `http://localhost:3000`: статические файлы и API доступны под одним origin, а `/api/*` проксируется в backend. Для разработки без gateway credentialed CORS разрешает только origin из `FRONTEND_ORIGINS`.
+`make build` собирает веб-клиент с `VITE_API_BASE_URL=/api` внутри образа Nginx gateway. Compose запускает gateway на `http://localhost:3000`: статические файлы и API доступны под одним origin, а `/api/*` проксируется в backend. Для локальной разработки фронтенда используйте `cd frontend && npm run dev`; credentialed CORS в этом режиме разрешён только origin из `FRONTEND_ORIGINS`.
 
 ```bash
 ngrok http 3000
