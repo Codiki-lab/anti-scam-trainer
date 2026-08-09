@@ -34,6 +34,7 @@ func TestProductionFeaturesFollowADR0012(t *testing.T) {
 				t.Errorf("%s must exist: %v", relative, err)
 			}
 		}
+		assertOnlyADR0012Anchors(t, root, feature)
 	}
 	for _, removed := range []string{"progress", "users"} {
 		if _, err := os.Stat(filepath.Join(root, "internal/features", removed)); !os.IsNotExist(err) {
@@ -65,6 +66,36 @@ func TestProductionFeaturesFollowADR0012(t *testing.T) {
 	}
 	assertOpenAPIPathsMatchProductionRoutes(t, root, string(composition), features)
 	assertLegacyImplementationsAreAbsent(t, root)
+}
+
+func assertOnlyADR0012Anchors(t *testing.T, root, feature string) {
+	t.Helper()
+	want := map[string]bool{
+		"repository/postgres.go":    true,
+		"service/repository.go":     true,
+		"service/service.go":        true,
+		"transport/http/handler.go": true,
+	}
+	featureRoot := filepath.Join(root, "internal/features", feature)
+	err := filepath.WalkDir(featureRoot, func(file string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(file) != ".go" {
+			return nil
+		}
+		relative, err := filepath.Rel(featureRoot, file)
+		if err != nil {
+			return err
+		}
+		if !want[filepath.ToSlash(relative)] {
+			t.Errorf("feature %q retains non-ADR-0012 file %q without an explicit architectural exception", feature, relative)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func assertOpenAPIPathsMatchProductionRoutes(t *testing.T, root, composition string, features []string) {
