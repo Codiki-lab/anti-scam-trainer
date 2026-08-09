@@ -66,7 +66,7 @@ func TestHTTPDashboardUsesServerContinuePriorityAndRoleIsolation(t *testing.T) {
 	request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 7}))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
-	if body := recorder.Body.String(); recorder.Code != http.StatusOK || !strings.Contains(body, `"type":"resume_attempt"`) || !strings.Contains(body, `"attempt_id":42`) || store.lastRole != domain.UserRoleSeller || !strings.Contains(body, `"daily_task":{"date":`) || !strings.Contains(body, `"role":"seller"`) {
+	if body := recorder.Body.String(); recorder.Code != http.StatusOK || !strings.Contains(body, `"type":"resume_attempt"`) || !strings.Contains(body, `"attempt_id":42`) || !strings.Contains(body, `"role":"seller"`) || !strings.Contains(body, `"daily_task":{"date":`) || !strings.Contains(body, `"messages":`) {
 		t.Fatalf("dashboard = (%d,%s), role=%s", recorder.Code, body, store.lastRole)
 	}
 }
@@ -92,13 +92,41 @@ func TestHTTPDailyTaskIsStableByMoscowDateAndRole(t *testing.T) {
 		t.Fatalf("unstable task: first=%s refresh=%s assignments=%d", first, refresh, len(store.daily))
 	}
 	get("seller")
-	if len(store.daily) != 2 {
-		t.Fatalf("role assignments=%d", len(store.daily))
+	if len(store.daily) != 1 {
+		t.Fatalf("role query created another task: %d", len(store.daily))
 	}
 	now = now.Add(2 * time.Minute)
 	next := get("buyer")
-	if !strings.Contains(next, `"date":"2026-08-10"`) || len(store.daily) != 3 {
+	if !strings.Contains(next, `"date":"2026-08-10"`) || len(store.daily) != 2 {
 		t.Fatalf("midnight task=%s assignments=%d", next, len(store.daily))
+	}
+}
+
+func TestHTTPDailyTaskHidesVerdictUntilOneFinalAnswer(t *testing.T) {
+	store := &learningStore{daily: map[string]domain.DailyTask{}}
+	service := learningservice.NewWithClock(store, func() time.Time { return time.Date(2026, 8, 9, 9, 0, 0, 0, time.UTC) })
+	handler := router.New()
+	handler.Register(router.V1, learninghttp.New(service).Routes())
+	dashboard := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard?role=buyer", nil)
+	dashboard = dashboard.WithContext(authservice.WithIdentity(dashboard.Context(), authservice.Identity{UserID: 7}))
+	before := httptest.NewRecorder()
+	handler.ServeHTTP(before, dashboard)
+	if before.Code != http.StatusOK || strings.Contains(before.Body.String(), `"verdict"`) || strings.Contains(before.Body.String(), `"safe_action"`) {
+		t.Fatalf("incomplete task leaked feedback: %d %s", before.Code, before.Body.String())
+	}
+	answer := httptest.NewRequest(http.MethodPost, "/api/v1/daily-tasks/answer", strings.NewReader(`{"answer":false}`))
+	answer = answer.WithContext(authservice.WithIdentity(answer.Context(), authservice.Identity{UserID: 7}))
+	completed := httptest.NewRecorder()
+	handler.ServeHTTP(completed, answer)
+	if completed.Code != http.StatusOK || !strings.Contains(completed.Body.String(), `"verdict"`) || !strings.Contains(completed.Body.String(), `"safe_action"`) {
+		t.Fatalf("completion = %d %s", completed.Code, completed.Body.String())
+	}
+	retryRequest := httptest.NewRequest(http.MethodPost, "/api/v1/daily-tasks/answer", strings.NewReader(`{"answer":false}`))
+	retryRequest = retryRequest.WithContext(authservice.WithIdentity(retryRequest.Context(), authservice.Identity{UserID: 7}))
+	repeat := httptest.NewRecorder()
+	handler.ServeHTTP(repeat, retryRequest)
+	if repeat.Code != http.StatusConflict || !strings.Contains(repeat.Body.String(), `"STATE_CONFLICT"`) {
+		t.Fatalf("repeat = %d %s", repeat.Code, repeat.Body.String())
 	}
 }
 
@@ -114,8 +142,8 @@ func TestHTTPDashboardOffersFreePlayOnlyAfterAllSixTopicsAreCompleted(t *testing
 		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 7}))
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, request)
-		if count == 5 && recorder.Code != http.StatusConflict {
-			t.Fatalf("five topics = (%d,%s), want 409", recorder.Code, recorder.Body.String())
+		if count == 5 && recorder.Code != http.StatusOK {
+			t.Fatalf("five topics = (%d,%s), want dashboard with no continue action", recorder.Code, recorder.Body.String())
 		}
 		if count == 6 && (recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"type":"start_free_play"`)) {
 			t.Fatalf("six topics = (%d,%s), want free play", recorder.Code, recorder.Body.String())
@@ -132,17 +160,38 @@ type learningStore struct {
 	topics        []domain.Topic
 }
 
-func (s *learningStore) DailyTask(_ int, role domain.UserRole, date time.Time, recommendation domain.ContinueAction) (domain.DailyTask, error) {
+func (s *learningStore) FindDailyTask(_ int, date time.Time) (domain.DailyTask, bool, error) {
+	task, ok := s.daily[date.Format("2006-01-02")]
+	return task, ok, nil
+}
+
+func (s *learningStore) DailyTask(_ int, date time.Time, created domain.DailyTask) (domain.DailyTask, error) {
 	if s.daily == nil {
 		s.daily = map[string]domain.DailyTask{}
 	}
-	key := date.Format("2006-01-02") + ":" + string(role)
+	key := date.Format("2006-01-02")
 	if task, ok := s.daily[key]; ok {
 		return task, nil
 	}
-	task := domain.DailyTask{Date: date.Format("2006-01-02"), Role: role, Action: recommendation}
+	task := created
 	s.daily[key] = task
 	return task, nil
+}
+func (s *learningStore) AnswerDailyTask(_ int, date time.Time, answer bool) (domain.DailyTask, domain.Streak, error) {
+	key := date.Format("2006-01-02")
+	task, ok := s.daily[key]
+	if !ok {
+		return domain.DailyTask{}, domain.Streak{}, learningservice.ErrDailyTaskUnavailable
+	}
+	if task.Completed {
+		return domain.DailyTask{}, domain.Streak{}, learningservice.ErrDailyTaskAnswered
+	}
+	correct := answer == task.Verdict
+	task.Answer, task.Correct, task.Completed = &answer, &correct, true
+	now := time.Now()
+	task.CompletedAt = &now
+	s.daily[key] = task
+	return task, domain.Streak{Current: 1, Longest: 1, ActiveToday: true}, nil
 }
 
 func (s *learningStore) Topics(_ int, role domain.UserRole) ([]domain.Topic, error) {

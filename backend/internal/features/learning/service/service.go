@@ -3,6 +3,8 @@ package service
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
 	apperrors "anti-scam-trainer/backend/internal/core/errors"
+	"context"
+	"crypto/rand"
 	"errors"
 	"strings"
 	"time"
@@ -12,16 +14,41 @@ var (
 	ErrTopicNotFound        = apperrors.ErrScenarioNotFound
 	ErrInvalidQuiz          = errors.New("invalid quiz submission")
 	ErrDailyTaskUnavailable = errors.New("no valid daily task is available")
+	ErrDailyTaskAnswered    = errors.New("daily task is already answered")
+	ErrInvalidDailyAnswer   = errors.New("invalid daily task answer")
 )
+
+type DailyTaskGenerator interface {
+	GenerateDailyTask(context.Context, DailyTaskProfile, domain.UserRole) (domain.DailyTask, error)
+}
+type DailyTaskProfile struct {
+	UserID         int
+	PreferredRole  domain.UserRole
+	Topics         []domain.Topic
+	RecentAttempts []domain.RecentAttempt
+}
 
 type Service struct {
 	repository Repository
 	now        func() time.Time
+	generator  DailyTaskGenerator
+	selectRole func() domain.UserRole
 }
 
-func New(repository Repository) *Service { return &Service{repository: repository, now: time.Now} }
+func New(repository Repository) *Service {
+	return &Service{repository: repository, now: time.Now, selectRole: randomDailyRole}
+}
 func NewWithClock(repository Repository, now func() time.Time) *Service {
-	return &Service{repository: repository, now: now}
+	return &Service{repository: repository, now: now, selectRole: randomDailyRole}
+}
+func NewWithDailyTaskGenerator(repository Repository, generator DailyTaskGenerator) *Service {
+	s := New(repository)
+	s.generator = generator
+	return s
+}
+func (s *Service) WithDailyRoleSelector(selectRole func() domain.UserRole) *Service {
+	s.selectRole = selectRole
+	return s
 }
 
 func (s *Service) Topics(userID int, role domain.UserRole) ([]domain.Topic, error) {
@@ -95,21 +122,89 @@ func (s *Service) Dashboard(userID int, role domain.UserRole) (domain.User, []do
 		return domain.User{}, nil, nil, nil, nil, err
 	}
 	action := s.continueAction(userID, role, topics)
-	if action == nil {
-		return domain.User{}, nil, nil, nil, nil, ErrDailyTaskUnavailable
+	profileTopics := append([]domain.Topic{}, topics...)
+	otherRole := domain.UserRoleBuyer
+	if role == domain.UserRoleBuyer {
+		otherRole = domain.UserRoleSeller
+	}
+	if otherTopics, otherErr := s.Topics(userID, otherRole); otherErr == nil {
+		profileTopics = append(profileTopics, otherTopics...)
 	}
 	var task *domain.DailyTask
 	if daily, ok := s.repository.(DailyTaskRepository); ok {
-		value, taskErr := daily.DailyTask(userID, role, s.activityDate(), *action)
+		value, exists, taskErr := daily.FindDailyTask(userID, s.activityDate())
+		if taskErr != nil {
+			return domain.User{}, nil, nil, nil, nil, taskErr
+		}
+		if !exists {
+			value, taskErr = daily.DailyTask(userID, s.activityDate(), s.newDailyTask(user, profileTopics))
+		}
 		if taskErr != nil {
 			return domain.User{}, nil, nil, nil, nil, taskErr
 		}
 		task = &value
 	} else {
-		value := domain.DailyTask{Date: s.activityDate().Format("2006-01-02"), Role: role, Action: *action}
+		value := s.newDailyTask(user, profileTopics)
 		task = &value
 	}
 	return user, topics, achievements, action, task, nil
+}
+func (s *Service) AnswerDailyTask(userID int, answer *bool) (domain.DailyTask, domain.Streak, error) {
+	if answer == nil {
+		return domain.DailyTask{}, domain.Streak{}, ErrInvalidDailyAnswer
+	}
+	daily, ok := s.repository.(DailyTaskRepository)
+	if !ok {
+		return domain.DailyTask{}, domain.Streak{}, ErrDailyTaskUnavailable
+	}
+	return daily.AnswerDailyTask(userID, s.activityDate(), *answer)
+}
+func (s *Service) newDailyTask(user domain.User, topics []domain.Topic) domain.DailyTask {
+	role := s.selectRole()
+	if !domain.ValidUserRole(role) {
+		role = domain.UserRoleBuyer
+	}
+	fallback := fallbackDailyTask(s.activityDate(), role)
+	if s.generator == nil {
+		return fallback
+	}
+	recent, _, err := s.repository.RecentAttempts(user.ID, user.TrainingRole)
+	if err != nil {
+		return fallback
+	}
+	generated, err := s.generator.GenerateDailyTask(context.Background(), DailyTaskProfile{UserID: user.ID, PreferredRole: user.TrainingRole, Topics: topics, RecentAttempts: recent}, role)
+	generated.Role = role
+	if err != nil || !validDailyTask(generated) {
+		return fallback
+	}
+	generated.Date = s.activityDate().Format("2006-01-02")
+	return generated
+}
+func randomDailyRole() domain.UserRole {
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err != nil || b[0]%2 == 0 {
+		return domain.UserRoleBuyer
+	}
+	return domain.UserRoleSeller
+}
+func fallbackDailyTask(date time.Time, role domain.UserRole) domain.DailyTask {
+	return domain.DailyTask{Date: date.Format("2006-01-02"), Role: role, Messages: []domain.DialogueMessage{{Role: "assistant", Text: "Покупатель просит продолжить общение и оплату только внутри сервиса объявлений."}, {Role: "user", Text: "Давайте так и сделаем, без ссылок и переводов вне сервиса."}}, Verdict: false, Signals: []string{"Нет просьбы перейти по внешней ссылке", "Оплата остаётся внутри сервиса"}, SafeAction: "Продолжайте использовать защищённые инструменты сервиса и не сообщайте коды."}
+}
+func validDailyTask(task domain.DailyTask) bool {
+	if !domain.ValidUserRole(task.Role) || len(task.Messages) < 2 || len(task.Messages) > 6 || len(task.Signals) > 3 || strings.TrimSpace(task.SafeAction) == "" || len([]rune(task.SafeAction)) > 300 {
+		return false
+	}
+	for _, m := range task.Messages {
+		if (m.Role != "user" && m.Role != "assistant") || strings.TrimSpace(m.Text) == "" || len([]rune(m.Text)) > 400 {
+			return false
+		}
+	}
+	for _, signal := range task.Signals {
+		if strings.TrimSpace(signal) == "" || len([]rune(signal)) > 180 {
+			return false
+		}
+	}
+	return true
 }
 func (s *Service) continueAction(userID int, role domain.UserRole, topics []domain.Topic) *domain.ContinueAction {
 	attemptID, topicID, level, err := s.repository.InProgressAttempt(userID, role)

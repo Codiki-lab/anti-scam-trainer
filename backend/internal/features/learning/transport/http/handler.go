@@ -19,7 +19,7 @@ type Handler struct{ service *service.Service }
 
 func New(service *service.Service) *Handler { return &Handler{service: service} }
 func (h *Handler) Routes() []router.Route {
-	return []router.Route{{Path: "/topics", Handler: h.topics}, {Path: "/topics/", Handler: h.topic}, {Path: "/progress", Handler: h.progress}, {Path: "/achievements", Handler: h.achievements}, {Path: "/dashboard", Handler: h.dashboard}}
+	return []router.Route{{Path: "/topics", Handler: h.topics}, {Path: "/topics/", Handler: h.topic}, {Path: "/progress", Handler: h.progress}, {Path: "/achievements", Handler: h.achievements}, {Path: "/dashboard", Handler: h.dashboard}, {Path: "/daily-tasks/answer", Handler: h.answerDailyTask}}
 }
 
 func identity(r *http.Request) (auth.Identity, bool) { return auth.IdentityFromContext(r.Context()) }
@@ -214,9 +214,14 @@ type continueActionDTO struct {
 type dailyTaskDTO struct {
 	Date        string            `json:"date"`
 	Role        domain.UserRole   `json:"role"`
+	Messages    []dailyMessageDTO `json:"messages"`
 	Completed   bool              `json:"completed"`
 	CompletedAt *time.Time        `json:"completed_at"`
-	Action      continueActionDTO `json:"action"`
+	Answer      *bool             `json:"answer,omitempty"`
+	Correct     *bool             `json:"correct,omitempty"`
+	Verdict     *bool             `json:"verdict,omitempty"`
+	Signals     []string          `json:"signals,omitempty"`
+	SafeAction  string            `json:"safe_action,omitempty"`
 }
 
 func continueActionDTOFrom(action *domain.ContinueAction) *continueActionDTO {
@@ -229,8 +234,45 @@ func dailyTaskDTOFrom(task *domain.DailyTask) *dailyTaskDTO {
 	if task == nil {
 		return nil
 	}
-	action := continueActionDTOFrom(&task.Action)
-	return &dailyTaskDTO{Date: task.Date, Role: task.Role, Completed: task.Completed, CompletedAt: task.CompletedAt, Action: *action}
+	messages := make([]dailyMessageDTO, len(task.Messages))
+	for i, message := range task.Messages {
+		messages[i] = dailyMessageDTO{Role: string(message.Role), Text: message.Text}
+	}
+	dto := &dailyTaskDTO{Date: task.Date, Role: task.Role, Messages: messages, Completed: task.Completed, CompletedAt: task.CompletedAt}
+	if task.Completed {
+		dto.Answer, dto.Correct, dto.Verdict, dto.Signals, dto.SafeAction = task.Answer, task.Correct, &task.Verdict, task.Signals, task.SafeAction
+	}
+	return dto
+}
+
+type dailyMessageDTO struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+func (h *Handler) answerDailyTask(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user, ok := identity(r)
+	if !ok {
+		response.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var input struct {
+		Answer *bool `json:"answer"`
+	}
+	if err := request.DecodeStrictJSON(r, &input); err != nil {
+		response.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	task, streak, err := h.service.AnswerDailyTask(user.UserID, input.Answer)
+	if err != nil {
+		learningError(w, err)
+		return
+	}
+	response.JSON(w, map[string]any{"daily_task": dailyTaskDTOFrom(&task), "streak": streak})
 }
 
 func topicDTO(t domain.Topic) map[string]any {
@@ -282,6 +324,10 @@ func learningError(w http.ResponseWriter, err error) {
 		response.Error(w, "topic not found", 404)
 	case errors.Is(err, service.ErrDailyTaskUnavailable):
 		response.ErrorCode(w, "CONTENT_UNAVAILABLE", "no valid daily task is available", http.StatusConflict, nil)
+	case errors.Is(err, service.ErrDailyTaskAnswered):
+		response.ErrorCode(w, "STATE_CONFLICT", "daily task is already answered", http.StatusConflict, nil)
+	case errors.Is(err, service.ErrInvalidDailyAnswer):
+		response.ErrorCode(w, "VALIDATION_ERROR", "answer must be a boolean", http.StatusBadRequest, nil)
 	default:
 		response.Error(w, "could not process learning request", 500)
 	}
