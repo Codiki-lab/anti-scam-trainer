@@ -26,3 +26,4 @@ ADR фиксирует архитектурное решение вместе с
 | [0009 — Подписанный JWT access token в cookie](0009-signed-access-token-in-cookie.md) | Принято |
 | [0010 — Версионированные OpenAPI-спецификации как API-контракт](0010-versioned-openapi-spec-first.md) | Принято |
 | [0011 — Разовая несовместимая замена API v1](0011-one-time-v1-replacement.md) | Принято |
+| [0012 — Единый шаблон продуктовой возможности](0012-uniform-feature-layout.md) | Принято |
