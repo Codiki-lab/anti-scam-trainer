@@ -1,0 +1,409 @@
+# Avito Anti-Scam Trainer — архитектура проекта
+
+> Статус: базовая архитектура MVP
+> Дата фиксации: 2026-08-09
+> Область документа: продукт, frontend, граница с backend, AI-runtime и agent-assisted development
+
+## 1. Архитектура в одном абзаце
+
+Anti-Scam Trainer — модульный монолит с React-клиентом, Go-backend, PostgreSQL и локальным Qwen3-8B через Ollama. Основной пользовательский сценарий и scoring детерминированы backend-ом. Qwen применяется только там, где без него нельзя оценить свободный текст, и никогда не управляет состоянием сессии или итоговым результатом. Frontend строится как прагматичный light FSD, получает server state через RTK Query и не дублирует решения backend-а. Разработка управляется главным Codex Tech Lead: отдельные агенты проектируют, реализуют, тестируют и независимо ревьюят изменения, а автоматические quality gates не позволяют объявить задачу готовой при падающих проверках.
+
+## 2. Главные архитектурные принципы
+
+1. Сначала рабочий vertical slice, затем расширение.
+2. Backend — единственный источник истины для сессии, scoring, прогресса и достижений.
+3. L1 и L2 полностью детерминированы; L3 использует Qwen только как evaluator свободного текста.
+4. Ни один невалидный ответ модели не показывается пользователю.
+5. Frontend не придумывает поля API и не вычисляет бизнесовый результат самостоятельно.
+6. Код размещается рядом с владельцем поведения; вынос в `shared` происходит только после появления стабильной общей абстракции.
+7. FSD-зависимости направлены вниз, публичные контракты slices проходят через Public API.
+8. Server state, form state, URL state и local UI state не смешиваются.
+9. Один coding agent одновременно пишет в общий worktree; исследование и review можно выполнять параллельно.
+10. Задача считается готовой только после релевантных lint, typecheck, tests и build.
+
+## 3. Пользовательский контур
+
+```mermaid
+flowchart LR
+    START["Старт"] --> LOGIN["01 Вход"]
+    START --> REGISTER["02 Регистрация"]
+    LOGIN --> DASH["03 Главная"]
+    REGISTER --> DASH
+    DASH --> LESSONS["04 Темы теории"]
+    LESSONS --> THEORY["05 Теория"]
+    THEORY --> QUIZ["06 Проверка знаний"]
+    QUIZ -->|"пройден"| CATALOG["07 Выбор тренировки"]
+    QUIZ -->|"не пройден"| THEORY
+    CATALOG --> CHAT["08 Чат-тренировка"]
+    CHAT --> RESULT["09 Результат"]
+    RESULT --> PROGRESS["10 Прогресс"]
+    PROGRESS --> PROFILE["11 Достижения и профиль"]
+    RESULT --> CATALOG
+```
+
+### Экраны MVP
+
+| Экран | Назначение |
+|---|---|
+| 01 Вход / Login | Вход существующего пользователя |
+| 02 Регистрация / Registration | Создание пользователя и выбор роли |
+| 03 Главная / Dashboard | Продолжение обучения, темы, рекомендации и серия дней |
+| 04 Темы теории / Lessons | Шесть тем выбранной роли и их состояние |
+| 05 Теория / Theory | Учебный материал по конкретному риску |
+| 06 Проверка знаний / Quiz | Короткая проверка понимания теории |
+| 07 Выбор тренировки / Training | Сценарии по теме, роли и сложности |
+| 08 Чат-тренировка / Chat Training | Симуляция переписки в стиле Avito Messenger |
+| 09 Результат / Result | Score, ошибки, сигналы риска и безопасные действия |
+| 10 Прогресс / Progress | История и статистика обучения |
+| 11 Достижения и профиль / Achievements Profile | Профиль, роль, серия дней и достижения |
+
+Контекст товара и краткое описание сценария показываются внутри экрана выбора тренировки или перед запуском в диалоге. Отдельный двенадцатый экран Scenario Preview для MVP не требуется.
+
+### Маршруты frontend
+
+```text
+/login
+/register
+/dashboard
+/lessons
+/lessons/:lessonId
+/lessons/:lessonId/quiz
+/lessons/:lessonId/chats
+/chats
+/sessions/:sessionId
+/sessions/:sessionId/result
+/progress
+/achievements
+```
+
+Маршруты являются frontend-решением. Фактически реализованный HTTP-контракт фиксируется в `backend/openapi/v1/openapi.yaml`, а целевой контракт 11 экранов и связь дизайна с backend описаны в `docs/frontend-backend-integration.md`.
+
+## 4. Runtime-архитектура
+
+```mermaid
+flowchart TB
+    UI["React application"] --> API["RTK Query API layer"]
+    API --> BACKEND["Go backend"]
+    BACKEND --> DB[("PostgreSQL")]
+    BACKEND --> ENGINE["Deterministic scenario engine"]
+    ENGINE --> CONTENT["Scripted scenario content"]
+    ENGINE -->|"только free text L3"| GUARD["Input limits and prompt builder"]
+    GUARD --> QWEN["Qwen3-8B via Ollama"]
+    QWEN --> VALIDATE["JSON schema and policy validation"]
+    VALIDATE --> ENGINE
+    ENGINE -->|"fallback при ошибке"| CONTENT
+```
+
+### Разделение ответственности
+
+| Компонент | Владелец решений |
+|---|---|
+| Переходы сценария | Backend state machine |
+| Текущий шаг сессии | Backend |
+| Правильность scripted choices | Backend по `option_id` |
+| Оценка free text | Qwen evaluator + backend validation |
+| Итоговый score | Backend |
+| Достижения и прогресс | Backend |
+| Отображение и пользовательский ввод | Frontend |
+| Loading, retry и локальное UI-состояние | Frontend |
+
+## 5. Frontend-архитектура
+
+### Технологии
+
+- React 18+
+- TypeScript
+- Vite
+- React Router
+- Redux Toolkit только для настоящего global client state
+- RTK Query для server state
+- React Hook Form для форм
+- Zod для runtime validation на внешних границах
+- CSS Modules или SCSS Modules
+- Vitest, React Testing Library, `user-event`, MSW
+- Playwright для ключевого E2E
+
+### Light FSD
+
+```text
+frontend/src/
+├── app/
+│   ├── router/
+│   ├── providers/
+│   ├── store/
+│   └── styles/
+├── pages/
+├── widgets/
+├── features/
+├── entities/
+└── shared/
+    ├── api/
+    ├── ui/
+    ├── lib/
+    └── config/
+```
+
+Допустимые зависимости:
+
+```text
+app → pages → widgets → features → entities → shared
+```
+
+Нижний слой не импортирует верхний. Независимые features связываются в `page`, `widget` или `app`, а не через импорт внутренних файлов друг друга.
+
+### Предполагаемые бизнесовые владельцы
+
+Не все перечисленные slices обязаны появиться сразу. Slice создаётся только при наличии поведения или переиспользования.
+
+```text
+entities/
+├── user/
+├── lesson/
+├── chat/
+├── training-session/
+└── achievement/
+
+features/
+├── auth/
+├── submit-quiz/
+├── filter-chats/
+├── start-training-session/
+├── answer-training-step/
+└── complete-training-session/
+```
+
+Сложный связный `training-session` допустимо оставить одной крупной feature, если искусственное дробление увеличивает coupling.
+
+### State ownership
+
+| Вид состояния | Механизм | Примеры |
+|---|---|---|
+| Server state | RTK Query | уроки, сессия, прогресс, достижения |
+| Form state | React Hook Form | login, register, free-text answer |
+| Runtime validation | Zod | auth response, evaluator payload, нестабильные API-границы |
+| URL state | React Router | выбранный lesson/chat/session |
+| Local UI state | `useState` / `useReducer` | модалка, вкладка, раскрытый блок |
+| Global client state | Redux Toolkit при необходимости | авторизационная сессия или глобальная настройка роли |
+
+Данные RTK Query не копируются в обычный Redux slice без отдельного архитектурного решения.
+
+## 6. API-граница
+
+Источник текущего контракта — `backend/openapi/v1/openapi.yaml`. Реализованные пользовательские маршруты используют префикс `/api/v1`:
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/logout`
+- `GET /auth/me`
+- `GET /training/levels?role=buyer|seller`
+- `POST /training/levels/{level}/start?role=buyer|seller`
+- `POST /attempts/{id}/answers`
+- `POST /attempts/{id}/abandon`
+
+Для дизайна из 11 экранов контракт расширяется Темами, теорией, quiz, прогрессом, достижениями и серией дней. Полный перечень целевых endpoints, DTO и миграций находится в `docs/frontend-backend-integration.md`. До появления этих методов frontend использует OpenAPI-моки и не считает целевое поле реализованным.
+
+### Основные типы
+
+```text
+UserRole = buyer | seller
+Difficulty = easy | medium | hard
+ResponseType = multiple_choice | similar_choice | mixed | free_text
+AttemptStatus = IN_PROGRESS | COMPLETED | ABANDONED
+```
+
+На внешней границе неизвестное enum-значение должно приводить к безопасной ошибке или fallback-отображению, а не к падению приложения.
+
+### Известные несостыковки, которые нельзя додумывать
+
+1. Дизайн требует 12 Тем, теорию и quiz, но этих сущностей ещё нет в актуальной модели.
+2. Текущий уникальный индекс допускает один опубликованный Сценарий на ролевую ветку и Уровень; целевой дизайн требует один на Тему и Уровень.
+3. Игровой DTO пока не возвращает product context, пользовательскую реплику виртуального собеседника и полноценную историю.
+4. `backend/.env.example` указывает `llama3.2:3b`, а сценарная спецификация рассчитана на `qwen3:8b`.
+5. Число Шагов сценария является данными и не хардкодится frontend.
+
+Окончательные решения фиксируются в OpenAPI, миграциях, тестах и при необходимости ADR.
+
+## 7. AI-архитектура и защита от галлюцинаций
+
+Подробный бюджет находится в `docs/scripted-chat-scenarios.md`. Базовые ограничения:
+
+- рабочее окно Qwen: `num_ctx=8192`;
+- целевой input: не более 3300 токенов;
+- scammer output: до 120 токенов;
+- evaluator output: до 240 токенов;
+- жёсткая проверка: `input + maxOutput <= 0.75 × num_ctx`;
+- полные документы, обе роли и все сценарии никогда не передаются в один prompt;
+- L3: не более двух free-text точек;
+- L4 не входит в обязательный MVP;
+- structured output проходит schema и policy validation;
+- при превышении бюджета или двух ошибках используется scripted fallback.
+
+Продуктовая гарантия формулируется так:
+
+> Ни один невалидный, вышедший за сценарий или не прошедший policy-проверку ответ модели не показывается пользователю.
+
+## 8. Архитектура разработки с coding agents
+
+### Правило четырёх уровней
+
+```text
+AGENTS.md          → постоянные обязательные правила
+.codex/agents/     → кто выполняет работу
+.agents/skills/    → как выполняется повторяемый процесс
+docs/              → что является фактом о проекте
+```
+
+`AGENTS.md` должен быть коротким. Подробные знания остаются в `docs`, а skills подгружаются только для подходящей задачи.
+
+### Agent roles
+
+```text
+.codex/agents/
+├── frontend-architect.toml
+├── frontend-builder.toml
+├── qa-engineer.toml
+├── frontend-reviewer.toml
+└── security-reviewer.toml
+```
+
+| Агент | Рекомендуемый режим | Ответственность |
+|---|---|---|
+| Главный Tech Lead | GPT-5.6 Sol High | Жизненный цикл задачи и итоговый статус |
+| Frontend Architect | Sol High, read-only | SPEC, flow, state, API, FSD, риски |
+| Frontend Builder | Sol Medium, workspace-write | Код и тесты задачи |
+| QA Engineer | Terra High; запись только после builder | Reproduction, browser QA, regression, E2E |
+| Frontend Reviewer | Sol High, read-only | Независимый correctness/FSD/TS/API review |
+| Security Reviewer | Sol High, read-only | Auth, XSS, secrets, dependencies, AI security |
+
+Главный агент не заменяется субагентами: он собирает выводы, разрешает противоречия и отвечает за финальную проверку.
+
+### Project skills
+
+```text
+.agents/skills/
+├── avito-deliver-feature/
+├── avito-diagnose-bug/
+├── avito-review-fsd/
+├── avito-review-react-typescript/
+├── avito-review-security/
+└── avito-pre-submit-audit/
+```
+
+| Skill | Что объединяет |
+|---|---|
+| `avito-deliver-feature` | requirements → SPEC → tickets → implementation → review → handoff |
+| `avito-diagnose-bug` | reproduce → root cause → fix → regression test |
+| `avito-review-fsd` | FSD, ownership, Public API, dependencies, state ownership |
+| `avito-review-react-typescript` | React, hooks, forms, TypeScript, accessibility, UI states |
+| `avito-review-security` | Web, secrets, supply chain и AI guardrails |
+| `avito-pre-submit-audit` | требования, tests, build, Docker, security, README, AI transparency |
+
+Идеи Matt Pocock Skills, ECC, Oh My Codex и Anthropic Cybersecurity Skills используются как исходные checklists. Эти большие наборы не являются обязательными runtime-зависимостями и не устанавливаются целиком.
+
+## 9. Workflow агентов
+
+### Обычная feature
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant L as Tech Lead
+    participant A as Architect
+    participant B as Builder
+    participant Q as QA
+    participant R as Reviewer
+
+    U->>L: Цель и ограничения
+    L->>A: Спроектировать SPEC
+    A-->>L: Flow, state, API, acceptance criteria
+    L->>B: Реализовать согласованную задачу
+    B-->>L: Код, тесты, результаты checks
+    par Независимая проверка
+        L->>Q: Проверить поведение
+        L->>R: Проверить архитектуру и correctness
+    end
+    Q-->>L: Evidence и defects
+    R-->>L: BLOCKER / IMPORTANT / NICE TO HAVE
+    L->>B: Исправить подтверждённые проблемы
+    B-->>L: Исправление и regression tests
+    L-->>U: Готовый результат и доказательства проверок
+```
+
+### Правила исполнения
+
+- Маленькая правка не требует полного multi-agent pipeline.
+- Один agent пишет код; параллельные agents преимущественно читают и проверяют.
+- QA может добавлять тесты только после завершения этапа builder.
+- `BLOCKER` запрещает финальный статус «готово».
+- Неустранимое противоречие требований возвращается пользователю как конкретный вопрос.
+- После крупного решения создаётся ADR.
+- После существенного бага создаётся regression test.
+
+## 10. Quality gates
+
+Для существенных frontend-изменений:
+
+```text
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+npm run test:e2e     # когда E2E настроен и релевантен
+```
+
+Перед сдачей добавляются:
+
+- backend tests;
+- Docker Compose smoke test;
+- secret scanning;
+- dependency и container scanning;
+- проверка security headers;
+- проверка README и прозрачности использования AI.
+
+Пока команды или соответствующие конфигурации ещё не существуют, агент обязан честно указать `not configured`, а не считать gate пройденным.
+
+## 11. Источники истины
+
+При конфликте проектной информации используется следующий приоритет:
+
+1. Актуальные требования хакатона и явно поставленная задача.
+2. Принятые ADR.
+3. Актуальный API-контракт.
+4. Проверенный работающий код и тесты.
+5. Product/context/spec документы.
+6. Старые чаты и исторические AI-ответы.
+
+`AGENTS.md` определяет процесс работы, но не подменяет продуктовые факты и API-контракт.
+
+## 12. Headroom и экономия контекста
+
+Headroom не является частью приложения и не добавляется в production dependencies. Он может тестироваться позднее как локальный прокси для Codex CLI в отдельном профиле.
+
+До подтверждённого теста экономия достигается средствами архитектуры:
+
+- короткий `AGENTS.md`;
+- progressive disclosure skills;
+- точечное чтение файлов;
+- компактные результаты субагентов;
+- handoff между длинными задачами;
+- отсутствие повторов между `AGENTS.md`, skills и `docs`.
+
+Headroom не включается постоянно в Codex Desktop до подтверждения стабильной маршрутизации, качества и фактической экономии на одинаковых задачах.
+
+## 13. Порядок реализации
+
+1. Зафиксировать этот документ и backend API-контракт.
+2. Создать короткий `AGENTS.md`.
+3. Создать `.codex/agents` и шесть project skills.
+4. Спроектировать frontend routes, API types и app shell.
+5. Собрать один vertical slice: login/mock user → scenario → session → answer → result → progress.
+6. Подключить реальный backend-контракт.
+7. Довести остальные lessons, scenarios и achievements.
+8. Провести browser QA, security review и pre-submit audit.
+
+## 14. Внешние справочные материалы
+
+- [OpenAI Docs: AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+- [OpenAI Docs: Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+- [OpenAI Docs: Build skills](https://learn.chatgpt.com/docs/build-skills)
+- [Headroom](https://github.com/headroomlabs-ai/headroom)
