@@ -201,12 +201,15 @@ func TestPostgresDailyTaskAndTopicLifecycle(t *testing.T) {
 	now := time.Date(2026, 8, 9, 9, 0, 0, 0, time.UTC)
 	learning := learningservice.NewWithClock(repository, func() time.Time { return now })
 	_, _, _, _, first, err := learning.Dashboard(userID, domain.UserRoleBuyer)
-	if err != nil || first == nil || len(first.Messages) == 0 || first.Completed {
+	if err != nil || first == nil || len(first.Messages) == 0 || first.Completed || first.Answer != nil || first.Correct != nil {
 		t.Fatalf("first daily task=(%#v,%v)", first, err)
 	}
 	_, _, _, _, refresh, err := learning.Dashboard(userID, domain.UserRoleBuyer)
-	if err != nil || refresh.Date != first.Date || refresh.Role != first.Role {
+	if err != nil || refresh.Date != first.Date || refresh.Role != first.Role || refresh.Answer != nil || refresh.Correct != nil {
 		t.Fatalf("refreshed daily task=(%#v,%v)", refresh, err)
+	}
+	if _, _, err = repository.MarkTheoryRead(userID, topicID, now); err != nil {
+		t.Fatalf("create topic progress before lifecycle checks: %v", err)
 	}
 	content := learningservice.NewContent(repository)
 	if err = content.Archive(topicID); err != nil {

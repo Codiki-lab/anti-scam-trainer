@@ -154,6 +154,14 @@ go test ./...
 
 `make test` запускает Go-набор и, если существует `frontend/package.json`, тесты веб-клиента.
 
+После `make build && make up` credentialed путь через Nginx gateway проверяется отдельным прогоном. Он создаёт временного Пользователя, сохраняет cookie Login и запрашивает Dashboard выбранной Ролевой ветки:
+
+```bash
+make gateway-regression
+```
+
+По умолчанию используется `http://localhost:3000`; для CI или другого адреса gateway задайте `GATEWAY_URL`, например `GATEWAY_URL=http://127.0.0.1:3000 make gateway-regression`.
+
 Контентный acceptance-тест запускается против одноразовой БД после применения миграций:
 
 ```bash
