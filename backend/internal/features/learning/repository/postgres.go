@@ -600,15 +600,15 @@ func mapContentError(err error) error {
 }
 
 type dailyTaskRow struct {
-	ActivityDate string                   `pg:"activity_date"`
-	UserRole     string                   `pg:"user_role"`
-	Messages     []domain.DialogueMessage `pg:"messages"`
-	Verdict      bool                     `pg:"verdict"`
-	Signals      []string                 `pg:"signals"`
-	SafeAction   string                   `pg:"safe_action"`
-	Answer       *bool                    `pg:"user_answer"`
-	Correct      *bool                    `pg:"is_correct"`
-	CompletedAt  *time.Time               `pg:"completed_at"`
+	ActivityDate string                   `sql:"activity_date"`
+	UserRole     string                   `sql:"user_role"`
+	Messages     []domain.DialogueMessage `sql:"messages"`
+	Verdict      bool                     `sql:"verdict"`
+	Signals      []string                 `sql:"signals"`
+	SafeAction   string                   `sql:"safe_action"`
+	Answer       *bool                    `sql:"user_answer"`
+	Correct      *bool                    `sql:"is_correct"`
+	CompletedAt  *time.Time               `sql:"completed_at"`
 }
 
 func (r *PostgresRepository) FindDailyTask(userID int, date time.Time) (domain.DailyTask, bool, error) {
