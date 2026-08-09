@@ -5,14 +5,6 @@ import (
 	"time"
 )
 
-type Repository interface {
-	Create(domain.Attempt) (domain.Attempt, error)
-	GetByID(int) (domain.Attempt, error)
-	Update(domain.Attempt) error
-	Delete(int) error
-	ListByUserID(int) ([]domain.Attempt, error)
-}
-
 type GameRepository interface {
 	Levels(userID int, userRole string) ([]domain.Level, []domain.Progress, error)
 	PublishedScenario(levelNumber int, userRole string) (domain.Scenario, error)

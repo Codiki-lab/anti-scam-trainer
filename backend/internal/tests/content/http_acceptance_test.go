@@ -33,7 +33,7 @@ func TestPostgresHTTPPublishesAndServesCompleteTopicAggregate(t *testing.T) {
 	scenarioRepo := scenariosrepository.NewPostgres(db)
 	handler := router.New()
 	handler.Register(router.V1, learninghttp.NewAdmin(learningservice.NewContent(learningRepo)).Routes())
-	handler.Register(router.V1, scenarioshttp.NewAdmin(scenariosservice.NewContent(scenarioRepo)).Routes())
+	handler.Register(router.V1, scenarioshttp.New(scenariosservice.New(scenarioRepo)).Routes())
 	handler.Register(router.V1, learninghttp.New(learningservice.New(learningRepo)).Routes())
 
 	call := func(identity authservice.Identity, method, path, body string) *httptest.ResponseRecorder {

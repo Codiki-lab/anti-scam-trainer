@@ -21,3 +21,21 @@ type Repository interface {
 type DailyTaskRepository interface {
 	DailyTask(userID int, role domain.UserRole, activityDate time.Time, recommendation domain.ContinueAction) (domain.DailyTask, error)
 }
+
+type ContentRepository interface {
+	ListContent() ([]domain.Topic, error)
+	Content(id int) (domain.TopicContent, error)
+	CreateTopic(domain.Topic) (domain.Topic, error)
+	UpdateTopic(domain.Topic) error
+	SetTopicStatus(id int, status string) error
+	CreateTheoryBlock(domain.TheoryBlock) (domain.TheoryBlock, error)
+	UpdateTheoryBlock(domain.TheoryBlock) error
+	DeleteTheoryBlock(topicID, blockID int) error
+	CreateQuizQuestion(domain.QuizQuestion) (domain.QuizQuestion, error)
+	UpdateQuizQuestion(domain.QuizQuestion) error
+	DeleteQuizQuestion(topicID, questionID int) error
+	CreateQuizOption(domain.QuizOption) (domain.QuizOption, error)
+	UpdateQuizOption(domain.QuizOption) error
+	DeleteQuizOption(questionID, optionID int) error
+	PublishTopic(id int) error
+}
