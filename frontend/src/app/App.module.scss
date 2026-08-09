@@ -22,34 +22,6 @@
   }
 }
 
-.previewStrip {
-  position: sticky;
-  top: 74px;
-  z-index: 1;
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 10px max(24px, calc((100vw - var(--page-width)) / 2));
-  border-bottom: 1px solid #ededf0;
-  background: rgb(255 255 255 / 96%);
-  backdrop-filter: blur(12px);
-
-  a {
-    flex: 0 0 auto;
-    padding: 8px 10px;
-    border-radius: 8px;
-    color: #585862;
-    background: #f4f4f6;
-    font-size: 12px;
-    font-weight: 700;
-
-    &:hover {
-      color: #006f9e;
-      background: #e8f7ff;
-    }
-  }
-}
-
 @media (max-width: 840px) {
   .page {
     padding: 35px 18px 60px;
