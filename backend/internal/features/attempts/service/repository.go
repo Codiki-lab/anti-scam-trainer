@@ -32,6 +32,13 @@ type GameRepository interface {
 	Complete(func(GameCompletionStore) error) error
 }
 
+type TopicGameRepository interface {
+	TopicLevels(userID int, userRole string, topicID int) ([]domain.Level, []domain.Progress, bool, error)
+	PublishedTopicScenario(levelNumber int, userRole string, topicID int) (domain.Scenario, error)
+	FreePlayUnlocked(userID int, userRole string) (bool, error)
+	Result(attemptID int) (domain.AttemptResult, error)
+}
+
 type GameCompletionStore interface {
 	SaveAnswer(domain.UserAnswer) error
 	SaveMessage(domain.DialogueMessage) error
@@ -39,4 +46,5 @@ type GameCompletionStore interface {
 	UpdateFreeTextCount(attemptID, count int) error
 	CompleteAttempt(domain.Attempt) error
 	SaveProgress(domain.Progress) error
+	FinalizeLearning(*domain.AttemptResult) error
 }

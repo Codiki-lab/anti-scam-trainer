@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"anti-scam-trainer/backend/internal/core/logger"
+	"anti-scam-trainer/backend/internal/core/server/response"
 	"net/http"
 
 	"go.uber.org/zap"
@@ -13,7 +14,7 @@ func Panic() Middleware {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					logger.FromContext(request.Context()).Error("panic while handling HTTP request", zap.Any("panic", recovered))
-					http.Error(writer, "internal server error", http.StatusInternalServerError)
+					response.Error(writer, "internal server error", http.StatusInternalServerError)
 				}
 			}()
 			next.ServeHTTP(writer, request)

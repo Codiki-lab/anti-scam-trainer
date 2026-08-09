@@ -66,6 +66,9 @@ func (s *ContentService) Restore(id int) error {
 	return s.repository.SetContentStatus(id, domain.ScenarioStatusDraft, false)
 }
 func (s *ContentService) AddStep(step domain.ScenarioStep) (domain.ScenarioStep, error) {
+	if len([]rune(step.CounterpartyMessage)) == 0 || len([]rune(step.CounterpartyMessage)) > 280 {
+		return domain.ScenarioStep{}, apperrors.ErrInvalidAnswer
+	}
 	scenario, err := s.repository.ContentScenario(step.ScenarioID)
 	if err != nil {
 		return domain.ScenarioStep{}, err
@@ -76,7 +79,7 @@ func (s *ContentService) AddStep(step domain.ScenarioStep) (domain.ScenarioStep,
 	return s.repository.CreateStep(step)
 }
 func (s *ContentService) AddOption(option domain.ScenarioOption) (domain.ScenarioOption, error) {
-	if !domain.ValidOptionPoints(option.Points) {
+	if !domain.ValidOptionPoints(option.Points) || len([]rune(option.Text)) == 0 || len([]rune(option.Text)) > 140 {
 		return domain.ScenarioOption{}, apperrors.ErrInvalidAnswer
 	}
 	scenario, err := s.repository.StepScenario(option.StepID)
@@ -90,6 +93,9 @@ func (s *ContentService) AddOption(option domain.ScenarioOption) (domain.Scenari
 }
 
 func (s *ContentService) UpdateStep(step domain.ScenarioStep) error {
+	if len([]rune(step.CounterpartyMessage)) == 0 || len([]rune(step.CounterpartyMessage)) > 280 {
+		return apperrors.ErrInvalidAnswer
+	}
 	scenario, err := s.repository.StepScenario(step.ID)
 	if err != nil {
 		return err
@@ -112,7 +118,7 @@ func (s *ContentService) DeleteStep(id int) error {
 }
 
 func (s *ContentService) UpdateOption(option domain.ScenarioOption) error {
-	if !domain.ValidOptionPoints(option.Points) {
+	if !domain.ValidOptionPoints(option.Points) || len([]rune(option.Text)) == 0 || len([]rune(option.Text)) > 140 {
 		return apperrors.ErrInvalidAnswer
 	}
 	scenario, err := s.repository.OptionScenario(option.ID)

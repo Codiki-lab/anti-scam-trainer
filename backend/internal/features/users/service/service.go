@@ -23,9 +23,9 @@ func New(repository Repository) *Service {
 	return &Service{repository: repository}
 }
 
-func (s *Service) Register(username, password string) (domain.User, error) {
+func (s *Service) Register(username, password string, trainingRole domain.UserRole) (domain.User, error) {
 	username = normalizeUsername(username)
-	if username == "" || password == "" {
+	if username == "" || password == "" || !domain.ValidUserRole(trainingRole) {
 		return domain.User{}, ErrInvalidCredentials
 	}
 	if _, err := s.repository.GetByUsername(username); err == nil {
@@ -37,7 +37,7 @@ func (s *Service) Register(username, password string) (domain.User, error) {
 	if err != nil {
 		return domain.User{}, err
 	}
-	return s.repository.Create(domain.User{Username: username, PasswordHash: string(hash), AccessRole: domain.AccessRoleUser})
+	return s.repository.Create(domain.User{Username: username, PasswordHash: string(hash), AccessRole: domain.AccessRoleUser, TrainingRole: trainingRole})
 }
 
 func (s *Service) Authenticate(username, password string) (domain.User, error) {
@@ -70,7 +70,14 @@ func (s *Service) EnsureAdmin(username, password string) (domain.User, error) {
 	if err != nil {
 		return domain.User{}, err
 	}
-	return s.repository.Create(domain.User{Username: username, PasswordHash: string(hash), AccessRole: domain.AccessRoleAdmin})
+	return s.repository.Create(domain.User{Username: username, PasswordHash: string(hash), AccessRole: domain.AccessRoleAdmin, TrainingRole: domain.UserRoleBuyer})
+}
+
+func (s *Service) UpdateTrainingRole(userID int, role domain.UserRole) (domain.User, error) {
+	if !domain.ValidUserRole(role) {
+		return domain.User{}, ErrInvalidCredentials
+	}
+	return s.repository.UpdateTrainingRole(userID, role)
 }
 
 func normalizeUsername(username string) string { return strings.ToLower(username) }

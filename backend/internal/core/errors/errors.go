@@ -8,6 +8,7 @@ var (
 	ErrUserNotFound                   = errors.New("user not found")
 	ErrForbidden                      = errors.New("forbidden")
 	ErrInvalidAnswer                  = errors.New("invalid answer")
+	ErrStaleStep                      = errors.New("stale step")
 	ErrScenarioNotFound               = errors.New("scenario not found")
 	ErrInvalidScenarioState           = errors.New("invalid scenario state")
 )

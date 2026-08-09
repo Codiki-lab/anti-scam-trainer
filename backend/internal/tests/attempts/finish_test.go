@@ -105,3 +105,4 @@ func (store *transactionStore) SaveProgress(progress domain.Progress) error {
 	store.progress = progress
 	return nil
 }
+func (store *transactionStore) FinalizeLearning(*domain.AttemptResult) error { return nil }

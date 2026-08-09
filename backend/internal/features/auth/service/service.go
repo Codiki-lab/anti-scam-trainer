@@ -24,8 +24,12 @@ func New(accounts *users.Service, tokens Tokens) *Service {
 	return &Service{accounts: accounts, tokens: tokens}
 }
 
-func (s *Service) Register(username, password string) (domain.User, error) {
-	return s.accounts.Register(username, password)
+func (s *Service) Register(username, password string, trainingRole domain.UserRole) (domain.User, error) {
+	return s.accounts.Register(username, password, trainingRole)
+}
+
+func (s *Service) UpdateTrainingRole(identity Identity, role domain.UserRole) (domain.User, error) {
+	return s.accounts.UpdateTrainingRole(identity.UserID, role)
 }
 
 func (s *Service) Login(username, password string) (string, error) {

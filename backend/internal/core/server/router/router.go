@@ -2,6 +2,7 @@
 package router
 
 import (
+	"anti-scam-trainer/backend/internal/core/server/response"
 	"net/http"
 )
 
@@ -20,5 +21,10 @@ func (r *Router) Register(version Version, routes []Route) {
 }
 
 func (r *Router) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	r.mux.ServeHTTP(writer, request)
+	handler, pattern := r.mux.Handler(request)
+	if pattern == "" {
+		response.Error(writer, "not found", http.StatusNotFound)
+		return
+	}
+	handler.ServeHTTP(writer, request)
 }

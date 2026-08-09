@@ -23,14 +23,14 @@ func TestRouterRegistersUserWithoutExposingCredentialsOrUsersCRUD(t *testing.T) 
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, authhttp.New(authservice.New(accounts, fakeTokens{})).Routes())
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"username":"Alex","password":"secret"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"username":"Alex","password":"secret","training_role":"buyer"}`))
 	recorder := httptest.NewRecorder()
 	versionedRouter.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusCreated)
 	}
-	if got, want := strings.TrimSpace(recorder.Body.String()), `{"id":1,"username":"alex","access_role":"user"}`; got != want {
+	if got, want := strings.TrimSpace(recorder.Body.String()), `{"id":1,"username":"alex","access_role":"user","training_role":"buyer","streak":{"current":0,"longest":0,"active_today":false}}`; got != want {
 		t.Fatalf("body = %q, want %q", got, want)
 	}
 	if strings.Contains(recorder.Body.String(), "password") {
@@ -50,7 +50,7 @@ func TestRouterUsesCookieIdentityForCurrentUserAndAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accountsStore := &accountStore{users: map[string]domain.User{"alex": {ID: 1, Username: "alex", PasswordHash: string(hash), AccessRole: domain.AccessRoleUser}}}
+	accountsStore := &accountStore{users: map[string]domain.User{"alex": {ID: 1, Username: "alex", PasswordHash: string(hash), AccessRole: domain.AccessRoleUser, TrainingRole: domain.UserRoleBuyer}}}
 	accounts := usersservice.New(accountsStore)
 	tokens, err := authservice.NewJWTManager("test-secret")
 	if err != nil {
@@ -77,8 +77,24 @@ func TestRouterUsesCookieIdentityForCurrentUserAndAttempts(t *testing.T) {
 	me.AddCookie(loginCookie)
 	meRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(meRecorder, me)
-	if got, want := strings.TrimSpace(meRecorder.Body.String()), `{"id":1,"username":"alex","access_role":"user"}`; meRecorder.Code != http.StatusOK || got != want {
+	if got, want := strings.TrimSpace(meRecorder.Body.String()), `{"id":1,"username":"alex","access_role":"user","training_role":"buyer","streak":{"current":0,"longest":0,"active_today":false}}`; meRecorder.Code != http.StatusOK || got != want {
 		t.Fatalf("me = (%d, %q), want (%d, %q)", meRecorder.Code, got, http.StatusOK, want)
+	}
+
+	preferences := httptest.NewRequest(http.MethodPatch, "/api/v1/profile/preferences", strings.NewReader(`{"training_role":"seller"}`))
+	preferences.AddCookie(loginCookie)
+	preferencesRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(preferencesRecorder, preferences)
+	if body := strings.TrimSpace(preferencesRecorder.Body.String()); preferencesRecorder.Code != http.StatusOK || !strings.Contains(body, `"training_role":"seller"`) {
+		t.Fatalf("preferences = (%d, %q), want saved seller role", preferencesRecorder.Code, body)
+	}
+
+	invalidPreferences := httptest.NewRequest(http.MethodPatch, "/api/v1/profile/preferences", strings.NewReader(`{"training_role":"admin"}`))
+	invalidPreferences.AddCookie(loginCookie)
+	invalidPreferencesRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(invalidPreferencesRecorder, invalidPreferences)
+	if invalidPreferencesRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("invalid preferences = %d, want %d", invalidPreferencesRecorder.Code, http.StatusBadRequest)
 	}
 
 	withoutCookie := httptest.NewRecorder()
@@ -142,6 +158,9 @@ func (*fakeAccounts) GetByID(int) (domain.User, error) { return domain.User{}, n
 func (*fakeAccounts) GetByUsername(string) (domain.User, error) {
 	return domain.User{}, usersservice.ErrNotFound
 }
+func (*fakeAccounts) UpdateTrainingRole(int, domain.UserRole) (domain.User, error) {
+	return domain.User{}, nil
+}
 
 type fakeTokens struct{}
 
@@ -172,6 +191,15 @@ func (s *accountStore) GetByUsername(username string) (domain.User, error) {
 	if !ok {
 		return domain.User{}, usersservice.ErrNotFound
 	}
+	return user, nil
+}
+func (s *accountStore) UpdateTrainingRole(id int, role domain.UserRole) (domain.User, error) {
+	user, err := s.GetByID(id)
+	if err != nil {
+		return domain.User{}, err
+	}
+	user.TrainingRole = role
+	s.users[user.Username] = user
 	return user, nil
 }
 

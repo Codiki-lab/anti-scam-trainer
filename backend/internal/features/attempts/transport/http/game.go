@@ -28,6 +28,10 @@ func gameRole(r *http.Request) (string, bool) {
 	role := r.URL.Query().Get("role")
 	return role, role == "buyer" || role == "seller"
 }
+func gameTopic(r *http.Request) (int, bool) {
+	id, err := strconv.Atoi(r.URL.Query().Get("topic_id"))
+	return id, err == nil && id > 0
+}
 
 func (h *GameHandler) levels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -44,7 +48,12 @@ func (h *GameHandler) levels(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "role must be buyer or seller", http.StatusBadRequest)
 		return
 	}
-	levels, err := h.service.Levels(identity.UserID, role)
+	topicID, ok := gameTopic(r)
+	if !ok {
+		response.Error(w, "topic_id is required", http.StatusBadRequest)
+		return
+	}
+	levels, err := h.service.Levels(identity.UserID, role, topicID)
 	if err != nil {
 		gameError(w, err)
 		return
@@ -82,7 +91,12 @@ func (h *GameHandler) start(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "invalid level", http.StatusBadRequest)
 		return
 	}
-	state, err := h.service.Start(identity.UserID, level, role)
+	topicID, ok := gameTopic(r)
+	if !ok {
+		response.Error(w, "topic_id is required", http.StatusBadRequest)
+		return
+	}
+	state, err := h.service.Start(identity.UserID, level, role, topicID)
 	if err != nil {
 		gameError(w, err)
 		return
@@ -120,8 +134,8 @@ func (h *GameHandler) attempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	trimmed := strings.TrimPrefix(r.URL.Path, "/api/v1/attempts/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) != 2 {
+	parts := strings.Split(strings.Trim(trimmed, "/"), "/")
+	if len(parts) < 1 || len(parts) > 2 {
 		response.Error(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -131,8 +145,16 @@ func (h *GameHandler) attempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
-	case r.Method == http.MethodPost && parts[1] == "answers":
+	case r.Method == http.MethodGet && len(parts) == 1:
+		state, err := h.service.GetState(identity.UserID, id)
+		if err != nil {
+			gameError(w, err)
+			return
+		}
+		response.JSON(w, gameStateDTO(state))
+	case r.Method == http.MethodPost && len(parts) == 2 && parts[1] == "answers":
 		var input struct {
+			StepID   *int    `json:"step_id"`
 			OptionID *int    `json:"option_id"`
 			FreeText *string `json:"free_text"`
 			Finish   bool    `json:"finish"`
@@ -141,7 +163,11 @@ func (h *GameHandler) attempt(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, "invalid JSON", http.StatusBadRequest)
 			return
 		}
-		state, completed, err := h.service.SubmitAnswer(r.Context(), identity.UserID, id, service.AnswerCommand{OptionID: input.OptionID, FreeText: input.FreeText, Finish: input.Finish})
+		if input.StepID == nil {
+			response.Error(w, "step_id is required", http.StatusBadRequest)
+			return
+		}
+		state, completed, err := h.service.SubmitAnswer(r.Context(), identity.UserID, id, service.AnswerCommand{StepID: input.StepID, OptionID: input.OptionID, FreeText: input.FreeText, Finish: input.Finish})
 		if err != nil {
 			gameError(w, err)
 			return
@@ -155,16 +181,26 @@ func (h *GameHandler) attempt(w http.ResponseWriter, r *http.Request) {
 			if completed.Attempt.Mode == domain.AttemptModeFreePlay && completed.Attempt.IsScam != nil {
 				result["is_scam"] = *completed.Attempt.IsScam
 			}
+			for key, value := range resultDTO(completed.Result) {
+				result[key] = value
+			}
 			response.JSON(w, result)
 			return
 		}
 		response.JSON(w, gameStateDTO(state))
-	case r.Method == http.MethodPost && parts[1] == "abandon":
+	case r.Method == http.MethodPost && len(parts) == 2 && parts[1] == "abandon":
 		if err := h.service.Abandon(identity.UserID, id); err != nil {
 			gameError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && len(parts) == 2 && parts[1] == "result":
+		result, err := h.service.Result(identity.UserID, id)
+		if err != nil {
+			gameError(w, err)
+			return
+		}
+		response.JSON(w, resultDTO(result))
 	default:
 		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -183,14 +219,25 @@ func gameStateDTO(state service.GameState) map[string]interface{} {
 	for i, message := range state.Messages {
 		messages[i] = map[string]interface{}{"role": message.Role, "text": message.Text}
 	}
-	return map[string]interface{}{"attempt_id": state.Attempt.ID, "scenario_id": state.Attempt.ScenarioID, "mode": state.Step.ResponseType, "step": stepDTO(state.Step), "answers": history, "messages": messages, "can_finish_early": state.CanFinishEarly}
+	return map[string]interface{}{"attempt_id": state.Attempt.ID, "status": state.Attempt.Status, "scenario_id": state.Attempt.ScenarioID, "topic_id": state.Scenario.TopicID, "product_context": state.Scenario.ProductContext, "mode": state.Step.ResponseType, "step_progress": map[string]int{"current": state.Step.Number, "answered": len(state.Answers)}, "step": stepDTO(state.Step), "answers": history, "messages": messages, "can_finish_early": state.CanFinishEarly}
 }
 func stepDTO(step domain.ScenarioStep) map[string]interface{} {
 	options := make([]map[string]interface{}, len(step.Options))
 	for i, option := range step.Options {
 		options[i] = map[string]interface{}{"id": option.ID, "text": option.Text}
 	}
-	return map[string]interface{}{"id": step.ID, "number": step.Number, "goal": step.Goal, "options": options}
+	return map[string]interface{}{"id": step.ID, "number": step.Number, "counterparty_message": step.CounterpartyMessage, "options": options}
+}
+func resultDTO(result domain.AttemptResult) map[string]interface{} {
+	achievements := make([]map[string]interface{}, len(result.NewAchievements))
+	for i, achievement := range result.NewAchievements {
+		achievements[i] = map[string]interface{}{"code": achievement.Code, "title": achievement.Title, "description": achievement.Description, "icon": achievement.Icon, "earned": achievement.Earned, "earned_at": achievement.EarnedAt, "progress": map[string]int{"current": achievement.Current, "target": achievement.Target}}
+	}
+	dto := map[string]interface{}{"attempt_id": result.AttemptID, "score": result.Score, "stars": result.Stars, "decision_review": result.DecisionReview, "risk_signals": result.RiskSignals, "safe_actions": result.SafeActions, "level_progress": result.LevelProgress, "topic_id": result.TopicID, "topic_completed": result.TopicCompleted, "next_action": result.NextAction, "new_achievements": achievements, "streak": result.Streak}
+	if result.IsScam != nil {
+		dto["is_scam"] = *result.IsScam
+	}
+	return dto
 }
 func gameError(w http.ResponseWriter, err error) {
 	switch {
@@ -200,6 +247,8 @@ func gameError(w http.ResponseWriter, err error) {
 		response.Error(w, "not found", http.StatusNotFound)
 	case errors.Is(err, apperrors.ErrInvalidAnswer), errors.Is(err, apperrors.ErrInvalidAttemptStatusTransition):
 		response.Error(w, "invalid game command", http.StatusConflict)
+	case errors.Is(err, apperrors.ErrStaleStep):
+		response.ErrorCode(w, "STALE_STEP", "stale step", http.StatusConflict, nil)
 	case errors.Is(err, service.ErrAIUnavailable):
 		response.Error(w, "AI is temporarily unavailable; retry the answer", http.StatusServiceUnavailable)
 	case errors.Is(err, service.ErrAIInvalidResponse), errors.Is(err, service.ErrAIContextExhausted):

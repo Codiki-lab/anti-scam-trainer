@@ -169,7 +169,7 @@ func TestGameCompletesOnlyAfterLastAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	next, finished, err := game.Submit(1, state.Attempt.ID, 11)
-	if err != nil || finished != nil || next.Step.Number != 2 || len(next.Messages) != 2 {
+	if err != nil || finished != nil || next.Step.Number != 2 || len(next.Messages) != 3 {
 		t.Fatalf("first answer = (%#v,%#v,%v), want next step", next, finished, err)
 	}
 	_, finished, err = game.Submit(1, state.Attempt.ID, 21)
@@ -371,4 +371,5 @@ func (r *gameRepository) CompleteAttempt(a domain.Attempt) error {
 	r.attempts[a.ID] = a
 	return nil
 }
-func (r *gameRepository) SaveProgress(p domain.Progress) error { r.progress = p; return nil }
+func (r *gameRepository) SaveProgress(p domain.Progress) error         { r.progress = p; return nil }
+func (r *gameRepository) FinalizeLearning(*domain.AttemptResult) error { return nil }

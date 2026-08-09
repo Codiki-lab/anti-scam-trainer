@@ -22,7 +22,7 @@ type scenarioRecord struct {
 
 func (r *PostgresRepository) CreateContent(s domain.Scenario) (domain.Scenario, error) {
 	var id int
-	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chats (title, description, difficulty, role, is_active, level_id, user_role, content_status, scam_scheme, product_context, ai_system_prompt, final_rubric) VALUES (?, ?, ?, ?, false, ?, ?, 'draft', ?, ?::jsonb, ?, ?::jsonb) RETURNING id`, s.Title, s.Description, s.Level, s.UserRole, s.LevelID, s.UserRole, s.ScamScheme, encodeJSONObject(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric))
+	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chats (title, description, difficulty, role, is_active, level_id, topic_id, user_role, content_status, scam_scheme, product_context, ai_system_prompt, final_rubric) VALUES (?, ?, ?, ?, false, ?, ?, ?, 'draft', ?, ?::jsonb, ?, ?::jsonb) RETURNING id`, s.Title, s.Description, s.Level, s.UserRole, s.LevelID, s.TopicID, s.UserRole, s.ScamScheme, encodeJSONObject(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric))
 	s.ID = id
 	s.Status = domain.ScenarioStatusDraft
 	return s, err
@@ -33,6 +33,7 @@ func (r *PostgresRepository) ListContent() ([]domain.Scenario, error) {
 		Title          string `pg:"title"`
 		Description    string `pg:"description"`
 		LevelID        int    `pg:"level_id"`
+		TopicID        int    `pg:"topic_id"`
 		UserRole       string `pg:"user_role"`
 		Status         string `pg:"content_status"`
 		ScamScheme     string `pg:"scam_scheme"`
@@ -41,10 +42,10 @@ func (r *PostgresRepository) ListContent() ([]domain.Scenario, error) {
 		FinalRubric    string `pg:"final_rubric"`
 	}
 	var rows []row
-	_, err := r.db.Query(&rows, `SELECT id,title,description,level_id,user_role,content_status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats ORDER BY id`)
+	_, err := r.db.Query(&rows, `SELECT id,title,description,level_id,topic_id,user_role,content_status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats ORDER BY id`)
 	result := make([]domain.Scenario, len(rows))
 	for i, x := range rows {
-		result[i] = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
+		result[i] = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
 	}
 	return result, err
 }
@@ -55,6 +56,7 @@ func (r *PostgresRepository) ContentScenario(id int) (domain.Scenario, error) {
 		Title          string `pg:"title"`
 		Description    string `pg:"description"`
 		LevelID        int    `pg:"level_id"`
+		TopicID        int    `pg:"topic_id"`
 		UserRole       string `pg:"user_role"`
 		Status         string `pg:"content_status"`
 		ScamScheme     string `pg:"scam_scheme"`
@@ -63,28 +65,45 @@ func (r *PostgresRepository) ContentScenario(id int) (domain.Scenario, error) {
 		FinalRubric    string `pg:"final_rubric"`
 	}
 	var x row
-	_, err := r.db.QueryOne(&x, `SELECT id,title,description,level_id,user_role,content_status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats WHERE id=?`, id)
-	s = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
+	_, err := r.db.QueryOne(&x, `SELECT id,title,description,level_id,topic_id,user_role,content_status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats WHERE id=?`, id)
+	s = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
 	return s, err
 }
 
 func (r *PostgresRepository) ValidContent(id int) (bool, error) {
 	var valid bool
 	_, err := r.db.QueryOne(pg.Scan(&valid), `
-		SELECT EXISTS (SELECT 1 FROM chat_steps s WHERE s.chat_id = ?)
-		   AND NOT EXISTS (
-				SELECT 1 FROM chat_steps s
-				WHERE s.chat_id = ?
-				  AND (
-					(s.response_type IN ('multiple_choice','similar_choice') AND NOT EXISTS (SELECT 1 FROM chat_options o WHERE o.step_id = s.id))
-					OR (EXISTS (SELECT 1 FROM chat_options o WHERE o.step_id = s.id) AND s.max_points <> (SELECT MAX(o.points) FROM chat_options o WHERE o.step_id = s.id))
+		WITH target AS (
+			SELECT c.id,l.level_number,c.title,c.description FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.id=?
+		), shape AS (
+			SELECT COUNT(*) steps,MIN(step_number) first_step,MAX(step_number) last_step,
+				COUNT(*) FILTER(WHERE response_type='mixed') mixed_steps,
+				COUNT(*) FILTER(WHERE response_type='free_text') free_text_steps
+			FROM chat_steps WHERE chat_id=?
+		)
+		SELECT EXISTS(SELECT 1 FROM target)
+			AND COALESCE((SELECT steps=CASE WHEN level_number=4 THEN 4 ELSE 3 END
+				AND first_step=1 AND last_step=CASE WHEN level_number=4 THEN 4 ELSE 3 END
+				AND (level_number<>3 OR mixed_steps=2)
+				AND (level_number<>4 OR free_text_steps=4)
+				FROM shape,target),FALSE)
+			AND NOT EXISTS (
+				SELECT 1 FROM chat_steps s CROSS JOIN target t
+				WHERE s.chat_id=t.id AND (
+					NULLIF(s.counterparty_message,'') IS NULL OR char_length(s.counterparty_message)>280
+					OR (SELECT COUNT(*) FROM chat_options o WHERE o.step_id=s.id)<>CASE WHEN t.level_number<=3 THEN 4 ELSE 0 END
+					OR EXISTS (SELECT 1 FROM chat_options o WHERE o.step_id=s.id AND (char_length(o.option_text)>140 OR o.points NOT IN(0,25,50,75,100)))
+					OR (t.level_number<=3 AND s.max_points<>(SELECT MAX(o.points) FROM chat_options o WHERE o.step_id=s.id))
 					OR (s.response_type IN ('mixed','free_text') AND (NULLIF(s.ai_instruction,'') IS NULL OR NULLIF(s.fallback_message,'') IS NULL))
-				  )
-			)`, id, id)
+					OR s.counterparty_message ~* '(https?://|www\.|[0-9]{10,})'
+					OR EXISTS(SELECT 1 FROM chat_options o WHERE o.step_id=s.id AND o.option_text ~* '(https?://|www\.|[0-9]{10,})')
+				)
+			)
+			AND NOT EXISTS(SELECT 1 FROM target WHERE title ~* '(https?://|www\.|[0-9]{10,})' OR description ~* '(https?://|www\.|[0-9]{10,})')`, id, id)
 	return valid, err
 }
 func (r *PostgresRepository) UpdateContent(s domain.Scenario) error {
-	_, err := r.db.Exec(`UPDATE chats SET title=?, description=?, scam_scheme=?, product_context=?::jsonb, ai_system_prompt=?, final_rubric=?::jsonb WHERE id=?`, s.Title, s.Description, s.ScamScheme, encodeJSONObject(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric), s.ID)
+	_, err := r.db.Exec(`UPDATE chats SET title=?, description=?, level_id=?,topic_id=?,user_role=?,role=?,scam_scheme=?, product_context=?::jsonb, ai_system_prompt=?, final_rubric=?::jsonb WHERE id=?`, s.Title, s.Description, s.LevelID, s.TopicID, s.UserRole, s.UserRole, s.ScamScheme, encodeJSONObject(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric), s.ID)
 	return err
 }
 func (r *PostgresRepository) SetContentStatus(id int, status string, archived bool) error {
@@ -97,7 +116,7 @@ func (r *PostgresRepository) SetContentStatus(id int, status string, archived bo
 }
 func (r *PostgresRepository) CreateStep(s domain.ScenarioStep) (domain.ScenarioStep, error) {
 	var id int
-	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chat_steps (chat_id,step_number,response_type,step_goal,max_points,ai_instruction,fallback_message) VALUES (?,?,?,?,?,?,?) RETURNING id`, s.ScenarioID, s.Number, s.ResponseType, s.Goal, s.MaxPoints, s.AIInstruction, s.FallbackMessage)
+	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chat_steps (chat_id,step_number,response_type,step_goal,counterparty_message,max_points,ai_instruction,fallback_message) VALUES (?,?,?,?,?,?,?,?) RETURNING id`, s.ScenarioID, s.Number, s.ResponseType, s.Goal, s.CounterpartyMessage, s.MaxPoints, s.AIInstruction, s.FallbackMessage)
 	s.ID = id
 	return s, err
 }
@@ -121,7 +140,7 @@ func (r *PostgresRepository) OptionScenario(optionID int) (domain.Scenario, erro
 }
 
 func (r *PostgresRepository) UpdateStep(s domain.ScenarioStep) error {
-	_, err := r.db.Exec(`UPDATE chat_steps SET step_number=?, response_type=?, step_goal=?, max_points=?, ai_instruction=?, fallback_message=? WHERE id=?`, s.Number, s.ResponseType, s.Goal, s.MaxPoints, s.AIInstruction, s.FallbackMessage, s.ID)
+	_, err := r.db.Exec(`UPDATE chat_steps SET step_number=?, response_type=?, step_goal=?,counterparty_message=?, max_points=?, ai_instruction=?, fallback_message=? WHERE id=?`, s.Number, s.ResponseType, s.Goal, s.CounterpartyMessage, s.MaxPoints, s.AIInstruction, s.FallbackMessage, s.ID)
 	return err
 }
 

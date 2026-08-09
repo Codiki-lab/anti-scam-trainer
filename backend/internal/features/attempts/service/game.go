@@ -2,6 +2,7 @@ package service
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
+	apperrors "anti-scam-trainer/backend/internal/core/errors"
 	cryptorand "crypto/rand"
 )
 
@@ -36,6 +37,7 @@ type OpenLevel struct {
 
 type GameState struct {
 	Attempt        domain.Attempt
+	Scenario       domain.Scenario
 	Step           domain.ScenarioStep
 	Answers        []domain.UserAnswer
 	Messages       []domain.DialogueMessage
@@ -47,18 +49,34 @@ type Completion struct {
 	Stars     int
 	Answers   []domain.UserAnswer
 	Breakdown []AnswerBreakdown
+	Result    domain.AttemptResult
 }
 
 type AnswerBreakdown = domain.AnswerBreakdown
 
 type AnswerCommand struct {
+	StepID   *int
 	OptionID *int
 	FreeText *string
 	Finish   bool
 }
 
-func (s *GameService) Levels(userID int, role string) ([]OpenLevel, error) {
+func (s *GameService) completionError(attempt domain.Attempt, err error) error {
+	refreshed, refreshErr := s.repository.GetGameAttempt(attempt.ID)
+	if refreshErr == nil && (refreshed.Status != domain.AttemptStatusInProgress || refreshed.CurrentStepNumber != attempt.CurrentStepNumber || refreshed.FreeTextCount != attempt.FreeTextCount) {
+		return apperrors.ErrStaleStep
+	}
+	return err
+}
+
+func (s *GameService) Levels(userID int, role string, topicID ...int) ([]OpenLevel, error) {
 	levels, progress, err := s.repository.Levels(userID, role)
+	quizPassed := true
+	if len(topicID) > 0 {
+		if topical, ok := s.repository.(TopicGameRepository); ok {
+			levels, progress, quizPassed, err = topical.TopicLevels(userID, role, topicID[0])
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +95,20 @@ func (s *GameService) Levels(userID int, role string) ([]OpenLevel, error) {
 				}
 			}
 		}
-		scenario, scenarioErr := s.repository.PublishedScenario(level.Number, role)
+		if level.Number == 1 {
+			opened = quizPassed
+		}
+		var scenario domain.Scenario
+		var scenarioErr error
+		if len(topicID) > 0 {
+			if topical, ok := s.repository.(TopicGameRepository); ok {
+				scenario, scenarioErr = topical.PublishedTopicScenario(level.Number, role, topicID[0])
+			} else {
+				scenario, scenarioErr = s.repository.PublishedScenario(level.Number, role)
+			}
+		} else {
+			scenario, scenarioErr = s.repository.PublishedScenario(level.Number, role)
+		}
 		if scenarioErr != nil {
 			continue
 		}

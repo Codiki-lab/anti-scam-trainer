@@ -8,8 +8,57 @@ import (
 	"time"
 )
 
-func (s *GameService) Start(userID, levelNumber int, role string) (GameState, error) {
-	levels, err := s.Levels(userID, role)
+func (s *GameService) GetState(userID, attemptID int) (GameState, error) {
+	attempt, err := s.repository.GetGameAttempt(attemptID)
+	if err != nil || attempt.UserID != userID {
+		return GameState{}, apperrors.ErrAttemptNotFound
+	}
+	messages, err := s.repository.Messages(attemptID)
+	if err != nil {
+		return GameState{}, err
+	}
+	answers, err := s.repository.Answers(attemptID)
+	if err != nil {
+		return GameState{}, err
+	}
+	if attempt.Mode == domain.AttemptModeFreePlay {
+		config, configErr := s.repository.FreePlayConfig(attempt.UserRole)
+		if configErr != nil {
+			return GameState{}, configErr
+		}
+		return GameState{Attempt: attempt, Scenario: domain.Scenario{ProductContext: config.ProductContext}, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Messages: messages, Answers: answers, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
+	}
+	scenario, err := s.repository.Scenario(attempt.ScenarioID)
+	if err != nil {
+		return GameState{}, err
+	}
+	step := domain.ScenarioStep{}
+	if attempt.Status == domain.AttemptStatusInProgress {
+		step, err = s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber)
+		if err != nil {
+			return GameState{}, err
+		}
+	}
+	return GameState{Attempt: attempt, Scenario: scenario, Step: step, Messages: messages, Answers: answers, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
+}
+
+func (s *GameService) Result(userID, attemptID int) (domain.AttemptResult, error) {
+	attempt, err := s.repository.GetGameAttempt(attemptID)
+	if err != nil || attempt.UserID != userID {
+		return domain.AttemptResult{}, apperrors.ErrAttemptNotFound
+	}
+	if attempt.Status != domain.AttemptStatusCompleted {
+		return domain.AttemptResult{}, apperrors.ErrInvalidAttemptStatusTransition
+	}
+	topical, ok := s.repository.(TopicGameRepository)
+	if !ok {
+		return domain.AttemptResult{}, apperrors.ErrAttemptNotFound
+	}
+	return topical.Result(attemptID)
+}
+
+func (s *GameService) Start(userID, levelNumber int, role string, topicID ...int) (GameState, error) {
+	levels, err := s.Levels(userID, role, topicID...)
 	if err != nil {
 		return GameState{}, err
 	}
@@ -28,6 +77,10 @@ func (s *GameService) Start(userID, levelNumber int, role string) (GameState, er
 		return GameState{}, apperrors.ErrForbidden
 	}
 	if attempt, err := s.repository.FindInProgress(userID, target.ScenarioID); err == nil {
+		scenario, scenarioErr := s.repository.Scenario(attempt.ScenarioID)
+		if scenarioErr != nil {
+			return GameState{}, scenarioErr
+		}
 		step, stepErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber)
 		if stepErr != nil {
 			return GameState{}, stepErr
@@ -40,7 +93,7 @@ func (s *GameService) Start(userID, levelNumber int, role string) (GameState, er
 		if messagesErr != nil {
 			return GameState{}, messagesErr
 		}
-		return GameState{Attempt: attempt, Step: step, Answers: answers, Messages: messages, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
+		return GameState{Attempt: attempt, Scenario: scenario, Step: step, Answers: answers, Messages: messages, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
 	}
 	step, err := s.repository.Step(target.ScenarioID, 1)
 	if err != nil {
@@ -50,9 +103,17 @@ func (s *GameService) Start(userID, levelNumber int, role string) (GameState, er
 	if err != nil {
 		return GameState{}, err
 	}
-	state := GameState{Attempt: attempt, Step: step}
-	if strings.TrimSpace(step.FallbackMessage) != "" {
-		message := domain.DialogueMessage{AttemptID: attempt.ID, Role: domain.MessageRoleAssistant, Text: step.FallbackMessage, CreatedAt: time.Now().UTC()}
+	scenario, err := s.repository.Scenario(target.ScenarioID)
+	if err != nil {
+		return GameState{}, err
+	}
+	state := GameState{Attempt: attempt, Scenario: scenario, Step: step}
+	visibleMessage := step.CounterpartyMessage
+	if strings.TrimSpace(visibleMessage) == "" {
+		visibleMessage = step.FallbackMessage
+	}
+	if strings.TrimSpace(visibleMessage) != "" {
+		message := domain.DialogueMessage{AttemptID: attempt.ID, Role: domain.MessageRoleAssistant, Text: visibleMessage, CreatedAt: time.Now().UTC()}
 		if err := s.repository.Complete(func(store GameCompletionStore) error { return store.SaveMessage(message) }); err != nil {
 			return GameState{}, err
 		}
@@ -62,33 +123,47 @@ func (s *GameService) Start(userID, levelNumber int, role string) (GameState, er
 }
 
 func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string) (GameState, error) {
-	levels, progress, err := s.repository.Levels(userID, role)
-	if err != nil {
-		return GameState{}, err
-	}
-	level4ID := 0
-	for _, level := range levels {
-		if level.Number == 4 {
-			level4ID = level.ID
-			break
-		}
-	}
 	opened := false
-	for _, item := range progress {
-		if item.LevelID == level4ID && item.Stars > 0 {
-			opened = true
-			break
+	if topical, ok := s.repository.(TopicGameRepository); ok {
+		var err error
+		opened, err = topical.FreePlayUnlocked(userID, role)
+		if err != nil {
+			return GameState{}, err
+		}
+	} else {
+		levels, progress, err := s.repository.Levels(userID, role)
+		if err != nil {
+			return GameState{}, err
+		}
+		level4ID := 0
+		for _, level := range levels {
+			if level.Number == 4 {
+				level4ID = level.ID
+			}
+		}
+		for _, item := range progress {
+			if item.LevelID == level4ID && item.Stars > 0 {
+				opened = true
+			}
 		}
 	}
 	if !opened {
 		return GameState{}, apperrors.ErrForbidden
 	}
 	if attempt, findErr := s.repository.FindInProgressFreePlay(userID, role); findErr == nil {
+		config, configErr := s.repository.FreePlayConfig(role)
+		if configErr != nil {
+			return GameState{}, configErr
+		}
 		messages, messagesErr := s.repository.Messages(attempt.ID)
 		if messagesErr != nil {
 			return GameState{}, messagesErr
 		}
-		return GameState{Attempt: attempt, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Messages: messages, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
+		answers, answersErr := s.repository.Answers(attempt.ID)
+		if answersErr != nil {
+			return GameState{}, answersErr
+		}
+		return GameState{Attempt: attempt, Scenario: domain.Scenario{ProductContext: config.ProductContext}, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Answers: answers, Messages: messages, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
 	}
 	if s.ai == nil {
 		return GameState{}, ErrAIUnavailable
@@ -113,5 +188,5 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 		return GameState{}, err
 	}
 	message.AttemptID = attempt.ID
-	return GameState{Attempt: attempt, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Messages: []domain.DialogueMessage{message}}, nil
+	return GameState{Attempt: attempt, Scenario: freePlayScenario, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Messages: []domain.DialogueMessage{message}}, nil
 }
