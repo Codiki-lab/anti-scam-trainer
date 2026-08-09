@@ -29,3 +29,14 @@ func StarsFromScore(score int) int {
 		return 0
 	}
 }
+
+func NormalizedScore(rawScore, maximumScore int) int {
+	if rawScore <= 0 || maximumScore <= 0 {
+		return 0
+	}
+	score := (rawScore*100 + maximumScore/2) / maximumScore
+	if score > 100 {
+		return 100
+	}
+	return score
+}
