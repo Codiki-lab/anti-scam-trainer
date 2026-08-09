@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	ErrTopicNotFound = apperrors.ErrScenarioNotFound
-	ErrInvalidQuiz   = errors.New("invalid quiz submission")
+	ErrTopicNotFound        = apperrors.ErrScenarioNotFound
+	ErrInvalidQuiz          = errors.New("invalid quiz submission")
+	ErrDailyTaskUnavailable = errors.New("no valid daily task is available")
 )
 
 type Service struct {
@@ -18,6 +19,9 @@ type Service struct {
 }
 
 func New(repository Repository) *Service { return &Service{repository: repository, now: time.Now} }
+func NewWithClock(repository Repository, now func() time.Time) *Service {
+	return &Service{repository: repository, now: now}
+}
 
 func (s *Service) Topics(userID int, role domain.UserRole) ([]domain.Topic, error) {
 	if !domain.ValidUserRole(role) {
@@ -76,21 +80,35 @@ func (s *Service) Progress(userID int, role domain.UserRole) ([]domain.Topic, []
 func (s *Service) Achievements(userID int) ([]domain.Achievement, error) {
 	return s.repository.Achievements(userID)
 }
-func (s *Service) Dashboard(userID int, role domain.UserRole) (domain.User, []domain.Topic, []domain.Achievement, *domain.ContinueAction, error) {
+func (s *Service) Dashboard(userID int, role domain.UserRole) (domain.User, []domain.Topic, []domain.Achievement, *domain.ContinueAction, *domain.DailyTask, error) {
 	user, err := s.repository.User(userID)
 	if err != nil {
-		return domain.User{}, nil, nil, nil, err
+		return domain.User{}, nil, nil, nil, nil, err
 	}
 	topics, err := s.Topics(userID, role)
 	if err != nil {
-		return domain.User{}, nil, nil, nil, err
+		return domain.User{}, nil, nil, nil, nil, err
 	}
 	achievements, err := s.repository.Achievements(userID)
 	if err != nil {
-		return domain.User{}, nil, nil, nil, err
+		return domain.User{}, nil, nil, nil, nil, err
 	}
 	action := s.continueAction(userID, role, topics)
-	return user, topics, achievements, action, nil
+	if action == nil {
+		return domain.User{}, nil, nil, nil, nil, ErrDailyTaskUnavailable
+	}
+	var task *domain.DailyTask
+	if daily, ok := s.repository.(DailyTaskRepository); ok {
+		value, taskErr := daily.DailyTask(userID, role, s.activityDate(), *action)
+		if taskErr != nil {
+			return domain.User{}, nil, nil, nil, nil, taskErr
+		}
+		task = &value
+	} else {
+		value := domain.DailyTask{Date: s.activityDate().Format("2006-01-02"), Role: role, Action: *action}
+		task = &value
+	}
+	return user, topics, achievements, action, task, nil
 }
 func (s *Service) continueAction(userID int, role domain.UserRole, topics []domain.Topic) *domain.ContinueAction {
 	attemptID, topicID, level, err := s.repository.InProgressAttempt(userID, role)
@@ -112,6 +130,18 @@ func (s *Service) continueAction(userID int, role domain.UserRole, topics []doma
 			if item.Opened && item.Stars == 0 {
 				return &domain.ContinueAction{Type: "start_level", TopicID: topic.ID, Level: item.Number}
 			}
+		}
+	}
+	if len(topics) == 6 {
+		allComplete := true
+		for _, topic := range topics {
+			if !topic.Completed {
+				allComplete = false
+				break
+			}
+		}
+		if allComplete {
+			return &domain.ContinueAction{Type: "start_free_play"}
 		}
 	}
 	return nil

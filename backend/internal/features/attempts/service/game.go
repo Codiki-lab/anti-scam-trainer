@@ -3,13 +3,49 @@ package service
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
 	apperrors "anti-scam-trainer/backend/internal/core/errors"
+	"anti-scam-trainer/backend/internal/core/ratelimit"
 	cryptorand "crypto/rand"
+	"fmt"
+	"time"
 )
 
 type GameService struct {
-	repository GameRepository
-	ai         AIProvider
-	selectScam func() bool
+	repository      GameRepository
+	ai              AIProvider
+	selectScam      func() bool
+	freeTextLimiter *ratelimit.Limiter
+	freePlayLimiter *ratelimit.Limiter
+	aiGate          *ratelimit.Gate
+}
+
+func NewGameWithRateLimits(repository GameRepository, ai AIProvider, freeText, freePlay *ratelimit.Limiter, gate *ratelimit.Gate) *GameService {
+	return &GameService{repository: repository, ai: ai, selectScam: randomScam, freeTextLimiter: freeText, freePlayLimiter: freePlay, aiGate: gate}
+}
+
+type RateLimitError struct{ RetryAfter time.Duration }
+
+func (e *RateLimitError) Error() string { return fmt.Sprintf("rate limited for %s", e.RetryAfter) }
+func (s *GameService) beforeAI(userID int, freePlay bool) (func(), error) {
+	key := fmt.Sprintf("user:%d", userID)
+	limiter := s.freeTextLimiter
+	if freePlay {
+		limiter = s.freePlayLimiter
+	}
+	release := func() {}
+	if s.aiGate != nil {
+		var ok bool
+		release, ok = s.aiGate.TryEnter(key)
+		if !ok {
+			return nil, &RateLimitError{RetryAfter: time.Second}
+		}
+	}
+	if limiter != nil {
+		if ok, retry := limiter.Allow(key); !ok {
+			release()
+			return nil, &RateLimitError{RetryAfter: retry}
+		}
+	}
+	return release, nil
 }
 
 func NewGame(repository GameRepository) *GameService { return &GameService{repository: repository} }

@@ -2,6 +2,8 @@ package http_contract_test
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
+	"anti-scam-trainer/backend/internal/core/ratelimit"
+	"anti-scam-trainer/backend/internal/core/server/middleware"
 	"anti-scam-trainer/backend/internal/core/server/router"
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
@@ -59,6 +61,48 @@ func TestCredentialEndpointsRejectUnknownFieldsAndTrailingJSON(t *testing.T) {
 			t.Fatalf("%s status=%d, want 400", test.path, recorder.Code)
 		}
 	}
+}
+
+func TestHTTPRegistrationRateLimitUsesRetryableEnvelopeBeforeAccountCreation(t *testing.T) {
+	store := &countingAccounts{}
+	accounts := usersservice.New(store)
+	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	limit := ratelimit.New(ratelimit.Config{Limit: 1, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, func() time.Time { return now })
+	resolver, _ := ratelimit.NewClientIPResolver(nil)
+	r := router.New()
+	r.Register(router.V1, authhttp.NewWithRateLimits(authservice.New(accounts, fakeTokens{}), limit, limit, resolver).Routes())
+	handler := middleware.RequestID()(r)
+	request := func(username string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"username":"`+username+`","password":"secret","training_role":"buyer"}`))
+		req.RemoteAddr = "192.0.2.1:9000"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+	if first := request("first"); first.Code != http.StatusCreated {
+		t.Fatalf("first=%d %s", first.Code, first.Body.String())
+	}
+	second := request("second")
+	if second.Code != http.StatusTooManyRequests || second.Header().Get("Retry-After") == "" || second.Header().Get("X-Request-ID") == "" || !strings.Contains(second.Body.String(), `"code":"RATE_LIMITED"`) || store.created != 1 {
+		t.Fatalf("limited=(%d,%s,created=%d)", second.Code, second.Body.String(), store.created)
+	}
+}
+
+type countingAccounts struct{ created int }
+
+func (s *countingAccounts) Create(user domain.User) (domain.User, error) {
+	s.created++
+	user.ID = s.created
+	return user, nil
+}
+func (*countingAccounts) GetByID(int) (domain.User, error) {
+	return domain.User{}, usersservice.ErrNotFound
+}
+func (*countingAccounts) GetByUsername(string) (domain.User, error) {
+	return domain.User{}, usersservice.ErrNotFound
+}
+func (*countingAccounts) UpdateTrainingRole(int, domain.UserRole) (domain.User, error) {
+	return domain.User{}, nil
 }
 
 func TestRouterUsesCookieIdentityForCurrentUserAndAttempts(t *testing.T) {

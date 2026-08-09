@@ -178,6 +178,11 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 	}
 	attempt := domain.Attempt{UserID: userID, Mode: domain.AttemptModeFreePlay, UserRole: role, IsScam: &isScam, Status: domain.AttemptStatusInProgress, StartedAt: time.Now().UTC()}
 	freePlayScenario := domain.Scenario{ProductContext: freePlayConfig.ProductContext, AISystemPrompt: freePlayConfig.SystemPrompt, FinalRubric: freePlayConfig.FinalRubric}
+	release, limitErr := s.beforeAI(userID, true)
+	if limitErr != nil {
+		return GameState{}, limitErr
+	}
+	defer release()
 	initial, err := s.evaluate(ctx, attempt, freePlayScenario, domain.ScenarioStep{}, nil, "Начни разговор о сделке одной короткой репликой")
 	if err != nil {
 		return GameState{}, err

@@ -3,6 +3,7 @@ package content_test
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
 	learningrepository "anti-scam-trainer/backend/internal/features/learning/repository"
+	learningservice "anti-scam-trainer/backend/internal/features/learning/service"
 	scenariosrepository "anti-scam-trainer/backend/internal/features/scenarios/repository"
 	"os"
 	"testing"
@@ -175,6 +176,58 @@ func TestLearningActivityAwardsStreakAchievements(t *testing.T) {
 	_, err = db.QueryOne(pg.Scan(&awarded), `SELECT COUNT(*) FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=? AND a.code='first_topic_completed'`, userID)
 	if err != nil || awarded != 1 {
 		t.Fatalf("first_topic_completed awards=%d, err=%v", awarded, err)
+	}
+}
+
+func TestPostgresDailyTaskAndTopicLifecycle(t *testing.T) {
+	database := os.Getenv("POSTGRES_TEST_NAME")
+	if database == "" {
+		t.Skip("POSTGRES_TEST_NAME is not set")
+	}
+	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
+	defer db.Close()
+	var userID, topicID int
+	if _, err := db.QueryOne(pg.Scan(&userID), `INSERT INTO users(username,password_hash,access_role,training_role) VALUES('daily-content-test','hash','user','buyer') RETURNING id`); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = db.Exec(`UPDATE topics SET content_status='published',archived_at=NULL WHERE id=?`, topicID)
+		_, _ = db.Exec(`DELETE FROM users WHERE id=?`, userID)
+	}()
+	if _, err := db.QueryOne(pg.Scan(&topicID), `SELECT id FROM topics WHERE user_role='buyer' ORDER BY sort_order LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	repository := learningrepository.NewPostgres(db)
+	now := time.Date(2026, 8, 9, 9, 0, 0, 0, time.UTC)
+	learning := learningservice.NewWithClock(repository, func() time.Time { return now })
+	_, _, _, _, first, err := learning.Dashboard(userID, domain.UserRoleBuyer)
+	if err != nil || first == nil || first.Action.Type != "read_theory" || first.Completed {
+		t.Fatalf("first daily task=(%#v,%v)", first, err)
+	}
+	_, _, _, _, refresh, err := learning.Dashboard(userID, domain.UserRoleBuyer)
+	if err != nil || refresh.Action != first.Action {
+		t.Fatalf("refreshed daily task=(%#v,%v)", refresh, err)
+	}
+	if _, _, err = learning.MarkTheoryRead(userID, topicID); err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, _, completed, err := learning.Dashboard(userID, domain.UserRoleBuyer)
+	if err != nil || completed == nil || !completed.Completed || completed.CompletedAt == nil {
+		t.Fatalf("completed task=(%#v,%v)", completed, err)
+	}
+	content := learningservice.NewContent(repository)
+	if err = content.Archive(topicID); err != nil {
+		t.Fatal(err)
+	}
+	var progress int
+	if _, err = db.QueryOne(pg.Scan(&progress), `SELECT COUNT(*) FROM user_topic_progress WHERE user_id=? AND topic_id=?`, userID, topicID); err != nil || progress != 1 {
+		t.Fatalf("archived progress=(%d,%v)", progress, err)
+	}
+	if err = content.Restore(topicID); err != nil {
+		t.Fatal(err)
+	}
+	if err = content.Publish(topicID); err != nil {
+		t.Fatalf("republish complete seed topic: %v", err)
 	}
 }
 

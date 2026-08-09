@@ -6,6 +6,7 @@ import (
 	"anti-scam-trainer/backend/internal/core/config"
 	"anti-scam-trainer/backend/internal/core/logger"
 	"anti-scam-trainer/backend/internal/core/postgres"
+	"anti-scam-trainer/backend/internal/core/ratelimit"
 	"anti-scam-trainer/backend/internal/core/server"
 	"anti-scam-trainer/backend/internal/core/server/middleware"
 	"anti-scam-trainer/backend/internal/core/server/openapidocs"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/go-pg/pg"
 	"github.com/lpernett/godotenv"
+	"go.uber.org/zap"
 )
 
 type App struct {
@@ -81,14 +83,25 @@ func New() (*App, error) {
 		return nil, err
 	}
 	authentication := authservice.New(users, tokens)
+	clientIP, err := ratelimit.NewClientIPResolver(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		return nil, err
+	}
+	registrationLimiter := ratelimit.New(ratelimit.Config{Limit: cfg.RegistrationRateLimit, Window: cfg.RegistrationRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now)
+	loginLimiter := ratelimit.New(ratelimit.Config{Limit: cfg.LoginRateLimit, Window: cfg.LoginRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now)
+	aiLimiter := ratelimit.New(ratelimit.Config{Limit: cfg.AIFreeTextRateLimit, Window: cfg.AIFreeTextRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now)
+	freePlayLimiter := ratelimit.New(ratelimit.Config{Limit: cfg.FreePlayRateLimit, Window: cfg.FreePlayRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now)
+	log.Info("rate limits configured", zap.Int("registration_capacity", cfg.RegistrationRateLimit), zap.Duration("registration_window", cfg.RegistrationRateWindow), zap.Int("login_capacity", cfg.LoginRateLimit), zap.Duration("login_window", cfg.LoginRateWindow), zap.Int("ai_capacity", cfg.AIFreeTextRateLimit), zap.Duration("ai_window", cfg.AIFreeTextRateWindow), zap.Int("free_play_capacity", cfg.FreePlayRateLimit), zap.Duration("free_play_window", cfg.FreePlayRateWindow), zap.Int("max_buckets", cfg.RateLimitMaxBuckets), zap.Strings("trusted_proxy_cidrs", cfg.TrustedProxyCIDRs))
 	content := scenariosservice.NewContent(scenariosrepository.NewPostgres(db))
 	learning := learningservice.New(learningrepository.NewPostgres(db))
+	learningContent := learningservice.NewContent(learningrepository.NewPostgres(db))
 	attemptRepository := attemptsrepository.NewPostgres(db)
-	game := attemptsservice.NewGameWithAI(attemptRepository, gameAIAdapter{provider: provider})
+	game := attemptsservice.NewGameWithRateLimits(attemptRepository, gameAIAdapter{provider: provider}, aiLimiter, freePlayLimiter, ratelimit.NewGate())
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, []router.Route{{Path: "/health", Handler: health}})
-	versionedRouter.Register(router.V1, authhttp.New(authentication).Routes())
+	versionedRouter.Register(router.V1, authhttp.NewWithRateLimits(authentication, registrationLimiter, loginLimiter, clientIP).Routes())
 	versionedRouter.Register(router.V1, learninghttp.New(learning).Routes())
+	versionedRouter.Register(router.V1, learninghttp.NewAdmin(learningContent).Routes())
 	versionedRouter.Register(router.V1, scenarioshttp.NewAdmin(content).Routes())
 	versionedRouter.Register(router.V1, attemptshttp.NewGame(game).Routes())
 	routes := http.NewServeMux()

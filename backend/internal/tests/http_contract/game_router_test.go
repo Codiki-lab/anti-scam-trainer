@@ -2,6 +2,8 @@ package http_contract_test
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
+	"anti-scam-trainer/backend/internal/core/ratelimit"
+	"anti-scam-trainer/backend/internal/core/server/middleware"
 	"anti-scam-trainer/backend/internal/core/server/router"
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
@@ -12,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -117,6 +120,66 @@ func TestHTTPAIFailureIsRetryableAndHasNoSideEffects(t *testing.T) {
 	}
 }
 
+func TestHTTPAIRateLimitRejectsBeforeProviderAndStateMutation(t *testing.T) {
+	store := newHTTPGameStore()
+	provider := &countingContractAI{}
+	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	limit := ratelimit.New(ratelimit.Config{Limit: 1, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, func() time.Time { return now })
+	freePlayLimit := ratelimit.New(ratelimit.Config{Limit: 10, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, func() time.Time { return now })
+	game := attemptsservice.NewGameWithRateLimits(store, provider, limit, freePlayLimit, ratelimit.NewGate())
+	r := router.New()
+	r.Register(router.V1, attemptshttp.NewGame(game).Routes())
+	handler := middleware.RequestID()(r)
+	start := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role=buyer", nil)
+	start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
+	handler.ServeHTTP(httptest.NewRecorder(), start)
+	answer := func(step int) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":`+strconv.Itoa(step)+`,"free_text":"Останусь в сервисе"}`))
+		req = req.WithContext(authservice.WithIdentity(req.Context(), authservice.Identity{UserID: 1}))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+	if first := answer(1); first.Code != http.StatusOK {
+		t.Fatalf("first=%d %s", first.Code, first.Body.String())
+	}
+	answersBefore := len(store.answers)
+	messagesBefore := len(store.messages)
+	second := answer(2)
+	if second.Code != http.StatusTooManyRequests || !strings.Contains(second.Body.String(), `"code":"RATE_LIMITED"`) || second.Header().Get("Retry-After") == "" || provider.calls != 2 || len(store.answers) != answersBefore || len(store.messages) != messagesBefore {
+		t.Fatalf("limited=(%d,%s,calls=%d,answers=%d)", second.Code, second.Body.String(), provider.calls, len(store.answers))
+	}
+}
+
+func TestHTTPAllowsOnlyOneAIRequestInFlightPerUser(t *testing.T) {
+	store := newHTTPGameStore()
+	provider := &blockingContractAI{started: make(chan struct{}), release: make(chan struct{})}
+	limit := ratelimit.New(ratelimit.Config{Limit: 10, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, time.Now)
+	game := attemptsservice.NewGameWithRateLimits(store, provider, limit, limit, ratelimit.NewGate())
+	r := router.New()
+	r.Register(router.V1, attemptshttp.NewGame(game).Routes())
+	handler := middleware.RequestID()(r)
+	start := func() *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role=buyer", nil)
+		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, request)
+		return rec
+	}
+	firstDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() { firstDone <- start() }()
+	<-provider.started
+	second := start()
+	if second.Code != http.StatusTooManyRequests || !strings.Contains(second.Body.String(), `"code":"RATE_LIMITED"`) {
+		t.Fatalf("concurrent=(%d,%s)", second.Code, second.Body.String())
+	}
+	close(provider.release)
+	first := <-firstDone
+	if first.Code != http.StatusOK || provider.calls.Load() != 1 {
+		t.Fatalf("first=(%d,%s),calls=%d", first.Code, first.Body.String(), provider.calls.Load())
+	}
+}
+
 func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testing.T) {
 	for _, role := range []string{"buyer", "seller"} {
 		t.Run(role, func(t *testing.T) {
@@ -199,6 +262,27 @@ func TestHTTPFreePlayAIFailureHasNoSideEffects(t *testing.T) {
 type contractAI struct{}
 
 func (contractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
+	return `{"awarded_points":100,"explanation":"безопасно","reply":"продолжим","risk_signals":[]}`, nil
+}
+
+type countingContractAI struct{ calls int }
+
+func (a *countingContractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
+	a.calls++
+	return `{"awarded_points":100,"explanation":"безопасно","reply":"продолжим","risk_signals":[]}`, nil
+}
+
+type blockingContractAI struct {
+	started chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (a *blockingContractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
+	if a.calls.Add(1) == 1 {
+		close(a.started)
+	}
+	<-a.release
 	return `{"awarded_points":100,"explanation":"безопасно","reply":"продолжим","risk_signals":[]}`, nil
 }
 

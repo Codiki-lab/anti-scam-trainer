@@ -66,8 +66,60 @@ func TestHTTPDashboardUsesServerContinuePriorityAndRoleIsolation(t *testing.T) {
 	request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 7}))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
-	if body := recorder.Body.String(); recorder.Code != http.StatusOK || !strings.Contains(body, `"type":"resume_attempt"`) || !strings.Contains(body, `"attempt_id":42`) || store.lastRole != domain.UserRoleSeller || !strings.Contains(body, `"daily_task":null`) {
+	if body := recorder.Body.String(); recorder.Code != http.StatusOK || !strings.Contains(body, `"type":"resume_attempt"`) || !strings.Contains(body, `"attempt_id":42`) || store.lastRole != domain.UserRoleSeller || !strings.Contains(body, `"daily_task":{"date":`) || !strings.Contains(body, `"role":"seller"`) {
 		t.Fatalf("dashboard = (%d,%s), role=%s", recorder.Code, body, store.lastRole)
+	}
+}
+
+func TestHTTPDailyTaskIsStableByMoscowDateAndRole(t *testing.T) {
+	now := time.Date(2026, 8, 9, 20, 59, 0, 0, time.UTC)
+	store := &learningStore{daily: map[string]domain.DailyTask{}}
+	learning := learningservice.NewWithClock(store, func() time.Time { return now })
+	handler := router.New()
+	handler.Register(router.V1, learninghttp.New(learning).Routes())
+	get := func(role string) string {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard?role="+role, nil)
+		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 7}))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, request)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("dashboard=%d %s", rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+	first, refresh := get("buyer"), get("buyer")
+	if first != refresh || !strings.Contains(first, `"date":"2026-08-09"`) || len(store.daily) != 1 {
+		t.Fatalf("unstable task: first=%s refresh=%s assignments=%d", first, refresh, len(store.daily))
+	}
+	get("seller")
+	if len(store.daily) != 2 {
+		t.Fatalf("role assignments=%d", len(store.daily))
+	}
+	now = now.Add(2 * time.Minute)
+	next := get("buyer")
+	if !strings.Contains(next, `"date":"2026-08-10"`) || len(store.daily) != 3 {
+		t.Fatalf("midnight task=%s assignments=%d", next, len(store.daily))
+	}
+}
+
+func TestHTTPDashboardOffersFreePlayOnlyAfterAllSixTopicsAreCompleted(t *testing.T) {
+	for count := 5; count <= 6; count++ {
+		store := &learningStore{topics: make([]domain.Topic, count)}
+		for i := range store.topics {
+			store.topics[i] = domain.Topic{ID: i + 1, UserRole: domain.UserRoleBuyer, TheoryRead: true, QuizPassed: true, Completed: true}
+		}
+		handler := router.New()
+		handler.Register(router.V1, learninghttp.New(learningservice.New(store)).Routes())
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard?role=buyer", nil)
+		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 7}))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if count == 5 && recorder.Code != http.StatusConflict {
+			t.Fatalf("five topics = (%d,%s), want 409", recorder.Code, recorder.Body.String())
+		}
+		if count == 6 && (recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"type":"start_free_play"`)) {
+			t.Fatalf("six topics = (%d,%s), want free play", recorder.Code, recorder.Body.String())
+		}
 	}
 }
 
@@ -76,10 +128,28 @@ type learningStore struct {
 	activityCalls int
 	attemptID     int
 	lastRole      domain.UserRole
+	daily         map[string]domain.DailyTask
+	topics        []domain.Topic
+}
+
+func (s *learningStore) DailyTask(_ int, role domain.UserRole, date time.Time, recommendation domain.ContinueAction) (domain.DailyTask, error) {
+	if s.daily == nil {
+		s.daily = map[string]domain.DailyTask{}
+	}
+	key := date.Format("2006-01-02") + ":" + string(role)
+	if task, ok := s.daily[key]; ok {
+		return task, nil
+	}
+	task := domain.DailyTask{Date: date.Format("2006-01-02"), Role: role, Action: recommendation}
+	s.daily[key] = task
+	return task, nil
 }
 
 func (s *learningStore) Topics(_ int, role domain.UserRole) ([]domain.Topic, error) {
 	s.lastRole = role
+	if s.topics != nil {
+		return s.topics, nil
+	}
 	return []domain.Topic{{ID: 1, Slug: string(role) + "-topic", UserRole: role, Title: "Тема", Description: "Описание", SortOrder: 1, TheoryRead: s.theoryRead, Levels: []domain.TopicLevelProgress{{Number: 1, Opened: true}, {Number: 2}, {Number: 3}, {Number: 4}}}}, nil
 }
 

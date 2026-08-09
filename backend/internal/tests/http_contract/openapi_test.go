@@ -105,7 +105,7 @@ func TestOpenAPIV1SpecificationIsValid(t *testing.T) {
 	}
 
 	specification := recorder.Body.String()
-	for _, path := range []string{"/api/v1/health:", "/api/v1/auth/register:", "/api/v1/profile/preferences:", "/api/v1/topics:", "/api/v1/topics/{id}/theory:", "/api/v1/topics/{id}/quiz/attempts:", "/api/v1/training/levels:", "/api/v1/training/levels/{level}/start:", "/api/v1/training/free-play/start:", "/api/v1/attempts/{id}:", "/api/v1/attempts/{id}/answers:", "/api/v1/attempts/{id}/result:", "/api/v1/attempts/{id}/abandon:", "/api/v1/progress:", "/api/v1/achievements:", "/api/v1/dashboard:", "/api/v1/admin/scenarios:", "/api/v1/admin/scenarios/{id}/publish:"} {
+	for _, path := range []string{"/api/v1/health:", "/api/v1/auth/register:", "/api/v1/profile/preferences:", "/api/v1/topics:", "/api/v1/topics/{id}/theory:", "/api/v1/topics/{id}/quiz/attempts:", "/api/v1/training/levels:", "/api/v1/training/levels/{level}/start:", "/api/v1/training/free-play/start:", "/api/v1/attempts/{id}:", "/api/v1/attempts/{id}/answers:", "/api/v1/attempts/{id}/result:", "/api/v1/attempts/{id}/abandon:", "/api/v1/progress:", "/api/v1/achievements:", "/api/v1/dashboard:", "/api/v1/admin/topics:", "/api/v1/admin/topics/{id}/theory-blocks:", "/api/v1/admin/topics/{id}/quiz-questions:", "/api/v1/admin/scenarios:", "/api/v1/admin/scenarios/{id}/publish:"} {
 		if !strings.Contains(specification, "  "+path) {
 			t.Fatalf("OpenAPI v1 does not document registered path %s", path)
 		}
@@ -116,9 +116,14 @@ func TestOpenAPIV1SpecificationIsValid(t *testing.T) {
 	if !strings.Contains(specification, "X-Request-ID: { $ref: '#/components/headers/RequestID' }") {
 		t.Fatal("OpenAPI v1 does not attach X-Request-ID to responses")
 	}
-	for _, schema := range []string{"AdminScenario:", "AdminStep:", "AdminOption:", "RecentAttempt:"} {
+	for _, schema := range []string{"AdminTopic:", "AdminTheoryBlock:", "AdminQuizQuestion:", "AdminQuizOption:", "DailyTask:", "AdminScenario:", "AdminStep:", "AdminOption:", "RecentAttempt:"} {
 		if !strings.Contains(specification, "    "+schema) {
 			t.Fatalf("OpenAPI v1 does not define %s", schema)
+		}
+	}
+	for _, fragment := range []string{"RateLimited:", "RATE_LIMITED", "CONTENT_CONFLICT", "Retry-After:"} {
+		if !strings.Contains(specification, fragment) {
+			t.Fatalf("OpenAPI v1 does not document %q", fragment)
 		}
 	}
 	if !strings.Contains(specification, "requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' }") || !strings.Contains(specification, "counterparty_message: { type: string, minLength: 1, maxLength: 280 }") {

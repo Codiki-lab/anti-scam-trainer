@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Handler struct{ service *service.Service }
@@ -189,7 +190,7 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "role must be buyer or seller", 400)
 		return
 	}
-	user, topics, achievements, action, err := h.service.Dashboard(identity.UserID, selected)
+	user, topics, achievements, action, dailyTask, err := h.service.Dashboard(identity.UserID, selected)
 	if err != nil {
 		learningError(w, err)
 		return
@@ -201,7 +202,35 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 		preview = append(preview, achievementDTO(item))
 	}
-	response.JSON(w, map[string]any{"profile": map[string]any{"id": user.ID, "username": user.Username, "training_role": user.TrainingRole}, "streak": user.Streak, "topics": topicsDTO(topics), "achievements": preview, "continue_action": action, "daily_task": nil})
+	response.JSON(w, map[string]any{"profile": map[string]any{"id": user.ID, "username": user.Username, "training_role": user.TrainingRole}, "streak": user.Streak, "topics": topicsDTO(topics), "achievements": preview, "continue_action": continueActionDTOFrom(action), "daily_task": dailyTaskDTOFrom(dailyTask)})
+}
+
+type continueActionDTO struct {
+	Type      string `json:"type"`
+	TopicID   int    `json:"topic_id,omitempty"`
+	Level     int    `json:"level,omitempty"`
+	AttemptID int    `json:"attempt_id,omitempty"`
+}
+type dailyTaskDTO struct {
+	Date        string            `json:"date"`
+	Role        domain.UserRole   `json:"role"`
+	Completed   bool              `json:"completed"`
+	CompletedAt *time.Time        `json:"completed_at"`
+	Action      continueActionDTO `json:"action"`
+}
+
+func continueActionDTOFrom(action *domain.ContinueAction) *continueActionDTO {
+	if action == nil {
+		return nil
+	}
+	return &continueActionDTO{Type: action.Type, TopicID: action.TopicID, Level: action.Level, AttemptID: action.AttemptID}
+}
+func dailyTaskDTOFrom(task *domain.DailyTask) *dailyTaskDTO {
+	if task == nil {
+		return nil
+	}
+	action := continueActionDTOFrom(&task.Action)
+	return &dailyTaskDTO{Date: task.Date, Role: task.Role, Completed: task.Completed, CompletedAt: task.CompletedAt, Action: *action}
 }
 
 func topicDTO(t domain.Topic) map[string]any {
@@ -251,6 +280,8 @@ func learningError(w http.ResponseWriter, err error) {
 		response.ErrorCode(w, "CONTENT_UNAVAILABLE", "content is not available", 403, nil)
 	case errors.Is(err, service.ErrTopicNotFound):
 		response.Error(w, "topic not found", 404)
+	case errors.Is(err, service.ErrDailyTaskUnavailable):
+		response.ErrorCode(w, "CONTENT_UNAVAILABLE", "no valid daily task is available", http.StatusConflict, nil)
 	default:
 		response.Error(w, "could not process learning request", 500)
 	}

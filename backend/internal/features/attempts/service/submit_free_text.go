@@ -91,6 +91,11 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	if err != nil {
 		return GameState{}, nil, err
 	}
+	release, limitErr := s.beforeAI(userID, false)
+	if limitErr != nil {
+		return GameState{}, nil, limitErr
+	}
+	defer release()
 	aiResult, err := s.evaluate(ctx, attempt, scenario, step, messages, text)
 	if err != nil {
 		return GameState{}, nil, err

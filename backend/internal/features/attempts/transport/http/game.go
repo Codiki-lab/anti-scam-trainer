@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type GameHandler struct{ service *service.GameService }
@@ -244,7 +245,15 @@ func resultDTO(result domain.AttemptResult) map[string]interface{} {
 	return dto
 }
 func gameError(w http.ResponseWriter, err error) {
+	var limited *service.RateLimitError
 	switch {
+	case errors.As(err, &limited):
+		seconds := int64((limited.RetryAfter + time.Second - 1) / time.Second)
+		if seconds < 1 {
+			seconds = 1
+		}
+		w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+		response.ErrorCode(w, "RATE_LIMITED", "too many AI requests", http.StatusTooManyRequests, map[string]any{"retry_after_seconds": seconds})
 	case errors.Is(err, apperrors.ErrForbidden):
 		response.ErrorCode(w, "CONTENT_UNAVAILABLE", "level is closed", http.StatusForbidden, nil)
 	case errors.Is(err, apperrors.ErrAttemptNotFound), errors.Is(err, apperrors.ErrScenarioNotFound):
