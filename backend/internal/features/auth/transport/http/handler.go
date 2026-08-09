@@ -7,7 +7,6 @@ import (
 	"anti-scam-trainer/backend/internal/core/server/response"
 	"anti-scam-trainer/backend/internal/core/server/router"
 	auth "anti-scam-trainer/backend/internal/features/auth/service"
-	users "anti-scam-trainer/backend/internal/features/users/service"
 	"errors"
 	"net/http"
 	"strconv"
@@ -165,9 +164,9 @@ func (h *Handler) me(writer http.ResponseWriter, httpRequest *http.Request) {
 
 func handleCredentialsError(writer http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, users.ErrUsernameTaken):
+	case errors.Is(err, auth.ErrUsernameTaken):
 		response.Error(writer, "username already taken", http.StatusConflict)
-	case errors.Is(err, users.ErrInvalidCredentials):
+	case errors.Is(err, auth.ErrInvalidCredentials):
 		response.Error(writer, "username and password are required", http.StatusBadRequest)
 	default:
 		response.Error(writer, "could not register", http.StatusInternalServerError)

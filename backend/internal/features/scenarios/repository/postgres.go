@@ -10,16 +10,6 @@ import (
 
 type PostgresRepository struct{ db *pg.DB }
 
-type scenarioRecord struct {
-	tableName   struct{} `sql:"chats"`
-	ID          int      `pg:"id,pk"`
-	Title       string   `pg:"title,notnull"`
-	Description string   `pg:"description"`
-	Difficulty  string   `pg:"difficulty,notnull"`
-	Role        string   `pg:"role,notnull"`
-	IsActive    bool     `pg:"is_active"`
-}
-
 func (r *PostgresRepository) CreateContent(s domain.Scenario) (domain.Scenario, error) {
 	var id int
 	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chats (title, description, difficulty, role, is_active, level_id, topic_id, user_role, content_status, scam_scheme, product_context, ai_system_prompt, final_rubric) VALUES (?, ?, ?, ?, false, ?, ?, ?, 'draft', ?, ?::jsonb, ?, ?::jsonb) RETURNING id`, s.Title, s.Description, s.Level, s.UserRole, s.LevelID, s.TopicID, s.UserRole, s.ScamScheme, encodeJSONObject(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric))
@@ -173,51 +163,4 @@ func decodeJSONObject(value string) domain.JSONObject {
 	result := domain.JSONObject{}
 	_ = json.Unmarshal([]byte(value), &result)
 	return result
-}
-
-func (r *PostgresRepository) Create(scenario domain.Scenario) (domain.Scenario, error) {
-	record := toRecord(scenario)
-	if _, err := r.db.Model(&record).Insert(); err != nil {
-		return domain.Scenario{}, err
-	}
-	return toDomain(record), nil
-}
-
-func (r *PostgresRepository) GetByID(id int) (domain.Scenario, error) {
-	var record scenarioRecord
-	if err := r.db.Model(&record).Where("id = ?", id).Select(); err != nil {
-		return domain.Scenario{}, err
-	}
-	return toDomain(record), nil
-}
-
-func (r *PostgresRepository) Update(scenario domain.Scenario) error {
-	record := toRecord(scenario)
-	_, err := r.db.Model(&record).Column("title", "description", "difficulty", "role", "is_active").WherePK().Update()
-	return err
-}
-
-func (r *PostgresRepository) Delete(id int) error {
-	_, err := r.db.Model(&scenarioRecord{}).Where("id = ?", id).Delete()
-	return err
-}
-
-func (r *PostgresRepository) List() ([]domain.Scenario, error) {
-	var records []scenarioRecord
-	if err := r.db.Model(&records).Select(); err != nil {
-		return nil, err
-	}
-	scenarios := make([]domain.Scenario, len(records))
-	for index, record := range records {
-		scenarios[index] = toDomain(record)
-	}
-	return scenarios, nil
-}
-
-func toRecord(scenario domain.Scenario) scenarioRecord {
-	return scenarioRecord{ID: scenario.ID, Title: scenario.Title, Description: scenario.Description, Difficulty: scenario.Level, Role: scenario.UserRole, IsActive: scenario.IsActive}
-}
-
-func toDomain(record scenarioRecord) domain.Scenario {
-	return domain.Scenario{ID: record.ID, Title: record.Title, Description: record.Description, Level: record.Difficulty, UserRole: record.Role, IsActive: record.IsActive}
 }

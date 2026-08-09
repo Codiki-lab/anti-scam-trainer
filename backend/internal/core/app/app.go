@@ -16,6 +16,7 @@ import (
 	attemptsrepository "anti-scam-trainer/backend/internal/features/attempts/repository"
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
+	authrepository "anti-scam-trainer/backend/internal/features/auth/repository"
 	authservice "anti-scam-trainer/backend/internal/features/auth/service"
 	authhttp "anti-scam-trainer/backend/internal/features/auth/transport/http"
 	learningrepository "anti-scam-trainer/backend/internal/features/learning/repository"
@@ -24,8 +25,6 @@ import (
 	scenariosrepository "anti-scam-trainer/backend/internal/features/scenarios/repository"
 	scenariosservice "anti-scam-trainer/backend/internal/features/scenarios/service"
 	scenarioshttp "anti-scam-trainer/backend/internal/features/scenarios/transport/http"
-	usersrepository "anti-scam-trainer/backend/internal/features/users/repository"
-	usersservice "anti-scam-trainer/backend/internal/features/users/service"
 	"context"
 	"fmt"
 	"net/http"
@@ -74,15 +73,15 @@ func New() (*App, error) {
 		return nil, fmt.Errorf("connect PostgreSQL")
 	}
 
-	users := usersservice.New(usersrepository.NewPostgres(db))
-	if _, err := users.EnsureAdmin(cfg.AdminUsername, cfg.AdminPassword); err != nil {
+	accounts := authservice.NewAccounts(authrepository.NewPostgres(db))
+	if _, err := accounts.EnsureAdmin(cfg.AdminUsername, cfg.AdminPassword); err != nil {
 		return nil, fmt.Errorf("bootstrap admin: %w", err)
 	}
 	tokens, err := authservice.NewJWTManager(cfg.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
-	authentication := authservice.New(users, tokens)
+	authentication := authservice.New(accounts, tokens)
 	clientIP, err := ratelimit.NewClientIPResolver(cfg.TrustedProxyCIDRs)
 	if err != nil {
 		return nil, err
@@ -92,7 +91,7 @@ func New() (*App, error) {
 	aiLimiter := ratelimit.New(ratelimit.Config{Limit: cfg.AIFreeTextRateLimit, Window: cfg.AIFreeTextRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now)
 	freePlayLimiter := ratelimit.New(ratelimit.Config{Limit: cfg.FreePlayRateLimit, Window: cfg.FreePlayRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now)
 	log.Info("rate limits configured", zap.Int("registration_capacity", cfg.RegistrationRateLimit), zap.Duration("registration_window", cfg.RegistrationRateWindow), zap.Int("login_capacity", cfg.LoginRateLimit), zap.Duration("login_window", cfg.LoginRateWindow), zap.Int("ai_capacity", cfg.AIFreeTextRateLimit), zap.Duration("ai_window", cfg.AIFreeTextRateWindow), zap.Int("free_play_capacity", cfg.FreePlayRateLimit), zap.Duration("free_play_window", cfg.FreePlayRateWindow), zap.Int("max_buckets", cfg.RateLimitMaxBuckets), zap.Strings("trusted_proxy_cidrs", cfg.TrustedProxyCIDRs))
-	content := scenariosservice.NewContent(scenariosrepository.NewPostgres(db))
+	content := scenariosservice.New(scenariosrepository.NewPostgres(db))
 	learning := learningservice.New(learningrepository.NewPostgres(db))
 	learningContent := learningservice.NewContent(learningrepository.NewPostgres(db))
 	attemptRepository := attemptsrepository.NewPostgres(db)
@@ -102,8 +101,8 @@ func New() (*App, error) {
 	versionedRouter.Register(router.V1, authhttp.NewWithRateLimits(authentication, registrationLimiter, loginLimiter, clientIP).Routes())
 	versionedRouter.Register(router.V1, learninghttp.New(learning).Routes())
 	versionedRouter.Register(router.V1, learninghttp.NewAdmin(learningContent).Routes())
-	versionedRouter.Register(router.V1, scenarioshttp.NewAdmin(content).Routes())
-	versionedRouter.Register(router.V1, attemptshttp.NewGame(game).Routes())
+	versionedRouter.Register(router.V1, scenarioshttp.New(content).Routes())
+	versionedRouter.Register(router.V1, attemptshttp.New(game).Routes())
 	routes := http.NewServeMux()
 	documentationHandler := middleware.RequireSwaggerAuthentication(cfg.SwaggerUsername, cfg.SwaggerPassword)(openapidocs.NewHandler())
 	routes.Handle("/swagger", http.RedirectHandler("/swagger/", http.StatusTemporaryRedirect))

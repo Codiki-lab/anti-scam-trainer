@@ -87,51 +87,6 @@ type progressRecord struct {
 
 func NewPostgres(db *pg.DB) *PostgresRepository { return &PostgresRepository{db: db} }
 
-func (r *PostgresRepository) Create(attempt domain.Attempt) (domain.Attempt, error) {
-	record := toAttemptRecord(attempt)
-	if _, err := r.db.Model(&record).Insert(); err != nil {
-		return domain.Attempt{}, err
-	}
-	return attemptFromRecord(record), nil
-}
-
-func (r *PostgresRepository) GetByID(id int) (domain.Attempt, error) {
-	var record attemptRecord
-	if err := r.db.Model(&record).Where("id = ?", id).Select(); err != nil {
-		return domain.Attempt{}, err
-	}
-	return attemptFromRecord(record), nil
-}
-
-func (r *PostgresRepository) Update(attempt domain.Attempt) error {
-	record := toAttemptRecord(attempt)
-	_, err := r.db.Model(&record).Column("user_id", "chat_id", "status", "started_at", "finished_at", "score").WherePK().Update()
-	return err
-}
-
-func (r *PostgresRepository) Delete(id int) error {
-	_, err := r.db.Model(&attemptRecord{}).Where("id = ?", id).Delete()
-	return err
-}
-
-func (r *PostgresRepository) ListByUserID(userID int) ([]domain.Attempt, error) {
-	var records []attemptRecord
-	if err := r.db.Model(&records).Where("user_id = ?", userID).Select(); err != nil {
-		return nil, err
-	}
-	attempts := make([]domain.Attempt, len(records))
-	for index, record := range records {
-		attempts[index] = attemptFromRecord(record)
-	}
-	return attempts, nil
-}
-
-func (r *PostgresRepository) InTransaction(action func(service.CompletionStore) error) error {
-	return r.db.RunInTransaction(func(tx *pg.Tx) error {
-		return action(transactionStore{db: tx})
-	})
-}
-
 func (r *PostgresRepository) Levels(userID int, userRole string) ([]domain.Level, []domain.Progress, error) {
 	var levels []levelRecord
 	if _, err := r.db.Query(&levels, `SELECT id, level_number FROM levels WHERE is_active = TRUE ORDER BY level_number`); err != nil {
@@ -280,7 +235,13 @@ func (r *PostgresRepository) StartFreePlay(attempt domain.Attempt, message domai
 	return created, err
 }
 
-func (r *PostgresRepository) GetGameAttempt(id int) (domain.Attempt, error) { return r.GetByID(id) }
+func (r *PostgresRepository) GetGameAttempt(id int) (domain.Attempt, error) {
+	var record attemptRecord
+	if err := r.db.Model(&record).Where("id = ?", id).Select(); err != nil {
+		return domain.Attempt{}, err
+	}
+	return attemptFromRecord(record), nil
+}
 
 func (r *PostgresRepository) Step(scenarioID, number int) (domain.ScenarioStep, error) {
 	var step gameStepRecord
@@ -568,26 +529,6 @@ func decodeJSONObject(value string) domain.JSONObject {
 	result := domain.JSONObject{}
 	_ = json.Unmarshal([]byte(value), &result)
 	return result
-}
-
-type transactionStore struct{ db *pg.Tx }
-
-func (store transactionStore) UpdateAttempt(attempt domain.Attempt) error {
-	record := toAttemptRecord(attempt)
-	_, err := store.db.Model(&record).Column("status", "finished_at", "score").WherePK().Update()
-	return err
-}
-
-func (store transactionStore) SaveProgress(progress domain.Progress) error {
-	record := toProgressRecord(progress)
-	_, err := store.db.Model(&record).
-		OnConflict("(user_id, topic_id, level_id) DO UPDATE").
-		Set("best_score = GREATEST(progress_record.best_score, EXCLUDED.best_score)").
-		Set("stars = GREATEST(progress_record.stars, EXCLUDED.stars)").
-		Set("attempts = progress_record.attempts + 1").
-		Set("passed_at = COALESCE(progress_record.passed_at, EXCLUDED.passed_at)").
-		Insert()
-	return err
 }
 
 func toAttemptRecord(attempt domain.Attempt) attemptRecord {
