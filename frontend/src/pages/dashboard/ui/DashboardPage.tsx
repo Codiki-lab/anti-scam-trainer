@@ -8,7 +8,7 @@ import { useDashboardData } from '@/features/view-progress'
 import { ErrorState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
 import { uiStyles } from '@/shared/ui-kit'
-import { getContinuePath } from '../lib/getContinuePath'
+import { DailyTaskModal } from '@/widgets/daily-task'
 import { TopicCard } from './TopicCard'
 import { TrainingRow } from './TrainingRow'
 import styles from './Dashboard.module.scss'
@@ -25,6 +25,7 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
     account.trainingRole,
   )
   const [freePlayError, setFreePlayError] = useState('')
+  const [isDailyTaskOpen, setDailyTaskOpen] = useState(false)
 
   if (isLoading) return <p className={uiStyles.muted}>Загружаем главную…</p>
   if (error) return <ErrorState message={error} onRetry={() => void retry()} />
@@ -65,11 +66,15 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
           <div className={styles.quickActions}>
             <aside className={styles.dailyCard}>
               <span>Задание дня</span>
-              <h3>Мошенник или нет?</h3>
-              <p>Разберите короткую ситуацию и определите, безопасна ли сделка.</p>
-              <Link to={getContinuePath(dashboard.continueAction, basePath)}>
-                Проверить сделку →
-              </Link>
+              <h3>{dashboard.dailyTask.isCompleted ? 'Задание выполнено' : 'Мошенник или нет?'}</h3>
+              <p>
+                {dashboard.dailyTask.isCompleted
+                  ? 'Откройте сохранённый разбор ситуации.'
+                  : 'Разберите короткую ситуацию и определите, безопасна ли сделка.'}
+              </p>
+              <button onClick={() => setDailyTaskOpen(true)} type="button">
+                {dashboard.dailyTask.isCompleted ? 'Открыть разбор →' : 'Проверить сделку →'}
+              </button>
             </aside>
             <aside className={styles.freePlayCard}>
               <span>Свободная игра</span>
@@ -123,6 +128,12 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
           ))}
         </div>
       </section>
+      <DailyTaskModal
+        isOpen={isDailyTaskOpen}
+        onClose={() => setDailyTaskOpen(false)}
+        onConflict={retry}
+        task={dashboard.dailyTask}
+      />
     </>
   )
 }

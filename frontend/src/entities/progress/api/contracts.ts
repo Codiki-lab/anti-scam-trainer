@@ -21,13 +21,31 @@ export interface ContinueActionDto {
   attempt_id?: number
 }
 
+export interface DailyTaskDto {
+  date: string
+  role: UserRole
+  messages: Array<{ role: 'user' | 'assistant'; text: string }>
+  completed: boolean
+  completed_at: string | null
+  answer?: boolean
+  correct?: boolean
+  verdict?: boolean
+  signals?: string[]
+  safe_action?: string
+}
+
+export interface DailyTaskAnswerDto {
+  daily_task: DailyTaskDto
+  streak: StreakDto
+}
+
 export interface DashboardDto {
   profile: { id: number; username: string; training_role: UserRole }
   streak: StreakDto
   topics: TopicContract[]
   achievements: AchievementDto[]
   continue_action: ContinueActionDto | null
-  daily_task: null
+  daily_task: DailyTaskDto
 }
 
 export interface ProgressDto {
@@ -69,6 +87,27 @@ export const achievementDtoSchema = z.object({
   }),
 })
 
+export const dailyTaskDtoSchema = z.object({
+  date: z.string(),
+  role: userRoleSchema,
+  messages: z
+    .array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(400) }))
+    .min(2)
+    .max(6),
+  completed: z.boolean(),
+  completed_at: z.string().nullable(),
+  answer: z.boolean().optional(),
+  correct: z.boolean().optional(),
+  verdict: z.boolean().optional(),
+  signals: z.array(z.string()).max(3).optional(),
+  safe_action: z.string().optional(),
+})
+
+export const dailyTaskAnswerDtoSchema = z.object({
+  daily_task: dailyTaskDtoSchema,
+  streak: streakDtoSchema,
+})
+
 export const dashboardDtoSchema = z.object({
   profile: z.object({ id: z.number().int(), username: z.string(), training_role: userRoleSchema }),
   streak: streakDtoSchema,
@@ -88,7 +127,7 @@ export const dashboardDtoSchema = z.object({
       attempt_id: z.number().int().optional(),
     })
     .nullable(),
-  daily_task: z.null(),
+  daily_task: dailyTaskDtoSchema,
 })
 
 export const progressDtoSchema = z.object({

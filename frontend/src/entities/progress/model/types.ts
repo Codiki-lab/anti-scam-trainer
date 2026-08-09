@@ -19,12 +19,31 @@ export interface ContinueAction {
   attemptId?: number
 }
 
+export interface DailyTask {
+  date: string
+  role: UserRole
+  messages: Array<{ role: 'user' | 'assistant'; text: string }>
+  isCompleted: boolean
+  completedAt?: string
+  answer?: boolean
+  isCorrect?: boolean
+  verdict?: boolean
+  signals: string[]
+  safeAction?: string
+}
+
+export interface DailyTaskAnswer {
+  dailyTask: DailyTask
+  streak: Streak
+}
+
 export interface Dashboard {
   profile: { id: number; username: string; trainingRole: UserRole }
   streak: Streak
   topics: Topic[]
   achievements: Achievement[]
   continueAction: ContinueAction | null
+  dailyTask: DailyTask
 }
 
 export interface Progress {

@@ -1,0 +1,168 @@
+.backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  overflow-y: auto;
+  place-items: center;
+  background: rgb(20 20 28 / 52%);
+}
+
+.dialog {
+  width: min(100%, 620px);
+  padding: 28px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgb(20 20 28 / 25%);
+}
+
+.header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+
+  h2 {
+    margin: 0;
+  }
+}
+
+.close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  color: #575762;
+  background: #f2f2f4;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.intro {
+  margin: 18px 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.messages {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #f7f7f8;
+}
+
+.message {
+  max-width: 82%;
+  margin: 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.other {
+  border-bottom-left-radius: 3px;
+  background: #e9e9ed;
+  justify-self: start;
+}
+
+.mine {
+  border-bottom-right-radius: 3px;
+  color: #075f8e;
+  background: #dff5ff;
+  justify-self: end;
+}
+
+.answers {
+  margin-top: 22px;
+
+  > p {
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+}
+
+.answerButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+
+  button {
+    min-height: 48px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-weight: 800;
+  }
+}
+
+.scamButton {
+  border: 1px solid #f0b1aa;
+  color: #a92c22;
+  background: #fff1f0;
+}
+
+.safeButton {
+  border: 1px solid #a4d9bf;
+  color: #08794f;
+  background: #edfbf5;
+}
+
+.review {
+  margin-top: 22px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #f5f3ff;
+
+  h3 {
+    margin: 10px 0 6px;
+  }
+
+  h4 {
+    margin: 18px 0 8px;
+    font-size: 14px;
+  }
+
+  p {
+    color: #575762;
+    line-height: 1.5;
+  }
+
+  ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 20px;
+    color: #575762;
+    line-height: 1.4;
+  }
+}
+
+.completed {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 12px;
+  color: #08794f;
+  background: #def7eb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.safeAction {
+  margin-bottom: 0;
+}
+
+@media (max-width: 560px) {
+  .backdrop {
+    padding: 12px;
+  }
+
+  .dialog {
+    padding: 20px;
+  }
+
+  .answerButtons {
+    grid-template-columns: 1fr;
+  }
+}

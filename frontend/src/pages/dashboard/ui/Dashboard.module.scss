@@ -60,8 +60,11 @@
     line-height: 1.45;
   }
 
-  a {
+  button {
+    padding: 0;
+    border: 0;
     color: #7f54df;
+    background: transparent;
     font-weight: 800;
   }
 }
