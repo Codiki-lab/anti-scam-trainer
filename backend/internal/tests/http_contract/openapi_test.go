@@ -116,6 +116,14 @@ func TestOpenAPIV1SpecificationIsValid(t *testing.T) {
 	if !strings.Contains(specification, "X-Request-ID: { $ref: '#/components/headers/RequestID' }") {
 		t.Fatal("OpenAPI v1 does not attach X-Request-ID to responses")
 	}
+	for _, schema := range []string{"AdminScenario:", "AdminStep:", "AdminOption:", "RecentAttempt:"} {
+		if !strings.Contains(specification, "    "+schema) {
+			t.Fatalf("OpenAPI v1 does not define %s", schema)
+		}
+	}
+	if !strings.Contains(specification, "requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' }") || !strings.Contains(specification, "counterparty_message: { type: string, minLength: 1, maxLength: 280 }") {
+		t.Fatal("OpenAPI v1 does not fully document admin topic_id/counterparty_message DTOs")
+	}
 	for _, tag := range []string{"Состояние сервиса", "Аутентификация", "Сценарии", "Прохождения"} {
 		if !strings.Contains(specification, "- name: "+tag) || !strings.Contains(specification, "tags: ["+tag+"]") {
 			t.Fatalf("OpenAPI v1 does not declare and assign the %q Swagger tag", tag)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -130,14 +131,14 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 			if startRecorder.Code != http.StatusOK || strings.Contains(startRecorder.Body.String(), "is_scam") {
 				t.Fatalf("start = (%d,%s), type must stay hidden", startRecorder.Code, startRecorder.Body.String())
 			}
-			wrong := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":0,"option_id":11}`))
+			wrong := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"option_id":11}`))
 			wrong = wrong.WithContext(authservice.WithIdentity(wrong.Context(), authservice.Identity{UserID: 1}))
 			wrongRecorder := httptest.NewRecorder()
 			handler.ServeHTTP(wrongRecorder, wrong)
 			if wrongRecorder.Code != http.StatusConflict {
 				t.Fatalf("option in free play = %d, want 409", wrongRecorder.Code)
 			}
-			foreign := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":0,"free_text":"Чужой ответ"}`))
+			foreign := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"free_text":"Чужой ответ"}`))
 			foreign = foreign.WithContext(authservice.WithIdentity(foreign.Context(), authservice.Identity{UserID: 2}))
 			foreignRecorder := httptest.NewRecorder()
 			handler.ServeHTTP(foreignRecorder, foreign)
@@ -145,9 +146,9 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 				t.Fatalf("foreign free play answer = %d, want 404", foreignRecorder.Code)
 			}
 			for turn := 1; turn <= 3; turn++ {
-				body := `{"step_id":0,"free_text":"Безопасный ответ"}`
+				body := `{"step_id":` + strconv.Itoa(turn) + `,"free_text":"Безопасный ответ"}`
 				if turn == 3 {
-					body = `{"step_id":0,"free_text":"Безопасный ответ","finish":true}`
+					body = `{"step_id":3,"free_text":"Безопасный ответ","finish":true}`
 				}
 				request := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(body))
 				request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
@@ -158,6 +159,15 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 				}
 				if turn < 3 && strings.Contains(recorder.Body.String(), "is_scam") {
 					t.Fatalf("turn %d revealed type", turn)
+				}
+				if turn == 1 {
+					stale := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"free_text":"Повтор"}`))
+					stale = stale.WithContext(authservice.WithIdentity(stale.Context(), authservice.Identity{UserID: 1}))
+					staleRecorder := httptest.NewRecorder()
+					handler.ServeHTTP(staleRecorder, stale)
+					if staleRecorder.Code != http.StatusConflict || !strings.Contains(staleRecorder.Body.String(), `"code":"STALE_STEP"`) {
+						t.Fatalf("repeated free-play step = (%d,%s)", staleRecorder.Code, staleRecorder.Body.String())
+					}
 				}
 				if turn == 3 && !strings.Contains(recorder.Body.String(), `"is_scam"`) {
 					t.Fatalf("completion lacks reveal: %s", recorder.Body.String())
@@ -177,7 +187,7 @@ func TestHTTPFreePlayAIFailureHasNoSideEffects(t *testing.T) {
 	start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
 	handler.ServeHTTP(httptest.NewRecorder(), start)
 	beforeMessages := len(store.messages)
-	answer := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":0,"free_text":"Безопасный ответ"}`))
+	answer := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"free_text":"Безопасный ответ"}`))
 	answer = answer.WithContext(authservice.WithIdentity(answer.Context(), authservice.Identity{UserID: 1}))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, answer)

@@ -4,11 +4,13 @@ DELETE FROM achievements WHERE code IN ('first_training','five_trainings','perfe
 ALTER TABLE achievements DROP CONSTRAINT IF EXISTS achievements_code_key;
 ALTER TABLE achievements DROP COLUMN IF EXISTS code;
 
--- Restore the four L1-L2 and four L3-L4 scenarios that existed before v6.
-DELETE FROM chat_options o USING chat_steps s, chats c
-WHERE o.step_id=s.id AND s.chat_id=c.id AND c.product_context->>'seed_version' IS DISTINCT FROM 'issue-49' AND o.sort_order>2;
-DELETE FROM chat_steps s USING chats c, levels l
-WHERE s.chat_id=c.id AND c.level_id=l.id AND c.product_context->>'seed_version' IS DISTINCT FROM 'issue-49' AND l.level_number IN(3,4) AND s.step_number>1;
+-- Restore only rows and values recorded as migration-owned during v6 up.
+UPDATE chat_steps s SET response_type=m.previous_response_type FROM migration_000006_changed_step_types m WHERE s.id=m.id;
+DELETE FROM chat_options WHERE id IN (SELECT id FROM migration_000006_added_options);
+DELETE FROM chat_steps WHERE id IN (SELECT id FROM migration_000006_added_steps);
+DROP TABLE migration_000006_changed_step_types;
+DROP TABLE migration_000006_added_options;
+DROP TABLE migration_000006_added_steps;
 
 DELETE FROM chats WHERE product_context->>'seed_version' = 'issue-49';
 ALTER TABLE chat_steps DROP COLUMN IF EXISTS counterparty_message;

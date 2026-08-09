@@ -414,20 +414,73 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 	if err != nil {
 		return err
 	}
-	dateExpression := `(NOW() AT TIME ZONE 'Europe/Moscow')::date`
-	if _, err = s.db.Exec(`INSERT INTO daily_activity(user_id,activity_date) VALUES(?,`+dateExpression+`) ON CONFLICT DO NOTHING`, userID); err != nil {
+	location, _ := time.LoadLocation("Europe/Moscow")
+	now := time.Now().In(location)
+	activityDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
+	dateText := activityDate.Format("2006-01-02")
+	if _, err = s.db.Exec(`INSERT INTO daily_activity(user_id,activity_date) VALUES(?,?::date) ON CONFLICT DO NOTHING`, userID, dateText); err != nil {
 		return err
 	}
-	if _, err = s.db.Exec(`UPDATE users SET current_streak=CASE WHEN last_activity_date=`+dateExpression+` THEN current_streak WHEN last_activity_date=`+dateExpression+`-1 THEN current_streak+1 ELSE 1 END,longest_streak=GREATEST(longest_streak,CASE WHEN last_activity_date=`+dateExpression+` THEN current_streak WHEN last_activity_date=`+dateExpression+`-1 THEN current_streak+1 ELSE 1 END),last_activity_date=`+dateExpression+` WHERE id=?`, userID); err != nil {
+	var streakRow struct {
+		CurrentStreak    int    `pg:"current_streak"`
+		LongestStreak    int    `pg:"longest_streak"`
+		LastActivityDate string `pg:"last_activity_date"`
+	}
+	_, err = s.db.QueryOne(&streakRow, `SELECT current_streak,longest_streak,COALESCE(last_activity_date::text,'') last_activity_date FROM users WHERE id=? FOR UPDATE`, userID)
+	if err != nil {
 		return err
 	}
+	var lastActivity time.Time
+	if streakRow.LastActivityDate != "" {
+		lastActivity, _ = time.ParseInLocation("2006-01-02", streakRow.LastActivityDate, location)
+	}
+	currentStreak, longestStreak, streakChanged := domain.NextStreak(streakRow.CurrentStreak, streakRow.LongestStreak, lastActivity, activityDate)
+	if streakChanged {
+		if _, err = s.db.Exec(`UPDATE users SET current_streak=?,longest_streak=?,last_activity_date=?::date WHERE id=?`, currentStreak, longestStreak, dateText, userID); err != nil {
+			return err
+		}
+	}
+	result.Streak = domain.Streak{Current: currentStreak, Longest: longestStreak, ActiveToday: true, LastActivityDate: dateText}
 	if result.TopicID != 0 {
-		_, err = s.db.Exec(`UPDATE user_topic_progress p SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND topic_id=? AND theory_read_at IS NOT NULL AND quiz_passed=TRUE AND 4=(SELECT COUNT(*) FROM user_level_progress lp WHERE lp.user_id=p.user_id AND lp.topic_id=p.topic_id AND lp.stars>0)`, userID, result.TopicID)
+		var topicState struct {
+			TheoryRead bool `pg:"theory_read"`
+			QuizPassed bool `pg:"quiz_passed"`
+		}
+		_, err = s.db.QueryOne(&topicState, `SELECT theory_read_at IS NOT NULL theory_read,quiz_passed FROM user_topic_progress WHERE user_id=? AND topic_id=?`, userID, result.TopicID)
 		if err != nil {
 			return err
 		}
+		var levelRows []struct {
+			Number int `pg:"number"`
+			Stars  int `pg:"stars"`
+		}
+		_, err = s.db.Query(&levelRows, `SELECT l.level_number number,p.stars FROM user_level_progress p JOIN levels l ON l.id=p.level_id WHERE p.user_id=? AND p.topic_id=? ORDER BY l.level_number`, userID, result.TopicID)
+		if err != nil {
+			return err
+		}
+		levels := make([]domain.TopicLevelProgress, len(levelRows))
+		for i, row := range levelRows {
+			levels[i] = domain.TopicLevelProgress{Number: row.Number, Stars: row.Stars}
+		}
+		if domain.TopicComplete(topicState.TheoryRead, topicState.QuizPassed, levels) {
+			if _, err = s.db.Exec(`UPDATE user_topic_progress SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND topic_id=?`, userID, result.TopicID); err != nil {
+				return err
+			}
+		}
 		_, _ = s.db.QueryOne(pg.Scan(&result.TopicCompleted), `SELECT completed_at IS NOT NULL FROM user_topic_progress WHERE user_id=? AND topic_id=?`, userID, result.TopicID)
 	}
+	var stats domain.AchievementStats
+	_, err = s.db.QueryOne(&stats, `SELECT
+		(SELECT COUNT(*) FROM chat_sessions WHERE user_id=? AND status='COMPLETED') completed_attempts,
+		(SELECT COALESCE(MAX(score),0) FROM chat_sessions WHERE user_id=? AND status='COMPLETED') perfect_score,
+		(SELECT COUNT(*) FROM user_topic_progress WHERE user_id=? AND completed_at IS NOT NULL) completed_topics,
+		(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='buyer') buyer_topics,
+		(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='seller') seller_topics,
+		? streak`, userID, userID, userID, userID, userID, currentStreak)
+	if err != nil {
+		return err
+	}
+	eligibleCodes := domain.EligibleAchievementCodes(stats)
 	type awarded struct {
 		Code        string `pg:"code"`
 		Title       string `pg:"title"`
@@ -437,24 +490,20 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 		ReceivedAt  time.Time
 	}
 	var rows []awarded
-	_, err = s.db.Query(&rows, `WITH stats AS (SELECT (SELECT COUNT(*) FROM chat_sessions WHERE user_id=? AND status='COMPLETED') completed_attempts,(SELECT COUNT(*) FROM user_topic_progress WHERE user_id=? AND completed_at IS NOT NULL) completed_topics,(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='buyer') buyer_topics,(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='seller') seller_topics,(SELECT current_streak FROM users WHERE id=?) streak), eligible AS (SELECT a.id FROM achievements a,stats s WHERE (a.code='first_training' AND s.completed_attempts>=1) OR (a.code='five_trainings' AND s.completed_attempts>=5) OR (a.code='perfect_score' AND ?>=100) OR (a.code='first_topic_completed' AND s.completed_topics>=1) OR (a.code='all_buyer_topics' AND s.buyer_topics>=6) OR (a.code='all_seller_topics' AND s.seller_topics>=6) OR (a.code='streak_3' AND s.streak>=3) OR (a.code='streak_7' AND s.streak>=7)), inserted AS (INSERT INTO user_achievements(user_id,achievement_id) SELECT ?,id FROM eligible ON CONFLICT DO NOTHING RETURNING achievement_id,received_at) SELECT a.code,a.title,a.description,COALESCE(a.icon,'') icon,a.condition_value::int target,i.received_at FROM inserted i JOIN achievements a ON a.id=i.achievement_id`, userID, userID, userID, userID, userID, result.Score, userID)
-	if err != nil {
-		return err
+	if len(eligibleCodes) > 0 {
+		_, err = s.db.Query(&rows, `WITH inserted AS (
+			INSERT INTO user_achievements(user_id,achievement_id)
+			SELECT ?,id FROM achievements WHERE code IN (?) ON CONFLICT DO NOTHING RETURNING achievement_id,received_at
+		) SELECT a.code,a.title,a.description,COALESCE(a.icon,'') icon,a.condition_value::int target,i.received_at FROM inserted i JOIN achievements a ON a.id=i.achievement_id`, userID, pg.In(eligibleCodes))
+		if err != nil {
+			return err
+		}
 	}
 	result.NewAchievements = make([]domain.Achievement, len(rows))
 	for i, x := range rows {
-		result.NewAchievements[i] = domain.Achievement{Code: x.Code, Title: x.Title, Description: x.Description, Icon: x.Icon, Earned: true, EarnedAt: x.ReceivedAt, Current: x.Target, Target: x.Target}
+		current := achievementCurrent(x.Code, stats)
+		result.NewAchievements[i] = domain.Achievement{Code: x.Code, Title: x.Title, Description: x.Description, Icon: x.Icon, Earned: true, EarnedAt: x.ReceivedAt, Current: current, Target: x.Target}
 	}
-	var streakRow struct {
-		CurrentStreak    int
-		LongestStreak    int
-		LastActivityDate string
-	}
-	_, err = s.db.QueryOne(&streakRow, `SELECT current_streak,longest_streak,COALESCE(last_activity_date::text,'') last_activity_date FROM users WHERE id=?`, userID)
-	if err != nil {
-		return err
-	}
-	result.Streak = domain.Streak{Current: streakRow.CurrentStreak, Longest: streakRow.LongestStreak, ActiveToday: true, LastActivityDate: streakRow.LastActivityDate}
 	if level > 0 {
 		var progress struct {
 			BestScore int `pg:"best_score"`
@@ -491,6 +540,23 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 		}
 	}
 	return s.saveResult(result)
+}
+
+func achievementCurrent(code string, stats domain.AchievementStats) int {
+	switch code {
+	case "perfect_score":
+		return stats.PerfectScore
+	case "first_topic_completed":
+		return stats.CompletedTopics
+	case "all_buyer_topics":
+		return stats.BuyerTopics
+	case "all_seller_topics":
+		return stats.SellerTopics
+	case "streak_3", "streak_7":
+		return stats.Streak
+	default:
+		return stats.CompletedAttempts
+	}
 }
 func (s gameTransactionStore) saveResult(result *domain.AttemptResult) error {
 	encoded, err := json.Marshal(result)

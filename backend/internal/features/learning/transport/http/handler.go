@@ -126,12 +126,13 @@ func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "role must be buyer or seller", 400)
 		return
 	}
-	items, err := h.service.Progress(user.UserID, selected)
+	items, recent, average, err := h.service.Progress(user.UserID, selected)
 	if err != nil {
 		learningError(w, err)
 		return
 	}
 	completed := 0
+	completedLevels := 0
 	stars := 0
 	for _, t := range items {
 		if t.Completed {
@@ -139,9 +140,12 @@ func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, l := range t.Levels {
 			stars += l.Stars
+			if l.Stars > 0 {
+				completedLevels++
+			}
 		}
 	}
-	response.JSON(w, map[string]any{"role": selected, "summary": map[string]any{"completed_topics": completed, "total_topics": len(items), "stars": stars}, "topics": topicsDTO(items)})
+	response.JSON(w, map[string]any{"role": selected, "summary": map[string]any{"completed_topics": completed, "total_topics": len(items), "completed_levels": completedLevels, "total_levels": len(items) * 4, "stars": stars, "average_score": average}, "topics": topicsDTO(items), "recent_attempts": recent})
 }
 func (h *Handler) achievements(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -244,7 +248,7 @@ func learningError(w http.ResponseWriter, err error) {
 	case errors.Is(err, service.ErrInvalidQuiz):
 		response.Error(w, "invalid quiz submission", 400)
 	case errors.Is(err, apperrors.ErrForbidden):
-		response.Error(w, "content is not available", 403)
+		response.ErrorCode(w, "CONTENT_UNAVAILABLE", "content is not available", 403, nil)
 	case errors.Is(err, service.ErrTopicNotFound):
 		response.Error(w, "topic not found", 404)
 	default:

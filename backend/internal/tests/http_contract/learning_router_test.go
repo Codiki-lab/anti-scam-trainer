@@ -17,6 +17,13 @@ func TestHTTPLearningContractKeepsTheoryIdempotentAndQuizAnswersPrivate(t *testi
 	store := &learningStore{}
 	handler := router.New()
 	handler.Register(router.V1, learninghttp.New(learningservice.New(store)).Routes())
+	lockedQuiz := httptest.NewRequest(http.MethodGet, "/api/v1/topics/1/quiz", nil)
+	lockedQuiz = lockedQuiz.WithContext(authservice.WithIdentity(lockedQuiz.Context(), authservice.Identity{UserID: 7}))
+	lockedRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(lockedRecorder, lockedQuiz)
+	if body := lockedRecorder.Body.String(); lockedRecorder.Code != http.StatusForbidden || !strings.Contains(body, `"code":"CONTENT_UNAVAILABLE"`) {
+		t.Fatalf("locked quiz = (%d,%s)", lockedRecorder.Code, body)
+	}
 
 	markTheory := func() *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/topics/1/theory/read", nil)
@@ -101,6 +108,9 @@ func (s *learningStore) Quiz(int) ([]domain.QuizQuestion, error) {
 
 func (s *learningStore) SubmitQuiz(_ int, _ int, _ []domain.QuizAnswer, _ time.Time) (domain.QuizResult, error) {
 	return domain.QuizResult{Score: 80, Passed: true, BestScore: 80, NewlyPassed: true, Streak: domain.Streak{Current: 1, Longest: 1, ActiveToday: true}}, nil
+}
+func (s *learningStore) RecentAttempts(int, domain.UserRole) ([]domain.RecentAttempt, float64, error) {
+	return []domain.RecentAttempt{}, 0, nil
 }
 
 func (s *learningStore) Achievements(int) ([]domain.Achievement, error) {

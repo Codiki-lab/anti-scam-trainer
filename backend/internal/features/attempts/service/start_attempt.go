@@ -26,7 +26,7 @@ func (s *GameService) GetState(userID, attemptID int) (GameState, error) {
 		if configErr != nil {
 			return GameState{}, configErr
 		}
-		return GameState{Attempt: attempt, Scenario: domain.Scenario{ProductContext: config.ProductContext}, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Messages: messages, Answers: answers, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
+		return GameState{Attempt: attempt, Scenario: domain.Scenario{ProductContext: config.ProductContext}, Step: freePlayStep(attempt.FreeTextCount), Messages: messages, Answers: answers, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
 	}
 	scenario, err := s.repository.Scenario(attempt.ScenarioID)
 	if err != nil {
@@ -163,7 +163,7 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 		if answersErr != nil {
 			return GameState{}, answersErr
 		}
-		return GameState{Attempt: attempt, Scenario: domain.Scenario{ProductContext: config.ProductContext}, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Answers: answers, Messages: messages, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
+		return GameState{Attempt: attempt, Scenario: domain.Scenario{ProductContext: config.ProductContext}, Step: freePlayStep(attempt.FreeTextCount), Answers: answers, Messages: messages, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
 	}
 	if s.ai == nil {
 		return GameState{}, ErrAIUnavailable
@@ -188,5 +188,10 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 		return GameState{}, err
 	}
 	message.AttemptID = attempt.ID
-	return GameState{Attempt: attempt, Scenario: freePlayScenario, Step: domain.ScenarioStep{ResponseType: domain.ResponseTypeFreeText}, Messages: []domain.DialogueMessage{message}}, nil
+	return GameState{Attempt: attempt, Scenario: freePlayScenario, Step: freePlayStep(0), Messages: []domain.DialogueMessage{message}}, nil
+}
+
+func freePlayStep(answered int) domain.ScenarioStep {
+	next := answered + 1
+	return domain.ScenarioStep{ID: next, Number: next, ResponseType: domain.ResponseTypeFreeText}
 }

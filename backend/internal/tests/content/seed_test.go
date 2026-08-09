@@ -1,9 +1,12 @@
 package content_test
 
 import (
+	"anti-scam-trainer/backend/internal/core/domain"
+	learningrepository "anti-scam-trainer/backend/internal/features/learning/repository"
 	scenariosrepository "anti-scam-trainer/backend/internal/features/scenarios/repository"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-pg/pg"
 )
@@ -79,6 +82,17 @@ func TestPublishedContentMatrix(t *testing.T) {
 	if invalid != 0 {
 		t.Fatalf("unsafe content fragments=%d", invalid)
 	}
+	var theorySignatures, quizSignatures, scenarioSignatures int
+	_, err = db.QueryOne(pg.Scan(&theorySignatures, &quizSignatures, &scenarioSignatures), `SELECT
+		(SELECT COUNT(DISTINCT signature) FROM (SELECT topic_id,string_agg(body,'|' ORDER BY sort_order) signature FROM theory_blocks GROUP BY topic_id) x),
+		(SELECT COUNT(DISTINCT signature) FROM (SELECT topic_id,string_agg(text||' '||explanation,'|' ORDER BY sort_order) signature FROM quiz_questions GROUP BY topic_id) x),
+		(SELECT COUNT(DISTINCT signature) FROM (SELECT c.topic_id,string_agg(s.counterparty_message,'|' ORDER BY l.level_number,s.step_number) signature FROM chats c JOIN levels l ON l.id=c.level_id JOIN chat_steps s ON s.chat_id=c.id WHERE c.content_status='published' GROUP BY c.topic_id) x)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if theorySignatures != 12 || quizSignatures != 12 || scenarioSignatures != 12 {
+		t.Fatalf("topic-specific signatures=(%d,%d,%d), want all 12", theorySignatures, quizSignatures, scenarioSignatures)
+	}
 
 	var scenarioIDs []int
 	if _, err := db.Query(&scenarioIDs, `SELECT id FROM chats WHERE content_status='published' AND archived_at IS NULL ORDER BY id`); err != nil {
@@ -93,5 +107,85 @@ func TestPublishedContentMatrix(t *testing.T) {
 		if !valid {
 			t.Fatalf("published scenario %d does not pass publication validator", scenarioID)
 		}
+	}
+}
+
+func TestLearningActivityAwardsStreakAchievements(t *testing.T) {
+	database := os.Getenv("POSTGRES_TEST_NAME")
+	if database == "" {
+		t.Skip("POSTGRES_TEST_NAME is not set")
+	}
+	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
+	defer db.Close()
+	var userID, topicID int
+	_, err := db.QueryOne(pg.Scan(&userID), `INSERT INTO users(username,password_hash,access_role,training_role,current_streak,longest_streak,last_activity_date) VALUES('streak-learning-test','hash','user','buyer',2,2,'2026-08-08') RETURNING id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.Exec(`DELETE FROM users WHERE id=?`, userID) }()
+	_, err = db.QueryOne(pg.Scan(&topicID), `SELECT id FROM topics WHERE slug='buyer-phishing-links'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := learningrepository.NewPostgres(db)
+	activityDate := time.Date(2026, 8, 9, 0, 0, 0, 0, time.FixedZone("Europe/Moscow", 3*60*60))
+	streak, _, err := repository.MarkTheoryRead(userID, topicID, activityDate)
+	if err != nil || streak.Current != 3 {
+		t.Fatalf("theory streak = (%#v,%v)", streak, err)
+	}
+	var awarded int
+	_, err = db.QueryOne(pg.Scan(&awarded), `SELECT COUNT(*) FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=? AND a.code='streak_3'`, userID)
+	if err != nil || awarded != 1 {
+		t.Fatalf("streak_3 awards=%d, err=%v", awarded, err)
+	}
+
+	_, err = db.Exec(`UPDATE users SET current_streak=6,longest_streak=6,last_activity_date='2026-08-09' WHERE id=?`, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answers []domain.QuizAnswer
+	_, err = db.Query(&answers, `SELECT q.id question_id,o.id option_id FROM quiz_questions q JOIN quiz_options o ON o.question_id=q.id AND o.is_correct=TRUE WHERE q.topic_id=? ORDER BY q.sort_order`, topicID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quizDate := activityDate.AddDate(0, 0, 1)
+	if _, err = repository.SubmitQuiz(userID, topicID, answers, quizDate); err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.QueryOne(pg.Scan(&awarded), `SELECT COUNT(*) FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=? AND a.code='streak_7'`, userID)
+	if err != nil || awarded != 1 {
+		t.Fatalf("streak_7 awards=%d, err=%v", awarded, err)
+	}
+}
+
+func TestProgressStatsExcludeAbandonedAttempts(t *testing.T) {
+	database := os.Getenv("POSTGRES_TEST_NAME")
+	if database == "" {
+		t.Skip("POSTGRES_TEST_NAME is not set")
+	}
+	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
+	defer db.Close()
+	var userID, chatID int
+	_, err := db.QueryOne(pg.Scan(&userID), `INSERT INTO users(username,password_hash,access_role,training_role) VALUES('progress-stats-test','hash','user','buyer') RETURNING id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = db.Exec(`DELETE FROM chat_sessions WHERE user_id=?`, userID)
+		_, _ = db.Exec(`DELETE FROM users WHERE id=?`, userID)
+	}()
+	_, err = db.QueryOne(pg.Scan(&chatID), `SELECT c.id FROM chats c JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id WHERE t.slug='buyer-phishing-links' AND l.level_number=1 AND c.content_status='published'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO chat_sessions(user_id,chat_id,status,mode,current_step_number,score,user_role,finished_at) VALUES
+		(?,?,'COMPLETED','scenario',3,80,'buyer',NOW()-INTERVAL '1 minute'),
+		(?,?,'ABANDONED','scenario',2,100,'buyer',NOW())`, userID, chatID, userID, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recent, average, err := learningrepository.NewPostgres(db).RecentAttempts(userID, domain.UserRoleBuyer)
+	if err != nil || len(recent) != 1 || recent[0].Score != 80 || average != 80 {
+		t.Fatalf("progress stats = (%#v,%v,%v), want one completed score 80", recent, average, err)
 	}
 }

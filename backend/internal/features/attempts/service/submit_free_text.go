@@ -73,6 +73,9 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 			return GameState{}, nil, apperrors.ErrInvalidAnswer
 		}
 	} else {
+		if expectedStepID != nil && *expectedStepID != attempt.FreeTextCount+1 {
+			return GameState{}, nil, apperrors.ErrStaleStep
+		}
 		config, configErr := s.repository.FreePlayConfig(attempt.UserRole)
 		if configErr != nil {
 			return GameState{}, nil, configErr
@@ -135,6 +138,9 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	}
 	attempt.FreeTextCount, attempt.CurrentStepNumber = count, nextNumber
 	nextStep := step
+	if attempt.Mode == domain.AttemptModeFreePlay {
+		nextStep = freePlayStep(count)
+	}
 	if nextNumber != step.Number {
 		nextStep, err = s.repository.Step(attempt.ScenarioID, nextNumber)
 		if err != nil {
@@ -232,7 +238,11 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 			return err
 		}
 		if attempt.Mode != domain.AttemptModeFreePlay {
-			progress := domain.Progress{UserID: attempt.UserID, LevelID: scenario.LevelID, TopicID: scenario.TopicID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), Attempts: 1, PassedAt: attempt.FinishedAt}
+			passedAt := time.Time{}
+			if result.Stars > 0 {
+				passedAt = attempt.FinishedAt
+			}
+			progress := domain.Progress{UserID: attempt.UserID, LevelID: scenario.LevelID, TopicID: scenario.TopicID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: result.Stars, Attempts: 1, PassedAt: passedAt}
 			if err := store.SaveProgress(progress); err != nil {
 				return err
 			}

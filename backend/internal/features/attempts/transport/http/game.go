@@ -213,7 +213,11 @@ func gameStateDTO(state service.GameState) map[string]interface{} {
 		if answer.OptionID != nil {
 			optionID = *answer.OptionID
 		}
-		history[i] = map[string]interface{}{"step_id": answer.StepID, "option_id": optionID}
+		stepID := answer.StepID
+		if state.Attempt.Mode == domain.AttemptModeFreePlay {
+			stepID = answer.TurnNumber
+		}
+		history[i] = map[string]interface{}{"step_id": stepID, "option_id": optionID}
 	}
 	messages := make([]map[string]interface{}, len(state.Messages))
 	for i, message := range state.Messages {
@@ -242,7 +246,7 @@ func resultDTO(result domain.AttemptResult) map[string]interface{} {
 func gameError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, apperrors.ErrForbidden):
-		response.Error(w, "level is closed", http.StatusForbidden)
+		response.ErrorCode(w, "CONTENT_UNAVAILABLE", "level is closed", http.StatusForbidden, nil)
 	case errors.Is(err, apperrors.ErrAttemptNotFound), errors.Is(err, apperrors.ErrScenarioNotFound):
 		response.Error(w, "not found", http.StatusNotFound)
 	case errors.Is(err, apperrors.ErrInvalidAnswer), errors.Is(err, apperrors.ErrInvalidAttemptStatusTransition):

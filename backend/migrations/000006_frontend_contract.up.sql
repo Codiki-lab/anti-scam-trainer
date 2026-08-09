@@ -43,14 +43,42 @@ INSERT INTO theory_blocks (topic_id, sort_order, kind, title, body)
 SELECT t.id, n,
        (ARRAY['intro','risk','example','safe_action','summary'])[n],
        (ARRAY['Что происходит','Признаки риска','Разбор ситуации','Безопасное действие','Главное'])[n] || ': ' || t.title,
-       (ARRAY[
-           'Сначала уточните условия сделки и используйте только функции внутри сервиса.',
-           'Риск повышают спешка, просьба раскрыть секретные данные и переход в непроверяемый канал.',
-           'Правдоподобный собеседник может давить на срочность; это повод остановиться и проверить условия.',
-           'Не передавайте коды и данные карты. Откройте нужный раздел самостоятельно внутри приложения.',
-           'Сохраняйте переписку в сервисе, проверяйте статус сделки самостоятельно и обращайтесь в штатную поддержку.'
-       ])[n]
-FROM topics t CROSS JOIN generate_series(1, 5) n;
+       CASE n
+           WHEN 1 THEN 'В теме «'||t.title||'» вы учитесь следующему: '||t.description
+           WHEN 2 THEN content.risk_hint
+           WHEN 3 THEN CASE WHEN t.user_role='buyer' THEN 'Покупатель получает предложение: ' ELSE 'Продавец получает сообщение: ' END||content.risk_hint||' Спешка не отменяет проверку.'
+           WHEN 4 THEN content.safe_hint
+           ELSE 'Для темы «'||t.title||'» сохраняйте переписку в сервисе и проверяйте статус сделки самостоятельно.'
+       END
+FROM topics t CROSS JOIN generate_series(1, 5) n
+CROSS JOIN LATERAL (SELECT
+    CASE t.slug
+      WHEN 'buyer-phishing-links' THEN 'Поддельная страница маскируется под знакомый интерфейс и просит открыть внешний адрес.'
+      WHEN 'buyer-prepayment' THEN 'Предоплату требуют до проверки товара и штатного оформления сделки.'
+      WHEN 'buyer-fake-delivery' THEN 'Собеседник подменяет штатное оформление доставки собственной инструкцией.'
+      WHEN 'buyer-off-platform' THEN 'Собеседник уводит договорённости в другой мессенджер, где история сделки не защищена.'
+      WHEN 'buyer-sms-codes' THEN 'Код подтверждает действие владельца; собеседнику он не нужен.'
+      WHEN 'buyer-too-good-offer' THEN 'Необычно низкая цена сочетается с давлением и запретом спокойно проверить условия.'
+      WHEN 'seller-fake-payment' THEN 'Скриншот или сообщение собеседника не подтверждает фактическое получение оплаты.'
+      WHEN 'seller-fake-delivery' THEN 'Покупатель предлагает продавцу нештатную форму передачи или получения товара.'
+      WHEN 'seller-external-links' THEN 'Внешняя форма якобы нужна продавцу для получения денег, но запрашивает секретные данные.'
+      WHEN 'seller-confirmation-codes' THEN 'Код подтверждения нужен владельцу аккаунта, а не покупателю или курьеру.'
+      WHEN 'seller-off-platform' THEN 'Увод продавца из чата лишает сделку проверяемой истории договорённостей.'
+      ELSE 'Давление и искусственная срочность мешают продавцу самостоятельно проверить оплату и условия.' END risk_hint,
+    CASE t.slug
+      WHEN 'buyer-phishing-links' THEN 'Не открывайте адрес из сообщения; найдите нужный раздел самостоятельно внутри приложения.'
+      WHEN 'buyer-prepayment' THEN 'Не переводите предоплату вне штатного оформления и сначала проверьте условия получения товара.'
+      WHEN 'buyer-fake-delivery' THEN 'Оформляйте доставку только из карточки сделки внутри приложения.'
+      WHEN 'buyer-off-platform' THEN 'Продолжайте обсуждение и оформление в чате сервиса.'
+      WHEN 'buyer-sms-codes' THEN 'Никому не передавайте код и отмените действие, которого не начинали.'
+      WHEN 'buyer-too-good-offer' THEN 'Возьмите паузу, сравните условия и откажитесь от решения под давлением.'
+      WHEN 'seller-fake-payment' THEN 'Проверяйте оплату только в собственном интерфейсе сделки, а не по сообщению покупателя.'
+      WHEN 'seller-fake-delivery' THEN 'Используйте штатное оформление передачи товара и самостоятельно проверяйте его статус.'
+      WHEN 'seller-external-links' THEN 'Не открывайте форму покупателя; получение оплаты не требует секретных данных продавца.'
+      WHEN 'seller-confirmation-codes' THEN 'Не называйте код и проверьте действие в своём аккаунте.'
+      WHEN 'seller-off-platform' THEN 'Сохраняйте переписку с покупателем внутри сервиса.'
+      ELSE 'Остановитесь, перепроверьте оплату и условия без участия торопящего собеседника.' END safe_hint
+) content;
 
 CREATE TABLE quiz_questions (
     id SERIAL PRIMARY KEY,
@@ -73,25 +101,25 @@ CREATE TABLE quiz_options (
 INSERT INTO quiz_questions (topic_id, sort_order, text, explanation)
 SELECT t.id, n,
        CASE n
-           WHEN 1 THEN 'Что безопаснее сделать, если собеседник прислал инструкцию вне сервиса?'
-           WHEN 2 THEN 'Кому можно сообщить код подтверждения из уведомления?'
-           WHEN 3 THEN 'Как проверить статус оплаты или доставки?'
-           WHEN 4 THEN 'Что делать при требовании немедленно продолжить сделку?'
-           ELSE 'Где лучше сохранять договорённости по сделке?'
+           WHEN 1 THEN 'Какой основной риск проверяет тема «'||t.title||'»?'
+           WHEN 2 THEN 'Как безопасно действовать в ситуации «'||t.title||'»?'
+           WHEN 3 THEN 'Где самостоятельно проверить статус по теме «'||t.title||'»?'
+           WHEN 4 THEN 'Что делать, если в ситуации «'||t.title||'» вас торопят?'
+           ELSE 'Где сохранять договорённости, связанные с темой «'||t.title||'»?'
        END,
-       'Безопасное действие выполняется самостоятельно внутри приложения и не требует передачи секретов собеседнику.'
+       'Ответ следует правилу темы: '||t.description||' Безопасное действие выполняется самостоятельно внутри приложения.'
 FROM topics t CROSS JOIN generate_series(1, 5) n;
 
 INSERT INTO quiz_options (question_id, sort_order, text, is_correct)
 SELECT q.id, o.n,
        CASE o.n
-           WHEN 1 THEN 'Выполнить просьбу сразу, чтобы не потерять сделку'
-           WHEN 2 THEN 'Передать только часть данных или кода'
-           WHEN 3 THEN 'Самостоятельно проверить всё внутри приложения и не передавать секреты'
-           ELSE 'Продолжить в другом мессенджере, если собеседнику так удобнее'
+           WHEN 1 THEN 'Сразу выполнить просьбу собеседника по теме «'||t.title||'»'
+           WHEN 2 THEN 'Передать часть запрошенных данных и продолжить'
+           WHEN 3 THEN 'Самостоятельно проверить ситуацию внутри приложения: '||t.description
+           ELSE 'Перенести обсуждение в другой канал ради удобства собеседника'
        END,
        o.n = 3
-FROM quiz_questions q CROSS JOIN generate_series(1, 4) o(n);
+FROM quiz_questions q JOIN topics t ON t.id=q.topic_id CROSS JOIN generate_series(1, 4) o(n);
 
 CREATE TABLE user_topic_progress (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -169,39 +197,46 @@ INSERT INTO chat_steps (chat_id, step_number, response_type, step_goal, counterp
 SELECT c.id,
        n,
        CASE l.level_number WHEN 1 THEN 'multiple_choice' WHEN 2 THEN 'similar_choice' WHEN 3 THEN 'mixed' ELSE 'free_text' END,
-       'Проверить безопасное действие пользователя на этапе ' || n,
+       'Проверить безопасное действие по теме «' || t.title || '» на этапе ' || n,
        CASE n
-           WHEN 1 THEN 'Давайте продолжим быстрее — выполните мою инструкцию.'
-           WHEN 2 THEN 'Мне нужно подтверждение, иначе сделка не состоится.'
-           WHEN 3 THEN 'Решайте сейчас, времени почти не осталось.'
-           ELSE 'Это последний шаг, подтвердите действие.'
+           WHEN 1 THEN 'По теме «'||t.title||'» предлагаю действовать по моей инструкции, так будет быстрее.'
+           WHEN 2 THEN CASE WHEN t.user_role='buyer' THEN 'Я как продавец уже всё подготовил; подтвердите действие сейчас.' ELSE 'Я как покупатель уже всё подтвердил; теперь действие требуется от вас.' END
+           WHEN 3 THEN 'Условия по ситуации «'||t.title||'» скоро изменятся, решайте немедленно.'
+           ELSE 'Это последний шаг ситуации «'||t.title||'», подтвердите решение.'
        END,
-       CASE WHEN l.level_number >= 3 THEN 'Оцени отказ от внешнего канала и передачи секретов; ответь безопасным JSON.' ELSE NULL END,
-       'Я настаиваю на быстром действии, но вы можете проверить всё внутри сервиса.',
+       CASE WHEN l.level_number >= 3 THEN 'Оцени безопасное действие именно для риска «'||t.title||'»: '||t.description||' Верни строгий JSON.' ELSE NULL END,
+       'Вы можете остановиться и самостоятельно проверить ситуацию «'||t.title||'» внутри сервиса.',
        100
 FROM chats c
 JOIN levels l ON l.id = c.level_id
+JOIN topics t ON t.id = c.topic_id
 CROSS JOIN LATERAL generate_series(1, CASE WHEN l.level_number = 4 THEN 4 ELSE 3 END) n
 WHERE c.product_context->>'seed_version' = 'issue-49';
 
 INSERT INTO chat_options (step_id, option_text, explanation, points, sort_order)
 SELECT s.id,
        CASE o.n
-           WHEN 1 THEN 'Сразу выполнить просьбу собеседника'
-           WHEN 2 THEN 'Передать часть данных для проверки'
-           WHEN 3 THEN 'Попросить немного времени, но перейти во внешний канал'
-           ELSE 'Остаться внутри сервиса, не передавать секреты и проверить статус самостоятельно'
+           WHEN 1 THEN 'Сразу выполнить просьбу по ситуации «'||t.title||'»'
+           WHEN 2 THEN 'Передать часть запрошенных данных для проверки'
+           WHEN 3 THEN 'Продолжить обсуждение ситуации в другом канале'
+           ELSE 'Проверить ситуацию «'||t.title||'» самостоятельно внутри сервиса'
        END,
-       CASE WHEN o.n = 4 THEN 'Штатный канал и самостоятельная проверка уменьшают риск.' ELSE 'Спешка, внешний канал или передача данных сохраняют риск.' END,
+       CASE WHEN o.n = 4 THEN 'Действие учитывает особенности темы «'||t.title||'» и сохраняет штатный канал.' ELSE 'Для темы «'||t.title||'» это действие сохраняет риск.' END,
        (ARRAY[0,25,50,100])[o.n],
        o.n
 FROM chat_steps s
 JOIN chats c ON c.id = s.chat_id
 JOIN levels l ON l.id = c.level_id
+JOIN topics t ON t.id = c.topic_id
 CROSS JOIN generate_series(1, 4) o(n)
 WHERE c.product_context->>'seed_version' = 'issue-49' AND l.level_number <= 3;
 
 -- Bring the eight preserved Scenarios to the same complete L1-L4 content shape.
+CREATE TABLE migration_000006_added_steps (id INTEGER PRIMARY KEY);
+CREATE TABLE migration_000006_added_options (id INTEGER PRIMARY KEY);
+CREATE TABLE migration_000006_changed_step_types (id INTEGER PRIMARY KEY, previous_response_type VARCHAR NOT NULL);
+
+WITH inserted AS (
 INSERT INTO chat_steps (chat_id,step_number,response_type,step_goal,counterparty_message,ai_instruction,fallback_message,max_points)
 SELECT c.id,n,
        CASE WHEN l.level_number=3 AND n=3 THEN 'multiple_choice' WHEN l.level_number=3 THEN 'mixed' ELSE 'free_text' END,
@@ -212,7 +247,19 @@ SELECT c.id,n,
 FROM chats c JOIN levels l ON l.id=c.level_id
 CROSS JOIN LATERAL generate_series(1,CASE WHEN l.level_number=4 THEN 4 ELSE 3 END) n
 WHERE c.content_status='published' AND l.level_number IN(3,4)
-  AND NOT EXISTS(SELECT 1 FROM chat_steps s WHERE s.chat_id=c.id AND s.step_number=n);
+  AND NOT EXISTS(SELECT 1 FROM chat_steps s WHERE s.chat_id=c.id AND s.step_number=n)
+RETURNING id
+)
+INSERT INTO migration_000006_added_steps SELECT id FROM inserted;
+
+INSERT INTO migration_000006_changed_step_types(id,previous_response_type)
+SELECT s.id,s.response_type FROM chat_steps s JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id
+WHERE c.content_status='published' AND s.response_type<>CASE
+    WHEN l.level_number=1 THEN 'multiple_choice'
+    WHEN l.level_number=2 THEN 'similar_choice'
+    WHEN l.level_number=3 AND s.step_number=3 THEN 'multiple_choice'
+    WHEN l.level_number=3 THEN 'mixed'
+    ELSE 'free_text' END;
 
 UPDATE chat_steps s SET response_type=CASE
     WHEN l.level_number=1 THEN 'multiple_choice'
@@ -223,6 +270,7 @@ UPDATE chat_steps s SET response_type=CASE
 FROM chats c JOIN levels l ON l.id=c.level_id
 WHERE s.chat_id=c.id AND c.content_status='published';
 
+WITH inserted AS (
 INSERT INTO chat_options(step_id,option_text,explanation,points,sort_order)
 SELECT s.id,
        CASE n WHEN 1 THEN 'Сразу выполнить просьбу собеседника' WHEN 2 THEN 'Передать часть данных для проверки' WHEN 3 THEN 'Перейти в другой канал после короткой проверки' ELSE 'Остаться внутри сервиса и проверить статус самостоятельно' END,
@@ -231,7 +279,14 @@ SELECT s.id,
 FROM chat_steps s JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id
 CROSS JOIN generate_series(1,4)n
 WHERE c.content_status='published' AND l.level_number<=3
-  AND NOT EXISTS(SELECT 1 FROM chat_options o WHERE o.step_id=s.id AND o.sort_order=n);
+  AND NOT EXISTS(SELECT 1 FROM chat_options o WHERE o.step_id=s.id AND o.sort_order=n)
+RETURNING id
+)
+INSERT INTO migration_000006_added_options SELECT id FROM inserted;
+
+UPDATE chat_steps s SET counterparty_message=s.counterparty_message||' Тема: «'||t.title||'», роль: '||CASE WHEN t.user_role='buyer' THEN 'покупатель.' ELSE 'продавец.' END
+FROM chats c JOIN topics t ON t.id=c.topic_id
+WHERE s.chat_id=c.id AND c.content_status='published' AND c.product_context->>'seed_version' IS DISTINCT FROM 'issue-49';
 
 ALTER TABLE achievements ADD COLUMN code VARCHAR;
 UPDATE achievements SET code = 'legacy-' || id WHERE code IS NULL;

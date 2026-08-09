@@ -181,6 +181,26 @@ func TestGameCompletesOnlyAfterLastAnswer(t *testing.T) {
 	}
 }
 
+func TestFailedGameDoesNotSetPassedAt(t *testing.T) {
+	repo := newGameRepository()
+	repo.steps[1].Options[0].Points = 0
+	repo.steps[2].Options[0].Points = 0
+	game := service.NewGame(repo)
+	state, err := game.Start(1, 1, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = game.Submit(1, state.Attempt.ID, 11); err != nil {
+		t.Fatal(err)
+	}
+	if _, completed, err := game.Submit(1, state.Attempt.ID, 21); err != nil || completed == nil {
+		t.Fatalf("completion = (%#v,%v)", completed, err)
+	}
+	if repo.progress.Stars != 0 || !repo.progress.PassedAt.IsZero() {
+		t.Fatalf("failed progress = %#v, want zero stars and no passed_at", repo.progress)
+	}
+}
+
 func TestGameStartResumesOwnedAttemptAndRejectsForeignAnswer(t *testing.T) {
 	repo := newGameRepository()
 	game := service.NewGame(repo)

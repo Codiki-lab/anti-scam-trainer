@@ -231,6 +231,30 @@ func (r *PostgresRepository) SubmitQuiz(userID, topicID int, answers []domain.Qu
 	return result, err
 }
 
+func (r *PostgresRepository) RecentAttempts(userID int, role domain.UserRole) ([]domain.RecentAttempt, float64, error) {
+	var rows []struct {
+		AttemptID  int       `pg:"attempt_id"`
+		TopicID    int       `pg:"topic_id"`
+		Level      int       `pg:"level"`
+		Score      int       `pg:"score"`
+		FinishedAt time.Time `pg:"finished_at"`
+	}
+	_, err := r.db.Query(&rows, `SELECT s.id attempt_id,c.topic_id,l.level_number level,s.score,s.finished_at
+		FROM chat_sessions s JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id
+		WHERE s.user_id=? AND c.user_role=? AND s.status='COMPLETED'
+		ORDER BY s.finished_at DESC,s.id DESC LIMIT 10`, userID, role)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]domain.RecentAttempt, len(rows))
+	for i, row := range rows {
+		result[i] = domain.RecentAttempt{AttemptID: row.AttemptID, TopicID: row.TopicID, Level: row.Level, Score: row.Score, Stars: domain.StarsFromScore(row.Score), Finished: row.FinishedAt}
+	}
+	var average float64
+	_, err = r.db.QueryOne(pg.Scan(&average), `SELECT COALESCE(AVG(s.score),0)::float8 FROM chat_sessions s JOIN chats c ON c.id=s.chat_id WHERE s.user_id=? AND c.user_role=? AND s.status='COMPLETED'`, userID, role)
+	return result, average, err
+}
+
 func recordActivity(tx *pg.Tx, userID int, date time.Time) (domain.Streak, bool, error) {
 	dateText := date.Format("2006-01-02")
 	res, err := tx.Exec(`INSERT INTO daily_activity(user_id,activity_date) VALUES(?,?::date) ON CONFLICT DO NOTHING`, userID, dateText)
@@ -250,7 +274,21 @@ func recordActivity(tx *pg.Tx, userID int, date time.Time) (domain.Streak, bool,
 		LastActivityDate string
 	}
 	_, err = tx.QueryOne(&row, `SELECT current_streak,longest_streak,COALESCE(last_activity_date::text,'') last_activity_date FROM users WHERE id=?`, userID)
-	return domain.Streak{Current: row.CurrentStreak, Longest: row.LongestStreak, ActiveToday: row.LastActivityDate == dateText, LastActivityDate: row.LastActivityDate}, added, err
+	if err != nil {
+		return domain.Streak{}, false, err
+	}
+	streak := domain.Streak{Current: row.CurrentStreak, Longest: row.LongestStreak, ActiveToday: row.LastActivityDate == dateText, LastActivityDate: row.LastActivityDate}
+	codes := domain.EligibleAchievementCodes(domain.AchievementStats{Streak: streak.Current})
+	streakCodes := make([]string, 0, 2)
+	for _, code := range codes {
+		if code == "streak_3" || code == "streak_7" {
+			streakCodes = append(streakCodes, code)
+		}
+	}
+	if len(streakCodes) > 0 {
+		_, err = tx.Exec(`INSERT INTO user_achievements(user_id,achievement_id) SELECT ?,id FROM achievements WHERE code IN (?) ON CONFLICT DO NOTHING`, userID, pg.In(streakCodes))
+	}
+	return streak, added, err
 }
 
 func (r *PostgresRepository) Achievements(userID int) ([]domain.Achievement, error) {

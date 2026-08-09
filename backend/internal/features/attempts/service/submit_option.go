@@ -53,8 +53,12 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 	next, nextErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber+1)
 	if nextErr == nil {
 		var nextMessage *domain.DialogueMessage
-		if strings.TrimSpace(next.FallbackMessage) != "" {
-			message := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleAssistant, Text: next.FallbackMessage, CreatedAt: time.Now().UTC()}
+		visibleMessage := next.CounterpartyMessage
+		if strings.TrimSpace(visibleMessage) == "" {
+			visibleMessage = next.FallbackMessage
+		}
+		if strings.TrimSpace(visibleMessage) != "" {
+			message := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleAssistant, Text: visibleMessage, CreatedAt: time.Now().UTC()}
 			nextMessage = &message
 		}
 		if err := s.repository.Complete(func(store GameCompletionStore) error {
@@ -102,8 +106,13 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 	if scenarioErr != nil {
 		return GameState{}, nil, scenarioErr
 	}
-	progress := domain.Progress{UserID: userID, LevelID: scenario.LevelID, TopicID: scenario.TopicID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), Attempts: 1, PassedAt: attempt.FinishedAt}
-	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), TopicID: scenario.TopicID, RiskSignals: []string{}, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать коды и данные карты", "Проверять статус сделки самостоятельно"}}
+	stars := domain.StarsFromScore(attempt.Score)
+	passedAt := time.Time{}
+	if stars > 0 {
+		passedAt = attempt.FinishedAt
+	}
+	progress := domain.Progress{UserID: userID, LevelID: scenario.LevelID, TopicID: scenario.TopicID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: stars, Attempts: 1, PassedAt: passedAt}
+	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: stars, TopicID: scenario.TopicID, RiskSignals: []string{}, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать коды и данные карты", "Проверять статус сделки самостоятельно"}}
 	if err := s.repository.Complete(func(store GameCompletionStore) error {
 		answer.AwardedPoints, answer.Explanation = option.Points, option.Explanation
 		if err := store.SaveAnswer(answer); err != nil {
@@ -134,7 +143,7 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 	}
 	breakdown[len(breakdown)-1].Points, breakdown[len(breakdown)-1].Explanation, breakdown[len(breakdown)-1].OptionText = option.Points, option.Explanation, option.Text
 	result.DecisionReview = breakdown
-	return GameState{}, &Completion{Attempt: attempt, Stars: domain.StarsFromScore(attempt.Score), Answers: answers, Breakdown: breakdown, Result: result}, nil
+	return GameState{}, &Completion{Attempt: attempt, Stars: stars, Answers: answers, Breakdown: breakdown, Result: result}, nil
 }
 
 func breakdownForAnswers(answers []domain.UserAnswer) []domain.AnswerBreakdown {

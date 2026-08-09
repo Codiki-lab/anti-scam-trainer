@@ -65,8 +65,13 @@ func (s *Service) SubmitQuiz(userID, topicID int, answers []domain.QuizAnswer) (
 	}
 	return s.repository.SubmitQuiz(userID, topicID, answers, s.activityDate())
 }
-func (s *Service) Progress(userID int, role domain.UserRole) ([]domain.Topic, error) {
-	return s.Topics(userID, role)
+func (s *Service) Progress(userID int, role domain.UserRole) ([]domain.Topic, []domain.RecentAttempt, float64, error) {
+	topics, err := s.Topics(userID, role)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	recent, average, err := s.repository.RecentAttempts(userID, role)
+	return topics, recent, average, err
 }
 func (s *Service) Achievements(userID int) ([]domain.Achievement, error) {
 	return s.repository.Achievements(userID)

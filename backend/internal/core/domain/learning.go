@@ -64,6 +64,15 @@ type TopicLevelProgress struct {
 	LastAttemptID int  `json:"last_attempt_id"`
 }
 
+type RecentAttempt struct {
+	AttemptID int       `json:"attempt_id"`
+	TopicID   int       `json:"topic_id"`
+	Level     int       `json:"level"`
+	Score     int       `json:"score"`
+	Stars     int       `json:"stars"`
+	Finished  time.Time `json:"finished_at"`
+}
+
 type Achievement struct {
 	Code        string    `json:"code"`
 	Title       string    `json:"title"`
