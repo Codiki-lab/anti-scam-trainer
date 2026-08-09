@@ -33,7 +33,7 @@ func (s *GameService) GetState(userID, attemptID int) (GameState, error) {
 		return GameState{}, err
 	}
 	step := domain.ScenarioStep{}
-	if attempt.Status == domain.AttemptStatusInProgress {
+	if attempt.CurrentStepNumber > 0 {
 		step, err = s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber)
 		if err != nil {
 			return GameState{}, err

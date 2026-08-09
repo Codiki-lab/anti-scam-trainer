@@ -2,6 +2,7 @@ package repository
 
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
+	apperrors "anti-scam-trainer/backend/internal/core/errors"
 	"anti-scam-trainer/backend/internal/features/attempts/service"
 	"encoding/json"
 	"strconv"
@@ -181,8 +182,11 @@ func (r *PostgresRepository) PublishedTopicScenario(levelNumber int, userRole st
 func (r *PostgresRepository) TopicLevels(userID int, userRole string, topicID int) ([]domain.Level, []domain.Progress, bool, error) {
 	var valid bool
 	_, err := r.db.QueryOne(pg.Scan(&valid), `SELECT EXISTS(SELECT 1 FROM topics WHERE id=? AND user_role=? AND published=TRUE)`, topicID, userRole)
-	if err != nil || !valid {
+	if err != nil {
 		return nil, nil, false, err
+	}
+	if !valid {
+		return nil, nil, false, apperrors.ErrScenarioNotFound
 	}
 	var quiz bool
 	_, _ = r.db.QueryOne(pg.Scan(&quiz), `SELECT COALESCE((SELECT quiz_passed FROM user_topic_progress WHERE user_id=? AND topic_id=?),FALSE)`, userID, topicID)
