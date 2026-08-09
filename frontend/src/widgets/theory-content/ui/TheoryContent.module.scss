@@ -1,0 +1,37 @@
+.theory {
+  max-width: 760px;
+
+  h2 {
+    margin-top: 38px;
+    font-size: 24px;
+  }
+
+  li,
+  > p {
+    color: #404047;
+    line-height: 1.6;
+  }
+}
+
+.lead {
+  color: #5f5f68;
+  font-size: 20px;
+  line-height: 1.45;
+}
+
+.ruleBox {
+  margin: 30px 0;
+  padding: 24px;
+  border-radius: 14px;
+  color: #064d69;
+  background: #e8f7ff;
+
+  p {
+    margin: 8px 0 0;
+    line-height: 1.5;
+  }
+}
+
+.finishButton {
+  margin-top: 28px;
+}
