@@ -155,9 +155,9 @@ func TestContextRiskBoundariesAndDefaultReserve(t *testing.T) {
 	}
 }
 
-func TestLlama32PreflightEstimateMatchesLocalOllamaCalibration(t *testing.T) {
+func TestQwen3PreflightEstimateMatchesLocalOllamaCalibration(t *testing.T) {
 	if os.Getenv("OLLAMA_PREFLIGHT_TEST") != "1" {
-		t.Skip("set OLLAMA_PREFLIGHT_TEST=1 after pulling llama3.2:3b to calibrate against a real Ollama runtime")
+		t.Skip("set OLLAMA_PREFLIGHT_TEST=1 after pulling qwen3:8b to calibrate against a real Ollama runtime")
 	}
 	url := os.Getenv("OLLAMA_URL")
 	if url == "" {
@@ -165,7 +165,7 @@ func TestLlama32PreflightEstimateMatchesLocalOllamaCalibration(t *testing.T) {
 	}
 	model := os.Getenv("OLLAMA_MODEL")
 	if model == "" {
-		model = "llama3.2:3b"
+		model = "qwen3:8b"
 	}
 	provider := mustProvider(t, aiprovider.Config{URL: url, Model: model, RequestTimeout: 2 * time.Minute, ContextWindowTokens: 8192})
 

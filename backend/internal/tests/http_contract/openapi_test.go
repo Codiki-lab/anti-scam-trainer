@@ -105,7 +105,7 @@ func TestOpenAPIV1SpecificationIsValid(t *testing.T) {
 	}
 
 	specification := recorder.Body.String()
-	for _, path := range []string{"/api/v1/health:", "/api/v1/auth/register:", "/api/v1/training/levels:", "/api/v1/training/levels/{level}/start:", "/api/v1/attempts/{id}/answers:", "/api/v1/attempts/{id}/abandon:", "/api/v1/admin/scenarios:", "/api/v1/admin/scenarios/{id}/publish:"} {
+	for _, path := range []string{"/api/v1/health:", "/api/v1/auth/register:", "/api/v1/training/levels:", "/api/v1/training/levels/{level}/start:", "/api/v1/training/free-play/start:", "/api/v1/attempts/{id}/answers:", "/api/v1/attempts/{id}/abandon:", "/api/v1/admin/scenarios:", "/api/v1/admin/scenarios/{id}/publish:"} {
 		if !strings.Contains(specification, "  "+path) {
 			t.Fatalf("OpenAPI v1 does not document registered path %s", path)
 		}

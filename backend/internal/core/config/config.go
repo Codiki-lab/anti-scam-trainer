@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,7 @@ type Config struct {
 	AdminPassword             string
 	SwaggerUsername           string
 	SwaggerPassword           string
+	FrontendOrigins           []string
 }
 
 func Load() (Config, error) {
@@ -44,7 +46,7 @@ func Load() (Config, error) {
 		LogLevel:                  envString("LOG_LEVEL", "debug"),
 		LogFolder:                 envString("LOG_FOLDER", "out/logs"),
 		OllamaURL:                 envString("OLLAMA_URL", "http://localhost:11434"),
-		OllamaModel:               envString("OLLAMA_MODEL", "llama3.2:3b"),
+		OllamaModel:               envString("OLLAMA_MODEL", "qwen3:8b"),
 		OllamaTimeout:             envDuration("OLLAMA_REQUEST_TIMEOUT", 30*time.Second),
 		OllamaContextWindowTokens: envInt("OLLAMA_CONTEXT_WINDOW_TOKENS", 8192),
 		OllamaOutputReserveTokens: envInt("OLLAMA_OUTPUT_RESERVE_TOKENS", 0),
@@ -55,6 +57,7 @@ func Load() (Config, error) {
 		AdminPassword:             os.Getenv("ADMIN_PASSWORD"),
 		SwaggerUsername:           os.Getenv("SWAGGER_USERNAME"),
 		SwaggerPassword:           os.Getenv("SWAGGER_PASSWORD"),
+		FrontendOrigins:           envCSV("FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
 	}
 	if cfg.JWTSecret == "" {
 		return Config{}, fmt.Errorf("JWT_SECRET is required")
@@ -66,6 +69,18 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("SWAGGER_USERNAME and SWAGGER_PASSWORD are required")
 	}
 	return cfg, nil
+}
+
+func envCSV(key, fallback string) []string {
+	value := envString(key, fallback)
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if item := strings.TrimSpace(part); item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func envString(key, fallback string) string {

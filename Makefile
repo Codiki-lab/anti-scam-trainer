@@ -80,11 +80,11 @@ logs-ollama:
 
 lint:
 	@cd backend && golangci-lint run ./...
-	@cd frontend && npm run lint
+	@if [ -f frontend/package.json ]; then cd frontend && npm run lint; else echo "frontend/package.json not found; frontend lint skipped"; fi
 
 test:
 	@cd backend && go test ./...
-	@cd frontend && npm test
+	@if [ -f frontend/package.json ]; then cd frontend && npm test; else echo "frontend/package.json not found; frontend tests skipped"; fi
 
 migrate-create:
 	@if [ -z "$(seq)" ]; then \

@@ -16,12 +16,16 @@ type Repository interface {
 type GameRepository interface {
 	Levels(userID int, userRole string) ([]domain.Level, []domain.Progress, error)
 	PublishedScenario(levelNumber int, userRole string) (domain.Scenario, error)
+	FreePlayConfig(userRole string) (domain.FreePlayConfig, error)
 	Scenario(id int) (domain.Scenario, error)
 	FindInProgress(userID, scenarioID int) (domain.Attempt, error)
+	FindInProgressFreePlay(userID int, userRole string) (domain.Attempt, error)
 	CreateGameAttempt(domain.Attempt) (domain.Attempt, error)
+	StartFreePlay(domain.Attempt, domain.DialogueMessage) (domain.Attempt, error)
 	GetGameAttempt(id int) (domain.Attempt, error)
 	Step(scenarioID, number int) (domain.ScenarioStep, error)
 	Answers(attemptID int) ([]domain.UserAnswer, error)
+	Messages(attemptID int) ([]domain.DialogueMessage, error)
 	AwardedPoints(attemptID int) (int, error)
 	Advance(attemptID, nextStepNumber int) error
 	Abandon(attemptID int, finishedAt time.Time) error
@@ -29,8 +33,10 @@ type GameRepository interface {
 }
 
 type GameCompletionStore interface {
-	SaveAnswer(domain.UserAnswer, int, string) error
+	SaveAnswer(domain.UserAnswer) error
+	SaveMessage(domain.DialogueMessage) error
 	AdvanceAttempt(attemptID, nextStepNumber int) error
+	UpdateFreeTextCount(attemptID, count int) error
 	CompleteAttempt(domain.Attempt) error
 	SaveProgress(domain.Progress) error
 }
