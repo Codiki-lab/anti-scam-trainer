@@ -1,0 +1,45 @@
+.card {
+  width: min(390px, 100%);
+
+  h2 {
+    margin: 0 0 9px;
+    font-size: 31px;
+    letter-spacing: -1px;
+  }
+
+  label {
+    display: grid;
+    gap: 7px;
+    margin-top: 15px;
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  input {
+    padding: 13px;
+    border: 1px solid #dcdce1;
+    border-radius: 9px;
+    outline-color: var(--color-accent);
+  }
+}
+
+.description {
+  margin-bottom: 23px;
+  font-size: 14px;
+}
+
+.submit {
+  margin-top: 23px;
+}
+
+.switch {
+  margin-top: 18px;
+  color: #777780;
+  font-size: 13px;
+  text-align: center;
+
+  a {
+    color: #008ed0;
+    font-weight: 700;
+  }
+}

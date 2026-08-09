@@ -1,0 +1,11 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+
+  img {
+    display: block;
+    width: 82px;
+    height: auto;
+  }
+}

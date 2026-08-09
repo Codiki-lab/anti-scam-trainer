@@ -68,13 +68,66 @@ flowchart LR
 /lessons
 /lessons/:lessonId
 /lessons/:lessonId/quiz
-/lessons/:lessonId/chats
 /chats
 /sessions/:sessionId
 /sessions/:sessionId/result
 /progress
 /achievements
+/preview
+/preview/<same-screen-paths>
 ```
+
+### Состояние реализации frontend foundation
+
+На ветке `feat/frontend-foundation` создан самостоятельный Vite-клиент в
+`frontend/`. Он содержит адаптивные UI-маршруты всех 11 экранов, общий
+авторизованный layout, переключатель ролевой ветки и индикатор серии дней.
+
+Второй этап foundation вынес продуктовые обязанности из компонентов страниц.
+`pages` только собирают отдельные route-экраны, `widgets` отображают
+самостоятельные блоки, `features` оркестрируют пользовательские действия, а
+`entities` владеют DTO, внутренними camelCase-моделями, mapper-функциями и RTK
+Query endpoints. Каждый slice разделён на фактически необходимые сегменты
+`api`, `model`, `lib`, `ui`; пустые сегменты не создаются. Внешние слои
+используют только `index.ts` слайсов, а архитектурные правила ESLint запрещают
+обратные зависимости и deep imports.
+
+OpenAPI DTO не передаются напрямую в представление. На границе `entities`
+они преобразуются в устойчивые модели frontend. Поэтому изменение snake_case
+полей backend локализовано в contracts и mappers. Смена роли сохраняется через
+`/api/v1/profile/preferences`, а возвращённый Account обновляет RTK Query cache.
+
+Роль пользователя имеет один runtime-источник — `Account`, полученный из
+`GET /auth/me`. `CurrentAccountProvider` передаёт в нижние слои узкий контракт
+чтения аккаунта и смены роли. Роль не копируется в Redux или localStorage.
+RTK Query хранит только server state, React Hook Form — состояние форм,
+React Router — выбранную Тему и идентификаторы маршрутов, локальный `useState`
+— только состояние конкретного UI.
+
+Для дизайн-ревью без поднятого backend добавлен отдельный data source в
+`app/preview`: `PreviewModeProvider` переключает hooks на типизированные
+preview-модели, которые внедряются уровнем приложения.
+`/preview` открывает все 11 экранов без сетевых запросов, включая вход, чат,
+результат, прогресс и достижения. Обычные маршруты остаются авторизованными и
+работают только через API.
+
+- регистрация, вход, получение текущей учётной записи и выход используют
+  текущие маршруты `/api/v1/auth/*` с `credentials: include`;
+- Темы, теория, Quiz, Уровни, Прохождение, результат, dashboard, прогресс и
+  достижения используют маршруты актуального `backend/openapi/v1/openapi.yaml`;
+- восстановление Прохождения выполняется по `attempt_id`, а конфликт
+  `STALE_STEP` приводит к повторному чтению серверного состояния;
+- `shared/http-client` содержит только общий transport и RTK Query cache;
+  продуктовые endpoints и преобразование DTO принадлежат своим `entities`;
+- `shared` состоит из независимых slices (`http-client`, `http-error`,
+  `runtime-mode`, `error-state`, `brand`, `stars`, `url`), внутри которых
+  используются нужные `model`, `lib`, `ui` и локальные тесты.
+
+Проверки foundation: `npm run format:check`, `npm run lint`,
+`npm run typecheck`, `npm run test`, `npm run build` и `npm run test:e2e` из
+`frontend/`. Mapper-функции и transport contracts покрыты unit-тестами,
+регистрация — React Testing Library и `user-event`, API boundary — MSW,
+ключевой preview-flow — Playwright в Chromium.
 
 Маршруты являются frontend-решением. Фактически реализованный HTTP-контракт фиксируется в `backend/openapi/v1/openapi.yaml`, а целевой контракт 11 экранов и связь дизайна с backend описаны в `docs/frontend-backend-integration.md`.
 
@@ -111,7 +164,7 @@ flowchart TB
 
 ### Технологии
 
-- React 18+
+- React 19
 - TypeScript
 - Vite
 - React Router
@@ -119,7 +172,8 @@ flowchart TB
 - RTK Query для server state
 - React Hook Form для форм
 - Zod для runtime validation на внешних границах
-- CSS Modules или SCSS Modules
+- Sass и SCSS Modules: стили расположены рядом с владельцем UI; глобально
+  остаются только design tokens, reset и базовые HTML-правила
 - Vitest, React Testing Library, `user-event`, MSW
 - Playwright для ключевого E2E
 
@@ -128,20 +182,29 @@ flowchart TB
 ```text
 frontend/src/
 ├── app/
-│   ├── router/
 │   ├── providers/
-│   ├── store/
+│   ├── preview/
+│   ├── App.tsx
+│   ├── App.module.scss
+│   ├── store.ts
 │   └── styles/
 ├── pages/
 ├── widgets/
 ├── features/
 ├── entities/
 └── shared/
-    ├── api/
-    ├── ui/
-    ├── lib/
-    └── config/
+    ├── http-client/{model,index.ts}
+    ├── http-error/{model,lib,index.ts}
+    ├── runtime-mode/{model,ui,index.ts}
+    ├── error-state/{ui,index.ts}
+    ├── ui-kit/{ui,index.ts}
+    └── brand|stars|url/{ui|lib,index.ts}
 ```
+
+Каждый визуальный slice хранит собственный `*.module.scss` внутри сегмента
+`ui`. Общие примитивы (`primaryButton`, `formError`, `pageHeading`) экспортирует
+`shared/ui-kit`; экранные и предметные стили не выносятся в него. Поэтому стили
+не образуют второй глобальный API и меняются вместе со своим компонентом.
 
 Допустимые зависимости:
 
@@ -183,7 +246,7 @@ features/
 | Runtime validation | Zod | auth response, evaluator payload, нестабильные API-границы |
 | URL state | React Router | выбранный lesson/chat/session |
 | Local UI state | `useState` / `useReducer` | модалка, вкладка, раскрытый блок |
-| Global client state | Redux Toolkit при необходимости | авторизационная сессия или глобальная настройка роли |
+| Global client state | Redux Toolkit только при доказанной необходимости | сейчас отдельного client slice нет |
 
 Данные RTK Query не копируются в обычный Redux slice без отдельного архитектурного решения.
 
@@ -225,7 +288,15 @@ AttemptStatus = IN_PROGRESS | COMPLETED | ABANDONED
 2. Опубликованный Сценарий уникален для пары Тема–Уровень.
 3. GameState возвращает product context, видимую реплику и историю, но не раскрывает внутренние инструкции и правильность ответа.
 4. qwen3:8b вызывается только через backend; ошибку AI можно повторить без побочных эффектов.
-5. Число Шагов сценария является данными и не хардкодится frontend.
+5. OpenAPI гарантирует шесть Тем на роль и четыре Уровня на Тему; frontend не
+   создаёт дополнительные Темы или Уровни локально.
+6. Регистрация создаёт аккаунт без автоматического входа; после неё frontend
+   переводит пользователя на `/login?registered=1`.
+7. `daily_task` в Dashboard по текущему контракту всегда `null`; отдельное
+   поведение задания дня не реализуется до изменения OpenAPI.
+8. `product_context` является открытым объектом данных Сценария; frontend не
+   предполагает обязательные поля без отдельной схемы.
+9. Число Шагов сценария является данными и не хардкодится frontend.
 
 ## 7. AI-архитектура и защита от галлюцинаций
 
@@ -345,6 +416,11 @@ sequenceDiagram
 
 ## 10. Quality gates
 
+Локальная защита коммитов подключена через Husky. Хук `pre-commit` запускает
+`lint-staged` из `frontend/` и проверяет только добавленные в коммит файлы
+`src/**/*.{ts,tsx}` командой ESLint. Это быстрый фильтр ошибок, а не замена
+полных проверок ниже.
+
 Для существенных frontend-изменений:
 
 ```text
@@ -352,7 +428,8 @@ npm run lint
 npm run typecheck
 npm run test
 npm run build
-npm run test:e2e     # когда E2E настроен и релевантен
+npm run format:check
+npm run test:e2e
 ```
 
 Перед сдачей добавляются:

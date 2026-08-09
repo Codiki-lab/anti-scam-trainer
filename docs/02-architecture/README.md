@@ -74,7 +74,7 @@ PostgreSQL-репозитории находятся в `features/<feature>/repo
 | Локальная модель | Ollama 0.32.6 | Контейнер, загрузка модели и технический provider для `POST /api/chat` |
 | Оркестрация | Docker Compose, Make | Локальная инфраструктура и команды разработчика |
 | Прокси | Nginx | Конфигурация пока пустая |
-| Фронтенд | Не выбран в коде | В репозитории есть только пустая заготовка окружения |
+| Фронтенд | React 19, TypeScript, Vite, RTK Query | Light FSD-клиент в `frontend/`, API boundary проверяется Zod |
 
 ## Архитектурные решения
 
@@ -87,5 +87,7 @@ PostgreSQL-репозитории находятся в `features/<feature>/repo
 - [ADR-0007: трёхслойные продуктовые модули и локальные порты](adr/0007-feature-layers-and-local-ports.md)
 - [ADR-0008: атомарное завершение прохождения и обновление прогресса](adr/0008-atomic-attempt-completion.md)
 - [ADR-0011: разовая несовместимая замена API v1](adr/0011-one-time-v1-replacement.md)
+- [ADR-0012: единый шаблон продуктовой возможности](adr/0012-uniform-feature-layout.md)
+- [ADR-0013: frontend slices, state ownership и API boundary](adr/0013-frontend-slices-state-and-api-boundaries.md)
 
 Не каждое обсуждение становится ADR. Запись нужна, если решение заметно ограничивает устройство системы и важно понимать, почему выбран именно этот вариант.

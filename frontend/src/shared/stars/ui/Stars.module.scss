@@ -1,0 +1,13 @@
+.stars {
+  display: flex;
+  gap: 3px;
+  color: #cfd1d6;
+
+  b {
+    font-size: 18px;
+  }
+}
+
+.active {
+  color: #ffb800;
+}

@@ -27,3 +27,4 @@ ADR фиксирует архитектурное решение вместе с
 | [0010 — Версионированные OpenAPI-спецификации как API-контракт](0010-versioned-openapi-spec-first.md) | Принято |
 | [0011 — Разовая несовместимая замена API v1](0011-one-time-v1-replacement.md) | Принято |
 | [0012 — Единый шаблон продуктовой возможности](0012-uniform-feature-layout.md) | Принято |
+| [0013 — Frontend slices, state ownership и API boundary](0013-frontend-slices-state-and-api-boundaries.md) | Принято |

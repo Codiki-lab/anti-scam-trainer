@@ -1,0 +1,291 @@
+.dashboardOverview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+  gap: 48px;
+  margin-bottom: 56px;
+}
+
+.mainColumn,
+.sideColumn {
+  display: grid;
+  align-content: start;
+}
+
+.mainColumn {
+  gap: 48px;
+}
+
+.sideColumn {
+  gap: 32px;
+}
+
+.heroContent {
+  padding-top: 2px;
+}
+
+.topicsSection {
+  min-width: 0;
+}
+
+.quickActions {
+  display: grid;
+  gap: 12px;
+}
+
+.dailyCard {
+  padding: 23px;
+  border-radius: 18px;
+  color: #4f377d;
+  background: #f0ebff;
+
+  > span {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 12px;
+    color: #fff;
+    background: #9264fa;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  h3 {
+    margin: 16px 0 7px;
+    color: #26202f;
+    font-size: 22px;
+  }
+
+  p {
+    color: #6f6680;
+    line-height: 1.45;
+  }
+
+  a {
+    color: #7f54df;
+    font-weight: 800;
+  }
+}
+
+.freePlayCard {
+  padding: 23px;
+  border: 1px solid #d9eef8;
+  border-radius: 18px;
+  color: #255d76;
+  background: #effaff;
+
+  > span {
+    color: #0088cc;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  h3 {
+    margin: 8px 0 7px;
+    color: #16262d;
+    font-size: 20px;
+  }
+
+  p {
+    margin-bottom: 14px;
+    color: #5f7782;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  button {
+    padding: 0;
+    border: 0;
+    color: #0088cc;
+    background: transparent;
+    font-weight: 800;
+  }
+}
+
+.cardError {
+  display: block;
+  margin-top: 10px;
+  color: #b33a32;
+  line-height: 1.35;
+}
+
+.topicGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.topicCard {
+  min-height: 210px;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  transition: 0.18s ease;
+
+  &:hover {
+    border-color: var(--color-accent);
+    transform: translateY(-2px);
+  }
+
+  small {
+    color: #9797a0;
+    font-size: 12px;
+  }
+
+  h3 {
+    margin: 6px 0 7px;
+    font-size: 17px;
+  }
+
+  p {
+    min-height: 55px;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+}
+
+.topicIcon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 17px;
+  border-radius: 10px;
+  place-items: center;
+  color: #0088cc;
+  background: #e8f7ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dashboardSide {
+  padding: 22px;
+  border-radius: 16px;
+  background: #f7f7f8;
+
+  h3 {
+    margin: 0 0 18px;
+  }
+}
+
+.progressValue {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+
+  b {
+    font-size: 31px;
+  }
+
+  span {
+    color: #85858d;
+    font-size: 11px;
+    text-align: right;
+  }
+}
+
+.progressTrack {
+  height: 8px;
+  margin: 15px 0 24px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e3e3e7;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent);
+  }
+}
+
+.miniStat {
+  display: flex;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-top: 1px solid #e6e6e9;
+  color: #6d6d75;
+  font-size: 13px;
+
+  b {
+    color: #111;
+  }
+}
+
+.trainingList {
+  display: grid;
+  gap: 13px;
+}
+
+.trainingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 21px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+
+  small {
+    color: #9797a0;
+    font-size: 12px;
+  }
+
+  h2 {
+    margin: 6px 0 5px;
+    font-size: 19px;
+  }
+
+  p {
+    margin-bottom: 10px;
+    color: var(--color-text-muted);
+  }
+}
+
+.trainingAction {
+  display: grid;
+  min-width: 145px;
+  gap: 15px;
+  justify-items: end;
+  text-align: right;
+}
+
+@media (max-width: 840px) {
+  .dashboardOverview {
+    grid-template-columns: 1fr;
+  }
+
+  .mainColumn {
+    gap: 36px;
+  }
+
+  .dailyCard {
+    max-width: 340px;
+  }
+
+  .topicGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboardSide {
+    max-width: 480px;
+  }
+}
+
+@media (max-width: 560px) {
+  .topicGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .trainingRow {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .trainingAction {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+}

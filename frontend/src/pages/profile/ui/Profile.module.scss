@@ -1,0 +1,272 @@
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 13px;
+  margin-bottom: 22px;
+}
+
+.metric {
+  padding: 19px;
+  border-radius: 13px;
+  background: var(--color-surface);
+
+  b {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 28px;
+  }
+
+  span {
+    color: #888891;
+    font-size: 12px;
+  }
+}
+
+.progressPanel {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  align-items: center;
+  gap: 30px;
+  margin-bottom: 35px;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+
+  h2 {
+    margin: 0 0 5px;
+  }
+
+  p {
+    margin: 0;
+    color: #888891;
+  }
+}
+
+.wideTrack {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e3e3e7;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent);
+  }
+}
+
+.history {
+  border-top: 1px solid var(--color-border);
+
+  p {
+    display: flex;
+    justify-content: space-between;
+    padding: 15px 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  span {
+    display: grid;
+    gap: 4px;
+  }
+
+  small {
+    color: #96969d;
+  }
+
+  b {
+    color: #26262b;
+  }
+}
+
+.success {
+  color: #00a974 !important;
+}
+
+.profileHero {
+  display: flex;
+  align-items: center;
+  gap: 19px;
+  margin-bottom: 48px;
+  padding: 28px;
+  border-radius: 17px;
+  background: #f4f4f6;
+
+  h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+  }
+}
+
+.profileSummary {
+  margin: 0;
+}
+
+.profileAvatar {
+  display: grid;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  place-items: center;
+  color: #0088cc;
+  background: #e5f6ff;
+  font-size: 27px;
+  font-weight: 800;
+}
+
+.roleLink {
+  margin-left: auto;
+}
+
+.achievementGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.achievementSections {
+  display: grid;
+  gap: 32px;
+}
+
+.groupHeading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 13px;
+
+  h3 {
+    margin: 0;
+    font-size: 17px;
+  }
+
+  span {
+    display: grid;
+    min-width: 25px;
+    height: 25px;
+    padding: 0 7px;
+    border-radius: 13px;
+    place-items: center;
+    color: #777780;
+    background: #f1f1f3;
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
+.achievementCount {
+  color: #777780;
+  font-size: 13px;
+}
+
+.achievement {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  min-height: 154px;
+  gap: 15px;
+  padding: 20px;
+  border: 1px solid #eeeef0;
+  border-radius: 15px;
+  color: #95959d;
+  background: #fafafa;
+
+  > span {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    border-radius: 13px;
+    place-items: center;
+    background: #ececf0;
+  }
+
+  h3 {
+    margin: 1px 0 6px;
+    font-size: 17px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+}
+
+.achievementBody {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.achievementProgress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+
+  > div {
+    height: 6px;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #e5e5e9;
+
+    i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--color-accent);
+    }
+  }
+
+  small {
+    color: #777780;
+    font-size: 11px;
+  }
+}
+
+.received {
+  width: fit-content;
+  margin-top: auto;
+  padding-top: 16px;
+  color: #008a5e;
+  font-weight: 700;
+}
+
+.earned {
+  color: #34343a;
+  background: #fff;
+
+  > span {
+    color: #fff;
+    background: var(--color-accent);
+  }
+}
+
+@media (max-width: 840px) {
+  .achievementGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .metrics,
+  .achievementGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .progressPanel {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .profileHero {
+    align-items: start;
+    flex-wrap: wrap;
+  }
+
+  .roleLink {
+    margin-left: 87px;
+  }
+}
