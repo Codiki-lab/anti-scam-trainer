@@ -66,14 +66,14 @@ paths:
       summary: Открытые уровни ролевой ветки
       security: [{ accessToken: [] }]
       parameters: [{ name: role, in: query, required: true, schema: { type: string, enum: [buyer, seller] } }]
-      responses: { '200': { description: Уровни и Открытость }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } }
+      responses: { '200': { description: Уровни и Открытость, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/OpenLevel' } } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } }
   /api/v1/training/levels/{level}/start:
     post:
       tags: [Прохождения]
       summary: Начать или продолжить Прохождение опубликованного Сценария
       security: [{ accessToken: [] }]
       parameters: [{ name: level, in: path, required: true, schema: { type: integer, enum: [1, 2] } }, { name: role, in: query, required: true, schema: { type: string, enum: [buyer, seller] } }]
-      responses: { '200': { description: Текущий Шаг сценария с упорядоченными вариантами }, '403': { description: Уровень закрыт }, '401': { $ref: '#/components/responses/Unauthorized' } }
+      responses: { '200': { description: Текущий Шаг сценария с упорядоченными вариантами и историей, content: { application/json: { schema: { $ref: '#/components/schemas/GameState' } } } }, '403': { description: Уровень закрыт }, '401': { $ref: '#/components/responses/Unauthorized' } }
   /api/v1/attempts/{id}/answers:
     post:
       tags: [Прохождения]
@@ -81,7 +81,7 @@ paths:
       security: [{ accessToken: [] }]
       parameters: [{ $ref: '#/components/parameters/ID' }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [option_id], properties: { option_id: { type: integer } } } } } }
-      responses: { '200': { description: Следующий Шаг либо итоговый Балл, Звёзды и разбор }, '409': { $ref: '#/components/responses/Conflict' }, '404': { $ref: '#/components/responses/NotFound' } }
+      responses: { '200': { description: Следующий Шаг либо итоговый Балл, Звёзды и разбор, content: { application/json: { schema: { oneOf: [{ $ref: '#/components/schemas/GameState' }, { $ref: '#/components/schemas/Completion' }] } } } }, '409': { $ref: '#/components/responses/Conflict' }, '404': { $ref: '#/components/responses/NotFound' } }
   /api/v1/attempts/{id}/abandon:
     post:
       tags: [Прохождения]
@@ -94,12 +94,13 @@ paths:
       tags: [Сценарии]
       summary: Список контента для администратора
       security: [{ accessToken: [] }]
-      responses: { '200': { description: Сценарии }, '403': { description: Требуется роль доступа admin } }
+      responses: { '200': { description: Сценарии, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AdminScenario' } } } } }, '403': { description: Требуется роль доступа admin } }
     post:
       tags: [Сценарии]
       summary: Создать черновой Сценарий
       security: [{ accessToken: [] }]
-      responses: { '201': { description: Черновик создан }, '403': { description: Требуется роль доступа admin } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenarioInput' } } } }
+      responses: { '201': { description: Черновик создан, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' } } } }, '403': { description: Требуется роль доступа admin } }
   /api/v1/admin/scenarios/{id}/publish:
     post:
       tags: [Сценарии]
@@ -113,6 +114,7 @@ paths:
       tags: [Сценарии]
       summary: Изменить черновой Сценарий
       security: [{ accessToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenarioInput' } } } }
       responses: { '204': { description: Сценарий изменён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
     delete:
       tags: [Сценарии]
@@ -139,13 +141,15 @@ paths:
       summary: Добавить Шаг сценария в черновик
       security: [{ accessToken: [] }]
       parameters: [{ $ref: '#/components/parameters/ID' }]
-      responses: { '201': { description: Шаг создан }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStepInput' } } } }
+      responses: { '201': { description: Шаг создан, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStep' } } } }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
   /api/v1/admin/scenarios/{id}/steps/{step_id}:
     parameters: [{ $ref: '#/components/parameters/ID' }, { name: step_id, in: path, required: true, schema: { type: integer } }]
     put:
       tags: [Сценарии]
       summary: Изменить Шаг сценария в черновике
       security: [{ accessToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStepInput' } } } }
       responses: { '204': { description: Шаг изменён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
     delete:
       tags: [Сценарии]
@@ -158,13 +162,15 @@ paths:
       summary: Добавить вариант Ответа пользователя в черновик
       security: [{ accessToken: [] }]
       parameters: [{ $ref: '#/components/parameters/ID' }]
-      responses: { '201': { description: Вариант создан }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOptionInput' } } } }
+      responses: { '201': { description: Вариант создан, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOption' } } } }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
   /api/v1/admin/steps/{id}/options/{option_id}:
     parameters: [{ $ref: '#/components/parameters/ID' }, { name: option_id, in: path, required: true, schema: { type: integer } }]
     put:
       tags: [Сценарии]
       summary: Изменить вариант Ответа пользователя в черновике
       security: [{ accessToken: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOptionInput' } } } }
       responses: { '204': { description: Вариант изменён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
     delete:
       tags: [Сценарии]
@@ -193,3 +199,16 @@ components:
     Scenario: { allOf: [{ $ref: '#/components/schemas/ScenarioInput' }, { type: object, required: [id], properties: { id: { type: integer, example: 1 } } }] }
     AttemptInput: { type: object, required: [scenario_id, status, started_at, finished_at, score], properties: { scenario_id: { type: integer, example: 1 }, status: { type: string, example: IN_PROGRESS }, started_at: { type: string, format: date-time, example: '2026-08-07T18:00:00Z' }, finished_at: { type: string, format: date-time, example: '0001-01-01T00:00:00Z' }, score: { type: integer, example: 0 } } }
     Attempt: { allOf: [{ $ref: '#/components/schemas/AttemptInput' }, { type: object, required: [id], properties: { id: { type: integer, example: 1 } } }] }
+    OpenLevel: { type: object, required: [number, opened, scenario_id], properties: { number: { type: integer, enum: [1, 2] }, opened: { type: boolean }, scenario_id: { type: integer } } }
+    ScenarioOption: { type: object, required: [id, text], properties: { id: { type: integer }, text: { type: string } } }
+    ScenarioStep: { type: object, required: [id, number, goal, options], properties: { id: { type: integer }, number: { type: integer }, goal: { type: string }, options: { type: array, items: { $ref: '#/components/schemas/ScenarioOption' } } } }
+    AnswerHistory: { type: object, required: [step_id, option_id], properties: { step_id: { type: integer }, option_id: { type: integer } } }
+    GameState: { type: object, required: [attempt_id, scenario_id, step, answers], properties: { attempt_id: { type: integer }, scenario_id: { type: integer }, step: { $ref: '#/components/schemas/ScenarioStep' }, answers: { type: array, items: { $ref: '#/components/schemas/AnswerHistory' } } } }
+    AnswerBreakdown: { type: object, required: [step_id, option_id, option_text, points, explanation], properties: { step_id: { type: integer }, option_id: { type: integer }, option_text: { type: string }, points: { type: integer }, explanation: { type: string } } }
+    Completion: { type: object, required: [attempt_id, score, stars, answers], properties: { attempt_id: { type: integer }, score: { type: integer, minimum: 0, maximum: 100 }, stars: { type: integer, minimum: 0, maximum: 3 }, answers: { type: array, items: { $ref: '#/components/schemas/AnswerBreakdown' } } } }
+    AdminScenarioInput: { type: object, required: [title, description, level_id, role], properties: { title: { type: string }, description: { type: string }, level_id: { type: integer, minimum: 1 }, role: { type: string, enum: [buyer, seller] } } }
+    AdminScenario: { allOf: [{ $ref: '#/components/schemas/AdminScenarioInput' }, { type: object, required: [id, status], properties: { id: { type: integer }, status: { type: string, enum: [draft, published, archived] } } }] }
+    AdminStepInput: { type: object, required: [number, response_type, goal, max_points], properties: { number: { type: integer, minimum: 1 }, response_type: { type: string, enum: [multiple_choice, similar_choice] }, goal: { type: string }, max_points: { type: integer, enum: [0, 25, 50, 75, 100] } } }
+    AdminStep: { allOf: [{ $ref: '#/components/schemas/AdminStepInput' }, { type: object, required: [id], properties: { id: { type: integer } } }] }
+    AdminOptionInput: { type: object, required: [text, explanation, points, sort_order], properties: { text: { type: string }, explanation: { type: string }, points: { type: integer, enum: [0, 25, 50, 75, 100] }, sort_order: { type: integer, minimum: 0 } } }
+    AdminOption: { allOf: [{ $ref: '#/components/schemas/AdminOptionInput' }, { type: object, required: [id], properties: { id: { type: integer } } }] }
