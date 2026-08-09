@@ -158,7 +158,6 @@ erDiagram
         integer id PK
         integer step_id FK
         text option_text
-        boolean is_correct
         integer points
         text explanation
         integer sort_order
@@ -182,7 +181,6 @@ erDiagram
         integer step_id FK
         integer option_id FK
         text free_text
-        boolean is_correct
         integer awarded_points
         text ai_evaluation
         text explanation
@@ -230,6 +228,7 @@ erDiagram
 
 - `chat_options` принадлежит конкретному `chat_step` через `step_id`.
 - `session_answers` хранит результат шага: либо `option_id`, либо `free_text`.
+- В уровнях 1–2 качество варианта ответа выражается только полем `points`: допустимы 0, 25, 50, 75 или 100. Бинарная правильность варианта и ответа не хранится.
 - Пара `(session_id, step_id)` в `session_answers` уникальна.
 - Пара `(chat_id, step_number)` в `chat_steps` уникальна.
 - Пара `(step_id, sort_order)` в `chat_options` уникальна.
