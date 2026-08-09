@@ -6,11 +6,14 @@ import (
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
 	authservice "anti-scam-trainer/backend/internal/features/auth/service"
+	authhttp "anti-scam-trainer/backend/internal/features/auth/transport/http"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,17 +22,23 @@ func TestGameHTTPContractGuardsProgressionAndReturnsCompletionBreakdown(t *testi
 	repository := newHTTPGameRepository()
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, attemptshttp.NewGame(attemptsservice.NewGame(repository)).Routes())
+	handler := authhttp.RequireAuthentication(contractTokens{})(versionedRouter)
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/v1/training/levels?role=buyer", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("missing cookie = %d, want 401", unauthorized.Code)
+	}
 
-	levels := serveGame(versionedRouter, 1, http.MethodGet, "/api/v1/training/levels?role=buyer", nil)
+	levels := serveGame(handler, 1, http.MethodGet, "/api/v1/training/levels?role=buyer", nil)
 	if levels.Code != http.StatusOK || !bytes.Contains(levels.Body.Bytes(), []byte(`"opened":false`)) {
 		t.Fatalf("levels = (%d, %s), want buyer level 2 closed", levels.Code, levels.Body.String())
 	}
-	closed := serveGame(versionedRouter, 1, http.MethodPost, "/api/v1/training/levels/2/start?role=buyer", nil)
+	closed := serveGame(handler, 1, http.MethodPost, "/api/v1/training/levels/2/start?role=buyer", nil)
 	if closed.Code != http.StatusForbidden {
 		t.Fatalf("closed level status = %d, want %d", closed.Code, http.StatusForbidden)
 	}
 
-	started := serveGame(versionedRouter, 1, http.MethodPost, "/api/v1/training/levels/1/start?role=buyer", nil)
+	started := serveGame(handler, 1, http.MethodPost, "/api/v1/training/levels/1/start?role=buyer", nil)
 	if started.Code != http.StatusOK || !bytes.Contains(started.Body.Bytes(), []byte(`"number":1`)) {
 		t.Fatalf("start = (%d, %s), want first step", started.Code, started.Body.String())
 	}
@@ -40,19 +49,19 @@ func TestGameHTTPContractGuardsProgressionAndReturnsCompletionBreakdown(t *testi
 		t.Fatal(err)
 	}
 
-	first := serveGame(versionedRouter, 1, http.MethodPost, "/api/v1/attempts/1/answers", []byte(`{"option_id":11}`))
+	first := serveGame(handler, 1, http.MethodPost, "/api/v1/attempts/1/answers", []byte(`{"option_id":11}`))
 	if first.Code != http.StatusOK || !bytes.Contains(first.Body.Bytes(), []byte(`"number":2`)) || bytes.Contains(first.Body.Bytes(), []byte(`"score"`)) {
 		t.Fatalf("intermediate answer = (%d, %s), want next step without score", first.Code, first.Body.String())
 	}
-	resumed := serveGame(versionedRouter, 1, http.MethodPost, "/api/v1/training/levels/1/start?role=buyer", nil)
+	resumed := serveGame(handler, 1, http.MethodPost, "/api/v1/training/levels/1/start?role=buyer", nil)
 	if resumed.Code != http.StatusOK || !bytes.Contains(resumed.Body.Bytes(), []byte(`"option_id":11`)) {
 		t.Fatalf("resume = (%d, %s), want answer history", resumed.Code, resumed.Body.String())
 	}
-	foreign := serveGame(versionedRouter, 2, http.MethodPost, "/api/v1/attempts/1/answers", []byte(`{"option_id":21}`))
+	foreign := serveGame(handler, 2, http.MethodPost, "/api/v1/attempts/1/answers", []byte(`{"option_id":21}`))
 	if foreign.Code != http.StatusNotFound {
 		t.Fatalf("foreign answer = %d, want 404", foreign.Code)
 	}
-	completed := serveGame(versionedRouter, 1, http.MethodPost, "/api/v1/attempts/1/answers", []byte(`{"option_id":21}`))
+	completed := serveGame(handler, 1, http.MethodPost, "/api/v1/attempts/1/answers", []byte(`{"option_id":21}`))
 	if completed.Code != http.StatusOK || !bytes.Contains(completed.Body.Bytes(), []byte(`"score":100`)) || !bytes.Contains(completed.Body.Bytes(), []byte(`"option_text":"safe"`)) {
 		t.Fatalf("completion = (%d, %s), want score and selected variant", completed.Code, completed.Body.String())
 	}
@@ -63,10 +72,25 @@ func TestGameHTTPContractGuardsProgressionAndReturnsCompletionBreakdown(t *testi
 
 func serveGame(handler http.Handler, userID int, method, target string, body []byte) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, target, bytes.NewReader(body))
-	request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: userID, AccessRole: domain.AccessRoleUser}))
+	request.AddCookie(&http.Cookie{Name: authhttp.AccessTokenCookie, Value: "user-" + strconv.Itoa(userID)})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+type contractTokens struct{}
+
+func (contractTokens) Issue(domain.User) (string, error) { return "", nil }
+func (contractTokens) Parse(raw string) (authservice.Identity, error) {
+	parts := strings.Split(raw, "-")
+	if len(parts) != 2 {
+		return authservice.Identity{}, errors.New("invalid")
+	}
+	id, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return authservice.Identity{}, err
+	}
+	return authservice.Identity{UserID: id, AccessRole: domain.AccessRoleUser}, nil
 }
 
 type httpGameRepository struct {
