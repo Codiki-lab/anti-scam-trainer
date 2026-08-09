@@ -19,6 +19,20 @@
 
 HTTP-обработчик получает конкретный `*service.Service`; повторяющий его интерфейс в transport-слое не создаётся. Общего каталога `models` нет: HTTP DTO принадлежат transport-слою, а модели PostgreSQL — repository-слою.
 
+## Шаблон product feature
+
+Каждая новая product feature начинается с одинакового набора опорных файлов:
+
+```text
+features/<feature>/
+├── transport/http/handler.go
+├── service/service.go
+├── service/repository.go
+└── repository/postgres.go
+```
+
+Дополнительный файл допустим только для самостоятельной части: например, отдельного внешнего порта или изолированного алгоритма. Не создавайте файл на каждый endpoint, CRUD-метод или use case. Не оставляйте рядом неактивные старые handler или service после замены актуального пути. Подробнее — [ADR-0012](../02-architecture/adr/0012-uniform-feature-layout.md).
+
 ## Порядок добавления функции
 
 1. Уточнить пользовательский поток и состояния, которые действительно нужны.
