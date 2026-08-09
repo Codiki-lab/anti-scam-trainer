@@ -33,9 +33,14 @@ type TopicContent struct {
 type DailyTask struct {
 	Date        string
 	Role        UserRole
+	Messages    []DialogueMessage
 	Completed   bool
 	CompletedAt *time.Time
-	Action      ContinueAction
+	Answer      *bool
+	Correct     *bool
+	Verdict     bool
+	Signals     []string
+	SafeAction  string
 }
 
 type TheoryBlock struct {

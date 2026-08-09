@@ -4,6 +4,7 @@ import (
 	"anti-scam-trainer/backend/internal/core/domain"
 	apperrors "anti-scam-trainer/backend/internal/core/errors"
 	"anti-scam-trainer/backend/internal/features/learning/service"
+	"encoding/json"
 	"time"
 
 	"github.com/go-pg/pg"
@@ -135,9 +136,6 @@ func (r *PostgresRepository) MarkTheoryRead(userID, topicID int, activityDate ti
 		if err = refreshTopicCompletion(tx, userID, topicID); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND action_type='read_theory' AND topic_id=?`, userID, activityDate.Format("2006-01-02"), topicID); err != nil {
-			return err
-		}
 		streak, _, err = recordActivity(tx, userID, activityDate)
 		return err
 	})
@@ -233,9 +231,6 @@ func (r *PostgresRepository) SubmitQuiz(userID, topicID int, answers []domain.Qu
 			return err
 		}
 		if passed {
-			if _, err := tx.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND action_type='take_quiz' AND topic_id=?`, userID, activityDate.Format("2006-01-02"), topicID); err != nil {
-				return err
-			}
 		}
 		result.Streak, _, err = recordActivity(tx, userID, activityDate)
 		return err
@@ -605,68 +600,76 @@ func mapContentError(err error) error {
 }
 
 type dailyTaskRow struct {
-	ActivityDate string
-	UserRole     string
-	ActionType   string `pg:"action_type"`
-	TopicID      int    `pg:"topic_id"`
-	LevelNumber  int
-	AttemptID    int        `pg:"attempt_id"`
-	CompletedAt  *time.Time `pg:"completed_at"`
+	ActivityDate string                   `pg:"activity_date"`
+	UserRole     string                   `pg:"user_role"`
+	Messages     []domain.DialogueMessage `pg:"messages"`
+	Verdict      bool                     `pg:"verdict"`
+	Signals      []string                 `pg:"signals"`
+	SafeAction   string                   `pg:"safe_action"`
+	Answer       *bool                    `pg:"user_answer"`
+	Correct      *bool                    `pg:"is_correct"`
+	CompletedAt  *time.Time               `pg:"completed_at"`
 }
 
-func (r *PostgresRepository) DailyTask(userID int, role domain.UserRole, date time.Time, recommendation domain.ContinueAction) (domain.DailyTask, error) {
+func (r *PostgresRepository) FindDailyTask(userID int, date time.Time) (domain.DailyTask, bool, error) {
+	var row dailyTaskRow
+	_, err := r.db.QueryOne(&row, `SELECT activity_date::text,user_role,messages,verdict,signals,safe_action,user_answer,is_correct,completed_at FROM daily_tasks WHERE user_id=? AND activity_date=?::date`, userID, date.Format("2006-01-02"))
+	if err == pg.ErrNoRows {
+		return domain.DailyTask{}, false, nil
+	}
+	if err != nil {
+		return domain.DailyTask{}, false, err
+	}
+	return taskFromRow(row), true, nil
+}
+
+func (r *PostgresRepository) DailyTask(userID int, date time.Time, created domain.DailyTask) (domain.DailyTask, error) {
 	dateText := date.Format("2006-01-02")
 	var row dailyTaskRow
 	err := r.db.RunInTransaction(func(tx *pg.Tx) error {
-		_, err := tx.QueryOne(&row, `SELECT activity_date::text,user_role,action_type,COALESCE(topic_id,0) topic_id,COALESCE(level_number,0) level_number,COALESCE(attempt_id,0) attempt_id,completed_at FROM daily_tasks WHERE user_id=? AND activity_date=?::date AND user_role=? FOR UPDATE`, userID, dateText, role)
-		if err == pg.ErrNoRows {
-			if _, err = tx.Exec(`INSERT INTO daily_tasks(user_id,activity_date,user_role,action_type,topic_id,level_number,attempt_id) VALUES(?,?::date,?,?,?,?,?) ON CONFLICT(user_id,activity_date,user_role) DO NOTHING`, userID, dateText, role, recommendation.Type, nullableInt(recommendation.TopicID), nullableInt(recommendation.Level), nullableInt(recommendation.AttemptID)); err != nil {
-				return err
-			}
-			_, err = tx.QueryOne(&row, `SELECT activity_date::text,user_role,action_type,COALESCE(topic_id,0) topic_id,COALESCE(level_number,0) level_number,COALESCE(attempt_id,0) attempt_id,completed_at FROM daily_tasks WHERE user_id=? AND activity_date=?::date AND user_role=? FOR UPDATE`, userID, dateText, role)
+		messages, _ := json.Marshal(created.Messages)
+		signals, _ := json.Marshal(created.Signals)
+		if _, err := tx.Exec(`INSERT INTO daily_tasks(user_id,activity_date,user_role,messages,verdict,signals,safe_action) VALUES(?,?::date,?,?::jsonb,?,?::jsonb,?) ON CONFLICT(user_id,activity_date) DO NOTHING`, userID, dateText, created.Role, string(messages), created.Verdict, string(signals), created.SafeAction); err != nil {
 			return err
 		}
-		if err != nil {
-			return err
-		}
-		if row.CompletedAt == nil {
-			valid, validErr := validDailyTarget(tx, row)
-			if validErr != nil {
-				return validErr
-			}
-			if !valid {
-				_, err = tx.QueryOne(&row, `UPDATE daily_tasks SET action_type=?,topic_id=?,level_number=?,attempt_id=? WHERE user_id=? AND activity_date=?::date AND user_role=? RETURNING activity_date::text,user_role,action_type,COALESCE(topic_id,0) topic_id,COALESCE(level_number,0) level_number,COALESCE(attempt_id,0) attempt_id,completed_at`, recommendation.Type, nullableInt(recommendation.TopicID), nullableInt(recommendation.Level), nullableInt(recommendation.AttemptID), userID, dateText, role)
-			}
-		}
+		_, err := tx.QueryOne(&row, `SELECT activity_date::text,user_role,messages,verdict,signals,safe_action,user_answer,is_correct,completed_at FROM daily_tasks WHERE user_id=? AND activity_date=?::date FOR UPDATE`, userID, dateText)
 		return err
 	})
 	if err != nil {
 		return domain.DailyTask{}, err
 	}
-	action := domain.ContinueAction{Type: row.ActionType, TopicID: row.TopicID, Level: row.LevelNumber, AttemptID: row.AttemptID}
-	task := domain.DailyTask{Date: row.ActivityDate, Role: domain.UserRole(row.UserRole), Action: action, Completed: row.CompletedAt != nil}
-	if task.Completed {
-		task.CompletedAt = row.CompletedAt
-	}
-	return task, nil
+	return taskFromRow(row), nil
 }
-
-func nullableInt(value int) any {
-	if value == 0 {
-		return nil
+func (r *PostgresRepository) AnswerDailyTask(userID int, date time.Time, answer bool) (domain.DailyTask, domain.Streak, error) {
+	dateText := date.Format("2006-01-02")
+	var row dailyTaskRow
+	var streak domain.Streak
+	err := r.db.RunInTransaction(func(tx *pg.Tx) error {
+		_, err := tx.QueryOne(&row, `SELECT activity_date::text,user_role,messages,verdict,signals,safe_action,user_answer,is_correct,completed_at FROM daily_tasks WHERE user_id=? AND activity_date=?::date FOR UPDATE`, userID, dateText)
+		if err == pg.ErrNoRows {
+			return service.ErrDailyTaskUnavailable
+		}
+		if err != nil {
+			return err
+		}
+		if row.CompletedAt != nil {
+			return service.ErrDailyTaskAnswered
+		}
+		correct := answer == row.Verdict
+		if _, err = tx.Exec(`UPDATE daily_tasks SET user_answer=?,is_correct=?,completed_at=NOW() WHERE user_id=? AND activity_date=?::date`, answer, correct, userID, dateText); err != nil {
+			return err
+		}
+		row.Answer, row.Correct = &answer, &correct
+		now := time.Now()
+		row.CompletedAt = &now
+		streak, _, err = recordActivity(tx, userID, date)
+		return err
+	})
+	if err != nil {
+		return domain.DailyTask{}, domain.Streak{}, err
 	}
-	return value
+	return taskFromRow(row), streak, nil
 }
-func validDailyTarget(tx *pg.Tx, row dailyTaskRow) (bool, error) {
-	var valid bool
-	var err error
-	switch row.ActionType {
-	case "resume_attempt":
-		_, err = tx.QueryOne(pg.Scan(&valid), `SELECT EXISTS(SELECT 1 FROM chat_sessions s JOIN chats c ON c.id=s.chat_id JOIN topics t ON t.id=c.topic_id WHERE s.id=? AND s.status='IN_PROGRESS' AND c.content_status='published' AND c.archived_at IS NULL AND t.content_status='published')`, row.AttemptID)
-	case "read_theory", "take_quiz", "start_level":
-		_, err = tx.QueryOne(pg.Scan(&valid), `SELECT EXISTS(SELECT 1 FROM topics WHERE id=? AND content_status='published')`, row.TopicID)
-	case "start_free_play":
-		valid = true
-	}
-	return valid, err
+func taskFromRow(row dailyTaskRow) domain.DailyTask {
+	return domain.DailyTask{Date: row.ActivityDate, Role: domain.UserRole(row.UserRole), Messages: row.Messages, Verdict: row.Verdict, Signals: row.Signals, SafeAction: row.SafeAction, Answer: row.Answer, Correct: row.Correct, Completed: row.CompletedAt != nil, CompletedAt: row.CompletedAt}
 }

@@ -379,15 +379,6 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 	now := time.Now().In(location)
 	activityDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
 	dateText := activityDate.Format("2006-01-02")
-	if mode == string(domain.AttemptModeFreePlay) {
-		if _, err = s.db.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND user_role=? AND action_type='start_free_play'`, userID, dateText, userRole); err != nil {
-			return err
-		}
-	} else if result.Stars > 0 {
-		if _, err = s.db.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND user_role=? AND action_type IN ('start_level','resume_attempt') AND topic_id=? AND (level_number IS NULL OR level_number=?)`, userID, dateText, userRole, result.TopicID, level); err != nil {
-			return err
-		}
-	}
 	if _, err = s.db.Exec(`INSERT INTO daily_activity(user_id,activity_date) VALUES(?,?::date) ON CONFLICT DO NOTHING`, userID, dateText); err != nil {
 		return err
 	}

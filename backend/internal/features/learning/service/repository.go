@@ -19,7 +19,9 @@ type Repository interface {
 }
 
 type DailyTaskRepository interface {
-	DailyTask(userID int, role domain.UserRole, activityDate time.Time, recommendation domain.ContinueAction) (domain.DailyTask, error)
+	FindDailyTask(userID int, activityDate time.Time) (domain.DailyTask, bool, error)
+	DailyTask(userID int, activityDate time.Time, created domain.DailyTask) (domain.DailyTask, error)
+	AnswerDailyTask(userID int, activityDate time.Time, answer bool) (domain.DailyTask, domain.Streak, error)
 }
 
 type ContentRepository interface {
