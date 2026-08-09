@@ -162,7 +162,7 @@ func (o *Ollama) Generate(ctx context.Context, messages []Message) (Result, erro
 	if err := validateMessages(messages); err != nil {
 		return Result{}, err
 	}
-	estimatedPromptTokens := EstimateLlama32PromptTokens(messages)
+	estimatedPromptTokens := EstimatePromptTokens(messages)
 	if estimatedPromptTokens+o.outputReserveTokens > o.contextWindowTokens {
 		return Result{}, &ContextCapacityError{EstimatedPromptTokens: estimatedPromptTokens, ReservedOutputTokens: o.outputReserveTokens, ContextWindowTokens: o.contextWindowTokens}
 	}
@@ -278,11 +278,10 @@ func (r ollamaResponse) validate() error {
 	return nil
 }
 
-// EstimateLlama32PromptTokens returns a conservative preflight estimate for the
-// configured local llama3.2:3b runtime. It counts UTF-8 bytes plus fixed chat
-// framing, so it intentionally overestimates many English and Russian prompts.
-// Ollama's prompt_eval_count remains the authoritative post-generation value.
-func EstimateLlama32PromptTokens(messages []Message) int {
+// EstimatePromptTokens returns a conservative, tokenizer-independent preflight
+// estimate. It counts UTF-8 bytes plus fixed chat framing; Ollama's
+// prompt_eval_count remains the authoritative post-generation value.
+func EstimatePromptTokens(messages []Message) int {
 	tokens := 2 // chat start and generation prompt framing
 	for _, message := range messages {
 		tokens += 4 + len([]byte(message.Role)) + len([]byte(message.Content))
