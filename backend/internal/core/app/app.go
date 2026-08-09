@@ -78,14 +78,14 @@ func New() (*App, error) {
 		return nil, err
 	}
 	authentication := authservice.New(users, tokens)
-	scenarios := scenariosservice.New(scenariosrepository.NewPostgres(db))
+	content := scenariosservice.NewContent(scenariosrepository.NewPostgres(db))
 	attemptRepository := attemptsrepository.NewPostgres(db)
-	attempts := attemptsservice.New(attemptRepository, attemptRepository)
+	game := attemptsservice.NewGame(attemptRepository)
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, []router.Route{{Path: "/health", Handler: health}})
 	versionedRouter.Register(router.V1, authhttp.New(authentication).Routes())
-	versionedRouter.Register(router.V1, scenarioshttp.New(scenarios).Routes())
-	versionedRouter.Register(router.V1, attemptshttp.New(attempts).Routes())
+	versionedRouter.Register(router.V1, scenarioshttp.NewAdmin(content).Routes())
+	versionedRouter.Register(router.V1, attemptshttp.NewGame(game).Routes())
 	routes := http.NewServeMux()
 	documentationHandler := middleware.RequireSwaggerAuthentication(cfg.SwaggerUsername, cfg.SwaggerPassword)(openapidocs.NewHandler())
 	routes.Handle("/swagger", http.RedirectHandler("/swagger/", http.StatusTemporaryRedirect))

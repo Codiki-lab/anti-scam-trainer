@@ -9,13 +9,15 @@ const (
 )
 
 type Attempt struct {
-	ID         int
-	UserID     int
-	ScenarioID int
-	Status     string
-	StartedAt  time.Time
-	FinishedAt time.Time
-	Score      int
+	ID                int
+	UserID            int
+	ScenarioID        int
+	Status            string
+	StartedAt         time.Time
+	FinishedAt        time.Time
+	Score             int
+	MaxScore          int
+	CurrentStepNumber int
 }
 
 func CanTransitionAttemptStatus(currentStatus, nextStatus string) bool {

@@ -2,8 +2,11 @@ package domain
 
 // UserAnswer records either a selected option or free text for one scenario step.
 type UserAnswer struct {
-	AttemptID int
-	StepID    int
-	OptionID  *int
-	FreeText  string
+	AttemptID     int
+	StepID        int
+	OptionID      *int
+	FreeText      string
+	AwardedPoints int
+	Explanation   string
+	OptionText    string
 }
