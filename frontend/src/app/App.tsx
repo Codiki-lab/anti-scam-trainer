@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   CurrentAccountProvider,
   useCurrentAccount,
@@ -66,20 +66,6 @@ function AuthOnly({ mode }: { mode: 'login' | 'register' }) {
   return account ? <Navigate to="/dashboard" replace /> : <AuthPage mode={mode} />
 }
 
-const previewRoutes = [
-  ['/preview/login', '01 Вход'],
-  ['/preview/register', '02 Регистрация'],
-  ['/preview/dashboard', '03 Главная'],
-  ['/preview/lessons', '04 Уроки'],
-  ['/preview/lessons/phishing-links', '05 Теория'],
-  ['/preview/lessons/phishing-links/quiz', '06 Квиз'],
-  ['/preview/chats', '07 Тренировки'],
-  ['/preview/sessions/demo', '08 Чат'],
-  ['/preview/sessions/demo/result', '09 Результат'],
-  ['/preview/progress', '10 Прогресс'],
-  ['/preview/achievements', '11 Достижения'],
-] as const
-
 function PreviewLayout() {
   const [account, setAccount] = useState<Account>(previewAccount)
   const changeTrainingRole = async (role: UserRole) => {
@@ -91,13 +77,6 @@ function PreviewLayout() {
       <CurrentAccountProvider value={{ account, changeTrainingRole }}>
         <div>
           <AppHeader account={account} basePath="/preview" />
-          <div className={styles.previewStrip}>
-            {previewRoutes.map(([to, label]) => (
-              <Link key={to} to={to}>
-                {label}
-              </Link>
-            ))}
-          </div>
           <main className={styles.page}>
             <Outlet />
           </main>
