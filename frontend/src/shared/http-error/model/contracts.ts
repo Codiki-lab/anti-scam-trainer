@@ -5,9 +5,11 @@ export type ApiErrorCode =
   | 'AUTHENTICATION_REQUIRED'
   | 'FORBIDDEN'
   | 'CONTENT_UNAVAILABLE'
+  | 'CONTENT_CONFLICT'
   | 'NOT_FOUND'
   | 'STATE_CONFLICT'
   | 'STALE_STEP'
+  | 'RATE_LIMITED'
   | 'AI_INVALID_RESPONSE'
   | 'AI_UNAVAILABLE'
   | 'METHOD_NOT_ALLOWED'
@@ -29,9 +31,11 @@ export const apiErrorEnvelopeSchema = z.object({
       'AUTHENTICATION_REQUIRED',
       'FORBIDDEN',
       'CONTENT_UNAVAILABLE',
+      'CONTENT_CONFLICT',
       'NOT_FOUND',
       'STATE_CONFLICT',
       'STALE_STEP',
+      'RATE_LIMITED',
       'AI_INVALID_RESPONSE',
       'AI_UNAVAILABLE',
       'METHOD_NOT_ALLOWED',

@@ -1,9 +1,14 @@
 import { api } from '@/shared/http-client'
 import type { UserRole } from '@/entities/user'
-import type { AchievementsDto, DashboardDto, ProgressDto } from './contracts'
-import { achievementsDtoSchema, dashboardDtoSchema, progressDtoSchema } from './contracts'
-import { mapAchievements, mapDashboard, mapProgress } from '../lib/mappers'
-import type { Achievements, Dashboard, Progress } from '../model/types'
+import type { AchievementsDto, DailyTaskAnswerDto, DashboardDto, ProgressDto } from './contracts'
+import {
+  achievementsDtoSchema,
+  dailyTaskAnswerDtoSchema,
+  dashboardDtoSchema,
+  progressDtoSchema,
+} from './contracts'
+import { mapAchievements, mapDailyTaskAnswer, mapDashboard, mapProgress } from '../lib/mappers'
+import type { Achievements, DailyTaskAnswer, Dashboard, Progress } from '../model/types'
 
 export const progressApi = api.injectEndpoints({
   endpoints: (build) => ({
@@ -24,7 +29,18 @@ export const progressApi = api.injectEndpoints({
         mapAchievements(achievementsDtoSchema.parse(response)),
       providesTags: ['Achievements'],
     }),
+    answerDailyTask: build.mutation<DailyTaskAnswer, boolean>({
+      query: (answer) => ({ url: '/daily-tasks/answer', method: 'POST', body: { answer } }),
+      transformResponse: (response: DailyTaskAnswerDto) =>
+        mapDailyTaskAnswer(dailyTaskAnswerDtoSchema.parse(response)),
+      invalidatesTags: ['Account', 'Dashboard'],
+    }),
   }),
 })
 
-export const { useGetDashboardQuery, useGetProgressQuery, useGetAchievementsQuery } = progressApi
+export const {
+  useGetDashboardQuery,
+  useGetProgressQuery,
+  useGetAchievementsQuery,
+  useAnswerDailyTaskMutation,
+} = progressApi

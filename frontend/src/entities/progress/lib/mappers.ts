@@ -1,6 +1,20 @@
 import { mapTopic } from '@/entities/learning'
-import type { AchievementDto, AchievementsDto, DashboardDto, ProgressDto } from '../api/contracts'
-import type { Achievement, Achievements, Dashboard, Progress } from '../model/types'
+import type {
+  AchievementDto,
+  AchievementsDto,
+  DailyTaskAnswerDto,
+  DailyTaskDto,
+  DashboardDto,
+  ProgressDto,
+} from '../api/contracts'
+import type {
+  Achievement,
+  Achievements,
+  DailyTask,
+  DailyTaskAnswer,
+  Dashboard,
+  Progress,
+} from '../model/types'
 import { mapStreak } from '@/entities/user'
 
 export const mapAchievement = (dto: AchievementDto): Achievement => ({
@@ -12,6 +26,24 @@ export const mapAchievement = (dto: AchievementDto): Achievement => ({
   earnedAt: dto.earned_at,
   current: dto.progress.current,
   target: dto.progress.target,
+})
+
+export const mapDailyTask = (dto: DailyTaskDto): DailyTask => ({
+  date: dto.date,
+  role: dto.role,
+  messages: dto.messages,
+  isCompleted: dto.completed,
+  completedAt: dto.completed_at ?? undefined,
+  answer: dto.answer,
+  isCorrect: dto.correct,
+  verdict: dto.verdict,
+  signals: dto.signals ?? [],
+  safeAction: dto.safe_action,
+})
+
+export const mapDailyTaskAnswer = (dto: DailyTaskAnswerDto): DailyTaskAnswer => ({
+  dailyTask: mapDailyTask(dto.daily_task),
+  streak: mapStreak(dto.streak),
 })
 
 export const mapDashboard = (dto: DashboardDto): Dashboard => ({
@@ -29,6 +61,7 @@ export const mapDashboard = (dto: DashboardDto): Dashboard => ({
     level: dto.continue_action.level,
     attemptId: dto.continue_action.attempt_id,
   },
+  dailyTask: mapDailyTask(dto.daily_task),
 })
 
 export const mapProgress = (dto: ProgressDto): Progress => ({

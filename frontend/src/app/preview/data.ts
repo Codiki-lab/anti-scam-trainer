@@ -256,6 +256,16 @@ export function createPreviewDashboard(role: UserRole): Dashboard {
     topics: createPreviewTopics(role),
     achievements: previewAchievements.earned,
     continueAction: { type: 'start_level', topicId: 1, level: 2 },
+    dailyTask: {
+      date: '2026-08-09',
+      role,
+      messages: [
+        { role: 'assistant', text: 'Покупатель просит перейти по ссылке для оплаты доставки.' },
+        { role: 'user', text: 'Ссылка выглядит как страница сервиса объявлений.' },
+      ],
+      isCompleted: false,
+      signals: [],
+    },
   }
 }
 
