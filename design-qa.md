@@ -3,8 +3,7 @@
 - Source visual truth: `/var/folders/r5/ygzzxvl54vgcvmr136bwfzsh0000gn/T/codex-clipboard-5c54a4f5-6287-480f-9e9b-f6dfeb9c00cb.png`
 - Training source: `/var/folders/r5/ygzzxvl54vgcvmr136bwfzsh0000gn/T/TemporaryItems/NSIRD_screencaptureui_gpdRJe/Снимок экрана 2026-08-09 в 22.30.10.png`
 - Implementation: `http://127.0.0.1:5173/preview/dashboard`
-- Implementation capture: `design-qa/implementation-dashboard.png`
-- Additional captures: `design-qa/implementation-training.png`, `design-qa/implementation-chat.png`, `design-qa/implementation-achievements.png`
+- Implementation captures were taken locally during verification and are intentionally not committed to the repository.
 - Browser viewport: 1280 × 720 CSS px, device density 1.
 - Source pixels: 1280 × 832. Implementation dashboard pixels: 1280 × 1542.
 - Normalization: compared at equal 1280 px width; browser chrome in the source and the longer implementation page were excluded from layout judgments below the matching content region.
