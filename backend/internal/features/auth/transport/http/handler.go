@@ -48,7 +48,7 @@ func (h *Handler) register(writer http.ResponseWriter, httpRequest *http.Request
 		return
 	}
 	var credentials credentialsDTO
-	if err := request.DecodeJSON(httpRequest, &credentials); err != nil {
+	if err := request.DecodeStrictJSON(httpRequest, &credentials); err != nil {
 		response.Error(writer, "invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -91,7 +91,7 @@ func (h *Handler) login(writer http.ResponseWriter, httpRequest *http.Request) {
 		return
 	}
 	var credentials credentialsDTO
-	if err := request.DecodeJSON(httpRequest, &credentials); err != nil {
+	if err := request.DecodeStrictJSON(httpRequest, &credentials); err != nil {
 		response.Error(writer, "invalid JSON", http.StatusBadRequest)
 		return
 	}

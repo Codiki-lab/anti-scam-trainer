@@ -8,7 +8,7 @@ import (
 )
 
 func TestCredentialedCORSAllowsOnlyConfiguredFrontendOrigins(t *testing.T) {
-	handler := middleware.CORS([]string{"http://localhost:5173"})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	handler := middleware.RequestID()(middleware.CORS([]string{"http://localhost:5173"})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })))
 
 	allowedRequest := httptest.NewRequest(http.MethodOptions, "/api/v1/training/levels", nil)
 	allowedRequest.Header.Set("Origin", "http://localhost:5173")
@@ -17,6 +17,9 @@ func TestCredentialedCORSAllowsOnlyConfiguredFrontendOrigins(t *testing.T) {
 	handler.ServeHTTP(allowed, allowedRequest)
 	if allowed.Code != http.StatusNoContent || allowed.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" || allowed.Header().Get("Access-Control-Allow-Credentials") != "true" {
 		t.Fatalf("allowed preflight = (%d, %#v)", allowed.Code, allowed.Header())
+	}
+	if allowed.Header().Get("X-Request-ID") == "" {
+		t.Fatal("allowed preflight is missing X-Request-ID")
 	}
 
 	blockedRequest := httptest.NewRequest(http.MethodGet, "/api/v1/training/levels", nil)

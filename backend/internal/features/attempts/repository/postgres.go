@@ -501,7 +501,7 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 	}
 	result.NewAchievements = make([]domain.Achievement, len(rows))
 	for i, x := range rows {
-		current := achievementCurrent(x.Code, stats)
+		current := domain.AchievementCurrent(x.Code, stats)
 		result.NewAchievements[i] = domain.Achievement{Code: x.Code, Title: x.Title, Description: x.Description, Icon: x.Icon, Earned: true, EarnedAt: x.ReceivedAt, Current: current, Target: x.Target}
 	}
 	if level > 0 {
@@ -542,22 +542,6 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 	return s.saveResult(result)
 }
 
-func achievementCurrent(code string, stats domain.AchievementStats) int {
-	switch code {
-	case "perfect_score":
-		return stats.PerfectScore
-	case "first_topic_completed":
-		return stats.CompletedTopics
-	case "all_buyer_topics":
-		return stats.BuyerTopics
-	case "all_seller_topics":
-		return stats.SellerTopics
-	case "streak_3", "streak_7":
-		return stats.Streak
-	default:
-		return stats.CompletedAttempts
-	}
-}
 func (s gameTransactionStore) saveResult(result *domain.AttemptResult) error {
 	encoded, err := json.Marshal(result)
 	if err != nil {

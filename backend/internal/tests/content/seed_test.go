@@ -63,6 +63,13 @@ func TestPublishedContentMatrix(t *testing.T) {
 	if invalid != 0 {
 		t.Fatalf("invalid options=%d", invalid)
 	}
+	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM chat_options l2o JOIN chat_steps l2s ON l2s.id=l2o.step_id JOIN chats l2c ON l2c.id=l2s.chat_id JOIN levels l2l ON l2l.id=l2c.level_id WHERE l2c.content_status='published' AND l2l.level_number=2 AND (l2o.points NOT IN(25,50,75,100) OR EXISTS(SELECT 1 FROM chat_options l1o JOIN chat_steps l1s ON l1s.id=l1o.step_id JOIN chats l1c ON l1c.id=l1s.chat_id JOIN levels l1l ON l1l.id=l1c.level_id WHERE l1c.topic_id=l2c.topic_id AND l1l.level_number=1 AND l1o.option_text=l2o.option_text))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invalid != 0 {
+		t.Fatalf("level 2 has non-similar-choice scoring or duplicates level 1 options: %d", invalid)
+	}
 	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM chat_steps s JOIN chats c ON c.id=s.chat_id WHERE c.content_status='published' AND (NULLIF(s.counterparty_message,'') IS NULL OR char_length(s.counterparty_message)>280 OR (s.response_type IN('mixed','free_text') AND (NULLIF(s.ai_instruction,'') IS NULL OR NULLIF(s.fallback_message,'') IS NULL)))`)
 	if err != nil {
 		t.Fatal(err)
@@ -143,6 +150,10 @@ func TestLearningActivityAwardsStreakAchievements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, err = db.Exec(`INSERT INTO user_level_progress(user_id,level_id,user_role,topic_id,best_score,stars,attempts,passed_at) SELECT ?,id,'buyer',?,80,1,1,NOW() FROM levels`, userID, topicID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var answers []domain.QuizAnswer
 	_, err = db.Query(&answers, `SELECT q.id question_id,o.id option_id FROM quiz_questions q JOIN quiz_options o ON o.question_id=q.id AND o.is_correct=TRUE WHERE q.topic_id=? ORDER BY q.sort_order`, topicID)
 	if err != nil {
@@ -155,6 +166,15 @@ func TestLearningActivityAwardsStreakAchievements(t *testing.T) {
 	_, err = db.QueryOne(pg.Scan(&awarded), `SELECT COUNT(*) FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=? AND a.code='streak_7'`, userID)
 	if err != nil || awarded != 1 {
 		t.Fatalf("streak_7 awards=%d, err=%v", awarded, err)
+	}
+	var completed bool
+	_, err = db.QueryOne(pg.Scan(&completed), `SELECT completed_at IS NOT NULL FROM user_topic_progress WHERE user_id=? AND topic_id=?`, userID, topicID)
+	if err != nil || !completed {
+		t.Fatalf("quiz did not persist migrated topic completion: completed=%v err=%v", completed, err)
+	}
+	_, err = db.QueryOne(pg.Scan(&awarded), `SELECT COUNT(*) FROM user_achievements ua JOIN achievements a ON a.id=ua.achievement_id WHERE ua.user_id=? AND a.code='first_topic_completed'`, userID)
+	if err != nil || awarded != 1 {
+		t.Fatalf("first_topic_completed awards=%d, err=%v", awarded, err)
 	}
 }
 

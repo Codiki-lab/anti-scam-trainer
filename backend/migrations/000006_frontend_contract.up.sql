@@ -215,14 +215,25 @@ WHERE c.product_context->>'seed_version' = 'issue-49';
 
 INSERT INTO chat_options (step_id, option_text, explanation, points, sort_order)
 SELECT s.id,
-       CASE o.n
+       CASE WHEN l.level_number = 2 THEN CASE o.n
+           WHEN 1 THEN 'Отказаться от просьбы, но проверить статус по ссылке из сообщения'
+           WHEN 2 THEN 'Остаться в чате и попросить собеседника прислать подтверждение'
+           WHEN 3 THEN 'Открыть статус сделки через уведомление в переписке'
+           ELSE 'Самостоятельно открыть раздел сделки в приложении и проверить статус'
+       END ELSE CASE o.n
            WHEN 1 THEN 'Сразу выполнить просьбу по ситуации «'||t.title||'»'
            WHEN 2 THEN 'Передать часть запрошенных данных для проверки'
            WHEN 3 THEN 'Продолжить обсуждение ситуации в другом канале'
            ELSE 'Проверить ситуацию «'||t.title||'» самостоятельно внутри сервиса'
+       END
        END,
-       CASE WHEN o.n = 4 THEN 'Действие учитывает особенности темы «'||t.title||'» и сохраняет штатный канал.' ELSE 'Для темы «'||t.title||'» это действие сохраняет риск.' END,
-       (ARRAY[0,25,50,100])[o.n],
+       CASE WHEN l.level_number = 2 THEN CASE o.n
+           WHEN 1 THEN 'Отказ безопасен, но ссылка собеседника всё ещё может быть поддельной.'
+           WHEN 2 THEN 'Штатный чат сохранён, однако подтверждение собеседника нельзя считать проверкой.'
+           WHEN 3 THEN 'Уведомление в переписке может вести на внешний ресурс; путь нужно открыть самостоятельно.'
+           ELSE 'Самостоятельная навигация внутри приложения исключает подмену ссылки.'
+       END ELSE CASE WHEN o.n = 4 THEN 'Действие учитывает особенности темы «'||t.title||'» и сохраняет штатный канал.' ELSE 'Для темы «'||t.title||'» это действие сохраняет риск.' END END,
+       CASE WHEN l.level_number = 2 THEN (ARRAY[25,50,75,100])[o.n] ELSE (ARRAY[0,25,50,100])[o.n] END,
        o.n
 FROM chat_steps s
 JOIN chats c ON c.id = s.chat_id
@@ -235,6 +246,7 @@ WHERE c.product_context->>'seed_version' = 'issue-49' AND l.level_number <= 3;
 CREATE TABLE migration_000006_added_steps (id INTEGER PRIMARY KEY);
 CREATE TABLE migration_000006_added_options (id INTEGER PRIMARY KEY);
 CREATE TABLE migration_000006_changed_step_types (id INTEGER PRIMARY KEY, previous_response_type VARCHAR NOT NULL);
+CREATE TABLE migration_000006_changed_options (id INTEGER PRIMARY KEY, previous_option_text TEXT NOT NULL, previous_explanation TEXT NOT NULL, previous_points INTEGER NOT NULL);
 
 WITH inserted AS (
 INSERT INTO chat_steps (chat_id,step_number,response_type,step_goal,counterparty_message,ai_instruction,fallback_message,max_points)
@@ -270,6 +282,11 @@ UPDATE chat_steps s SET response_type=CASE
 FROM chats c JOIN levels l ON l.id=c.level_id
 WHERE s.chat_id=c.id AND c.content_status='published';
 
+INSERT INTO migration_000006_changed_options(id,previous_option_text,previous_explanation,previous_points)
+SELECT o.id,o.option_text,o.explanation,o.points
+FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id
+WHERE c.content_status='published' AND l.level_number=2;
+
 WITH inserted AS (
 INSERT INTO chat_options(step_id,option_text,explanation,points,sort_order)
 SELECT s.id,
@@ -283,6 +300,23 @@ WHERE c.content_status='published' AND l.level_number<=3
 RETURNING id
 )
 INSERT INTO migration_000006_added_options SELECT id FROM inserted;
+
+UPDATE chat_options o SET
+    option_text=CASE o.sort_order
+        WHEN 1 THEN 'Отказаться от просьбы, но проверить статус по ссылке из сообщения'
+        WHEN 2 THEN 'Остаться в чате и попросить собеседника прислать подтверждение'
+        WHEN 3 THEN 'Открыть статус сделки через уведомление в переписке'
+        ELSE 'Самостоятельно открыть раздел сделки в приложении и проверить статус'
+    END,
+    explanation=CASE o.sort_order
+        WHEN 1 THEN 'Отказ безопасен, но ссылка собеседника всё ещё может быть поддельной.'
+        WHEN 2 THEN 'Штатный чат сохранён, однако подтверждение собеседника нельзя считать проверкой.'
+        WHEN 3 THEN 'Уведомление в переписке может вести на внешний ресурс; путь нужно открыть самостоятельно.'
+        ELSE 'Самостоятельная навигация внутри приложения исключает подмену ссылки.'
+    END,
+    points=(ARRAY[25,50,75,100])[o.sort_order]
+FROM chat_steps s JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id
+WHERE o.step_id=s.id AND c.content_status='published' AND l.level_number=2 AND o.sort_order BETWEEN 1 AND 4;
 
 UPDATE chat_steps s SET counterparty_message=s.counterparty_message||' Тема: «'||t.title||'», роль: '||CASE WHEN t.user_role='buyer' THEN 'покупатель.' ELSE 'продавец.' END
 FROM chats c JOIN topics t ON t.id=c.topic_id

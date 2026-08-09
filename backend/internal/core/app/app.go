@@ -97,7 +97,7 @@ func New() (*App, error) {
 	routes.Handle("/swagger/", documentationHandler)
 	routes.Handle("/openapi/", documentationHandler)
 	routes.Handle("/", versionedRouter)
-	handler := middleware.Chain(routes, middleware.CORS(cfg.FrontendOrigins), middleware.RequestID(), middleware.Logger(log), middleware.Panic(), middleware.Trace(), authhttp.RequireAuthentication(tokens))
+	handler := middleware.Chain(routes, middleware.RequestID(), middleware.CORS(cfg.FrontendOrigins), middleware.Logger(log), middleware.Panic(), middleware.Trace(), authhttp.RequireAuthentication(tokens))
 	app := &App{DB: db, Log: log, Handler: handler, Port: cfg.Port, AIProvider: provider}
 	app.server = serverruntime.New(server.Config{Addr: ":" + cfg.Port, Handler: handler})
 	initialized = true

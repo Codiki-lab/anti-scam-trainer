@@ -74,7 +74,7 @@ func TestAIFailureLeavesAnswerAndDialogueUnchanged(t *testing.T) {
 func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequestedAnswer(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"seller": {{LevelID: 4, Stars: 1}}}
-	ai := fakeAI{result: `{"awarded_points":75,"explanation":"Осторожная стратегия","reply":"Хорошо, продолжим в сервисе","risk_signals":[]}`}
+	ai := fakeAI{result: `{"awarded_points":75,"explanation":"Осторожная стратегия","reply":"Хорошо, продолжим в сервисе","risk_signals":["давление"]}`}
 	game := service.NewGameWithDependencies(repo, ai, func() bool { return false })
 	state, err := game.StartFreePlay(context.Background(), 1, "seller")
 	if err != nil || state.Attempt.IsScam == nil || *state.Attempt.IsScam || len(state.Messages) != 1 {
@@ -91,6 +91,14 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 	_, completed, err := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text, Finish: true})
 	if err != nil || completed == nil || completed.Attempt.Score != 75 || repo.progress.Stars != 0 {
 		t.Fatalf("free play completion = (%#v, %v), want score without level progress", completed, err)
+	}
+	if len(completed.Result.RiskSignals) != 1 || completed.Result.RiskSignals[0] != "давление" {
+		t.Fatalf("result risk signals=%v", completed.Result.RiskSignals)
+	}
+	for index, item := range completed.Result.DecisionReview {
+		if item.StepID != index+1 {
+			t.Fatalf("decision step %d has id %d", index+1, item.StepID)
+		}
 	}
 }
 

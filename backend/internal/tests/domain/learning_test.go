@@ -42,4 +42,23 @@ func TestStreakUsesDistinctConsecutiveCalendarDates(t *testing.T) {
 	}
 }
 
-func TestAllEightAchievementConditionsAreDeterministic(t *testing.T){codes:=domain.EligibleAchievementCodes(domain.AchievementStats{CompletedAttempts:5,PerfectScore:100,CompletedTopics:1,BuyerTopics:6,SellerTopics:6,Streak:7});if len(codes)!=8{t.Fatalf("codes=%v, want all eight",codes)};none:=domain.EligibleAchievementCodes(domain.AchievementStats{});if len(none)!=0{t.Fatalf("empty stats awarded %v",none)}}
+func TestAllEightAchievementConditionsAreDeterministic(t *testing.T) {
+	codes := domain.EligibleAchievementCodes(domain.AchievementStats{CompletedAttempts: 5, PerfectScore: 100, CompletedTopics: 1, BuyerTopics: 6, SellerTopics: 6, Streak: 7})
+	if len(codes) != 8 {
+		t.Fatalf("codes=%v, want all eight", codes)
+	}
+	none := domain.EligibleAchievementCodes(domain.AchievementStats{})
+	if len(none) != 0 {
+		t.Fatalf("empty stats awarded %v", none)
+	}
+}
+
+func TestAchievementProgressUsesSharedStatsMapping(t *testing.T) {
+	stats := domain.AchievementStats{CompletedAttempts: 5, PerfectScore: 100, CompletedTopics: 2, BuyerTopics: 6, SellerTopics: 4, Streak: 7}
+	wants := map[string]int{"first_training": 5, "five_trainings": 5, "perfect_score": 100, "first_topic_completed": 2, "all_buyer_topics": 6, "all_seller_topics": 4, "streak_3": 7, "streak_7": 7}
+	for code, want := range wants {
+		if got := domain.AchievementCurrent(code, stats); got != want {
+			t.Fatalf("AchievementCurrent(%q)=%d, want %d", code, got, want)
+		}
+	}
+}

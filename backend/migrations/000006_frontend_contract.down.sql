@@ -6,9 +6,11 @@ ALTER TABLE achievements DROP COLUMN IF EXISTS code;
 
 -- Restore only rows and values recorded as migration-owned during v6 up.
 UPDATE chat_steps s SET response_type=m.previous_response_type FROM migration_000006_changed_step_types m WHERE s.id=m.id;
+UPDATE chat_options o SET option_text=m.previous_option_text,explanation=m.previous_explanation,points=m.previous_points FROM migration_000006_changed_options m WHERE o.id=m.id;
 DELETE FROM chat_options WHERE id IN (SELECT id FROM migration_000006_added_options);
 DELETE FROM chat_steps WHERE id IN (SELECT id FROM migration_000006_added_steps);
 DROP TABLE migration_000006_changed_step_types;
+DROP TABLE migration_000006_changed_options;
 DROP TABLE migration_000006_added_options;
 DROP TABLE migration_000006_added_steps;
 

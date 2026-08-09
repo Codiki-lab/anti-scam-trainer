@@ -76,6 +76,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		if expectedStepID != nil && *expectedStepID != attempt.FreeTextCount+1 {
 			return GameState{}, nil, apperrors.ErrStaleStep
 		}
+		step = freePlayStep(attempt.FreeTextCount)
 		config, configErr := s.repository.FreePlayConfig(attempt.UserRole)
 		if configErr != nil {
 			return GameState{}, nil, configErr
@@ -220,7 +221,17 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 		breakdown = append(breakdown, entry)
 	}
 	attempt.FinalBreakdown = breakdown
-	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), DecisionReview: breakdown, RiskSignals: []string{}, TopicID: scenario.TopicID, IsScam: attempt.IsScam, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать секретные данные", "Остановиться при давлении"}}
+	riskSignals := make([]string, 0)
+	seenRisk := make(map[string]struct{})
+	for _, item := range breakdown {
+		for _, signal := range item.RiskSignals {
+			if _, exists := seenRisk[signal]; !exists {
+				seenRisk[signal] = struct{}{}
+				riskSignals = append(riskSignals, signal)
+			}
+		}
+	}
+	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), DecisionReview: breakdown, RiskSignals: riskSignals, TopicID: scenario.TopicID, IsScam: attempt.IsScam, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать секретные данные", "Остановиться при давлении"}}
 	if err := s.repository.Complete(func(store GameCompletionStore) error {
 		if err := store.SaveAnswer(answer); err != nil {
 			return err

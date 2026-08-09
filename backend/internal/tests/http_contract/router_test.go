@@ -45,6 +45,22 @@ func TestRouterRegistersUserWithoutExposingCredentialsOrUsersCRUD(t *testing.T) 
 	}
 }
 
+func TestCredentialEndpointsRejectUnknownFieldsAndTrailingJSON(t *testing.T) {
+	accounts := usersservice.New(&fakeAccounts{})
+	r := router.New()
+	r.Register(router.V1, authhttp.New(authservice.New(accounts, fakeTokens{})).Routes())
+	for _, test := range []struct{ path, body string }{
+		{"/api/v1/auth/register", `{"username":"Alex","password":"secret","training_role":"buyer","admin":true}`},
+		{"/api/v1/auth/login", `{"username":"Alex","password":"secret"} {"extra":true}`},
+	} {
+		recorder := httptest.NewRecorder()
+		r.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body)))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%s status=%d, want 400", test.path, recorder.Code)
+		}
+	}
+}
+
 func TestRouterUsesCookieIdentityForCurrentUserAndAttempts(t *testing.T) {
 	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	if err != nil {

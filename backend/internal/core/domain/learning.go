@@ -150,3 +150,20 @@ func EligibleAchievementCodes(stats AchievementStats) []string {
 	}
 	return result
 }
+
+func AchievementCurrent(code string, stats AchievementStats) int {
+	switch code {
+	case "perfect_score":
+		return stats.PerfectScore
+	case "first_topic_completed":
+		return stats.CompletedTopics
+	case "all_buyer_topics":
+		return stats.BuyerTopics
+	case "all_seller_topics":
+		return stats.SellerTopics
+	case "streak_3", "streak_7":
+		return stats.Streak
+	default:
+		return stats.CompletedAttempts
+	}
+}

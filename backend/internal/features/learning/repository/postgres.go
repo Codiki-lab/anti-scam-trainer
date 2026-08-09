@@ -130,6 +130,9 @@ func (r *PostgresRepository) MarkTheoryRead(userID, topicID int, activityDate ti
 			}
 			newlyRead = updated.RowsAffected() > 0
 		}
+		if err = refreshTopicCompletion(tx, userID, topicID); err != nil {
+			return err
+		}
 		streak, _, err = recordActivity(tx, userID, activityDate)
 		return err
 	})
@@ -221,6 +224,9 @@ func (r *PostgresRepository) SubmitQuiz(userID, topicID int, answers []domain.Qu
 		if _, err := tx.Exec(`INSERT INTO user_topic_progress(user_id,topic_id,quiz_passed,quiz_best_score) VALUES(?,?,?,?) ON CONFLICT(user_id,topic_id) DO UPDATE SET quiz_passed=user_topic_progress.quiz_passed OR EXCLUDED.quiz_passed,quiz_best_score=GREATEST(user_topic_progress.quiz_best_score,EXCLUDED.quiz_best_score)`, userID, topicID, passed, score); err != nil {
 			return err
 		}
+		if err := refreshTopicCompletion(tx, userID, topicID); err != nil {
+			return err
+		}
 		result.Streak, _, err = recordActivity(tx, userID, activityDate)
 		return err
 	})
@@ -262,33 +268,75 @@ func recordActivity(tx *pg.Tx, userID int, date time.Time) (domain.Streak, bool,
 		return domain.Streak{}, false, err
 	}
 	added := res.RowsAffected() > 0
-	if added {
-		_, err = tx.Exec(`UPDATE users SET current_streak=CASE WHEN last_activity_date=?::date-1 THEN current_streak+1 ELSE 1 END,longest_streak=GREATEST(longest_streak,CASE WHEN last_activity_date=?::date-1 THEN current_streak+1 ELSE 1 END),last_activity_date=?::date WHERE id=?`, dateText, dateText, dateText, userID)
-		if err != nil {
-			return domain.Streak{}, false, err
-		}
-	}
 	var row struct {
-		CurrentStreak    int
-		LongestStreak    int
-		LastActivityDate string
+		CurrentStreak    int    `pg:"current_streak"`
+		LongestStreak    int    `pg:"longest_streak"`
+		LastActivityDate string `pg:"last_activity_date"`
 	}
-	_, err = tx.QueryOne(&row, `SELECT current_streak,longest_streak,COALESCE(last_activity_date::text,'') last_activity_date FROM users WHERE id=?`, userID)
+	_, err = tx.QueryOne(&row, `SELECT current_streak,longest_streak,COALESCE(last_activity_date::text,'') last_activity_date FROM users WHERE id=? FOR UPDATE`, userID)
 	if err != nil {
 		return domain.Streak{}, false, err
 	}
-	streak := domain.Streak{Current: row.CurrentStreak, Longest: row.LongestStreak, ActiveToday: row.LastActivityDate == dateText, LastActivityDate: row.LastActivityDate}
-	codes := domain.EligibleAchievementCodes(domain.AchievementStats{Streak: streak.Current})
-	streakCodes := make([]string, 0, 2)
-	for _, code := range codes {
-		if code == "streak_3" || code == "streak_7" {
-			streakCodes = append(streakCodes, code)
+	location := date.Location()
+	var lastActivity time.Time
+	if row.LastActivityDate != "" {
+		lastActivity, _ = time.ParseInLocation("2006-01-02", row.LastActivityDate, location)
+	}
+	current, longest := row.CurrentStreak, row.LongestStreak
+	if added {
+		var changed bool
+		current, longest, changed = domain.NextStreak(current, longest, lastActivity, date)
+		if changed {
+			if _, err = tx.Exec(`UPDATE users SET current_streak=?,longest_streak=?,last_activity_date=?::date WHERE id=?`, current, longest, dateText, userID); err != nil {
+				return domain.Streak{}, false, err
+			}
+			row.LastActivityDate = dateText
 		}
 	}
-	if len(streakCodes) > 0 {
-		_, err = tx.Exec(`INSERT INTO user_achievements(user_id,achievement_id) SELECT ?,id FROM achievements WHERE code IN (?) ON CONFLICT DO NOTHING`, userID, pg.In(streakCodes))
+	streak := domain.Streak{Current: current, Longest: longest, ActiveToday: row.LastActivityDate == dateText, LastActivityDate: row.LastActivityDate}
+	var stats domain.AchievementStats
+	_, err = tx.QueryOne(&stats, `SELECT
+		(SELECT COUNT(*) FROM chat_sessions WHERE user_id=? AND status='COMPLETED') completed_attempts,
+		(SELECT COALESCE(MAX(score),0) FROM chat_sessions WHERE user_id=? AND status='COMPLETED') perfect_score,
+		(SELECT COUNT(*) FROM user_topic_progress WHERE user_id=? AND completed_at IS NOT NULL) completed_topics,
+		(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='buyer') buyer_topics,
+		(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='seller') seller_topics,
+		? streak`, userID, userID, userID, userID, userID, streak.Current)
+	if err != nil {
+		return domain.Streak{}, false, err
+	}
+	codes := domain.EligibleAchievementCodes(stats)
+	if len(codes) > 0 {
+		_, err = tx.Exec(`INSERT INTO user_achievements(user_id,achievement_id) SELECT ?,id FROM achievements WHERE code IN (?) ON CONFLICT DO NOTHING`, userID, pg.In(codes))
 	}
 	return streak, added, err
+}
+
+func refreshTopicCompletion(tx *pg.Tx, userID, topicID int) error {
+	var state struct {
+		TheoryRead bool `pg:"theory_read"`
+		QuizPassed bool `pg:"quiz_passed"`
+	}
+	_, err := tx.QueryOne(&state, `SELECT theory_read_at IS NOT NULL theory_read,quiz_passed FROM user_topic_progress WHERE user_id=? AND topic_id=?`, userID, topicID)
+	if err != nil {
+		return err
+	}
+	var rows []struct {
+		Number int `pg:"number"`
+		Stars  int `pg:"stars"`
+	}
+	_, err = tx.Query(&rows, `SELECT l.level_number number,p.stars FROM user_level_progress p JOIN levels l ON l.id=p.level_id WHERE p.user_id=? AND p.topic_id=? ORDER BY l.level_number`, userID, topicID)
+	if err != nil {
+		return err
+	}
+	levels := make([]domain.TopicLevelProgress, len(rows))
+	for i, row := range rows {
+		levels[i] = domain.TopicLevelProgress{Number: row.Number, Stars: row.Stars}
+	}
+	if domain.TopicComplete(state.TheoryRead, state.QuizPassed, levels) {
+		_, err = tx.Exec(`UPDATE user_topic_progress SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND topic_id=?`, userID, topicID)
+	}
+	return err
 }
 
 func (r *PostgresRepository) Achievements(userID int) ([]domain.Achievement, error) {
@@ -317,19 +365,7 @@ func (r *PostgresRepository) Achievements(userID int) ([]domain.Achievement, err
 	_, _ = r.db.QueryOne(&stats, `SELECT (SELECT COUNT(*) FROM chat_sessions WHERE user_id=? AND status='COMPLETED') completed_attempts,(SELECT COALESCE(MAX(score),0) FROM chat_sessions WHERE user_id=? AND status='COMPLETED') perfect_score,(SELECT COUNT(*) FROM user_topic_progress WHERE user_id=? AND completed_at IS NOT NULL) completed_topics,(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='buyer') buyer_topics,(SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND p.completed_at IS NOT NULL AND t.user_role='seller') seller_topics,(SELECT current_streak FROM users WHERE id=?) streak`, userID, userID, userID, userID, userID, userID)
 	result := make([]domain.Achievement, len(rows))
 	for i, x := range rows {
-		current := stats.CompletedAttempts
-		switch x.Code {
-		case "perfect_score":
-			current = stats.PerfectScore
-		case "first_topic_completed":
-			current = stats.CompletedTopics
-		case "all_buyer_topics":
-			current = stats.BuyerTopics
-		case "all_seller_topics":
-			current = stats.SellerTopics
-		case "streak_3", "streak_7":
-			current = stats.Streak
-		}
+		current := domain.AchievementCurrent(x.Code, stats)
 		result[i] = domain.Achievement{Code: x.Code, Title: x.Title, Description: x.Description, Icon: x.Icon, Earned: x.Earned, EarnedAt: x.EarnedAt, Current: current, Target: x.Target}
 	}
 	return result, nil
