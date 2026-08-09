@@ -9,11 +9,33 @@ type Topic struct {
 	Title       string
 	Description string
 	SortOrder   int
+	Status      string
+	ArchivedAt  time.Time
 	TheoryRead  bool
 	QuizPassed  bool
 	QuizScore   int
 	Completed   bool
 	Levels      []TopicLevelProgress
+}
+
+const (
+	TopicStatusDraft     = "draft"
+	TopicStatusPublished = "published"
+	TopicStatusArchived  = "archived"
+)
+
+type TopicContent struct {
+	Topic  Topic
+	Theory []TheoryBlock
+	Quiz   []QuizQuestion
+}
+
+type DailyTask struct {
+	Date        string
+	Role        UserRole
+	Completed   bool
+	CompletedAt *time.Time
+	Action      ContinueAction
 }
 
 type TheoryBlock struct {

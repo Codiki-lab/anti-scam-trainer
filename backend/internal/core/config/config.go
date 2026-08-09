@@ -29,6 +29,17 @@ type Config struct {
 	SwaggerUsername           string
 	SwaggerPassword           string
 	FrontendOrigins           []string
+	TrustedProxyCIDRs         []string
+	RegistrationRateLimit     int
+	RegistrationRateWindow    time.Duration
+	LoginRateLimit            int
+	LoginRateWindow           time.Duration
+	AIFreeTextRateLimit       int
+	AIFreeTextRateWindow      time.Duration
+	FreePlayRateLimit         int
+	FreePlayRateWindow        time.Duration
+	RateLimitMaxBuckets       int
+	RateLimitBucketTTL        time.Duration
 }
 
 func Load() (Config, error) {
@@ -58,6 +69,38 @@ func Load() (Config, error) {
 		SwaggerUsername:           os.Getenv("SWAGGER_USERNAME"),
 		SwaggerPassword:           os.Getenv("SWAGGER_PASSWORD"),
 		FrontendOrigins:           envCSV("FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
+		TrustedProxyCIDRs:         envCSV("TRUSTED_PROXY_CIDRS", ""),
+	}
+	var rateErr error
+	if cfg.RegistrationRateLimit, rateErr = positiveEnvInt("RATE_LIMIT_REGISTER_CAPACITY", 5); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.RegistrationRateWindow, rateErr = positiveEnvDuration("RATE_LIMIT_REGISTER_WINDOW", 10*time.Minute); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.LoginRateLimit, rateErr = positiveEnvInt("RATE_LIMIT_LOGIN_CAPACITY", 10); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.LoginRateWindow, rateErr = positiveEnvDuration("RATE_LIMIT_LOGIN_WINDOW", 10*time.Minute); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.AIFreeTextRateLimit, rateErr = positiveEnvInt("RATE_LIMIT_AI_CAPACITY", 10); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.AIFreeTextRateWindow, rateErr = positiveEnvDuration("RATE_LIMIT_AI_WINDOW", time.Minute); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.FreePlayRateLimit, rateErr = positiveEnvInt("RATE_LIMIT_FREE_PLAY_CAPACITY", 5); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.FreePlayRateWindow, rateErr = positiveEnvDuration("RATE_LIMIT_FREE_PLAY_WINDOW", time.Minute); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.RateLimitMaxBuckets, rateErr = positiveEnvInt("RATE_LIMIT_MAX_BUCKETS", 10000); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.RateLimitBucketTTL, rateErr = positiveEnvDuration("RATE_LIMIT_BUCKET_TTL", 20*time.Minute); rateErr != nil {
+		return Config{}, rateErr
 	}
 	if cfg.JWTSecret == "" {
 		return Config{}, fmt.Errorf("JWT_SECRET is required")
@@ -69,6 +112,29 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("SWAGGER_USERNAME and SWAGGER_PASSWORD are required")
 	}
 	return cfg, nil
+}
+
+func positiveEnvInt(key string, fallback int) (int, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return parsed, nil
+}
+func positiveEnvDuration(key string, fallback time.Duration) (time.Duration, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration", key)
+	}
+	return parsed, nil
 }
 
 func envCSV(key, fallback string) []string {

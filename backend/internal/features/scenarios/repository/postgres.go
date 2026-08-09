@@ -35,14 +35,14 @@ func (r *PostgresRepository) ListContent() ([]domain.Scenario, error) {
 		LevelID        int    `pg:"level_id"`
 		TopicID        int    `pg:"topic_id"`
 		UserRole       string `pg:"user_role"`
-		Status         string `pg:"content_status"`
+		Status         string `pg:"status"`
 		ScamScheme     string `pg:"scam_scheme"`
 		ProductContext string `pg:"product_context"`
 		AISystemPrompt string `pg:"ai_system_prompt"`
 		FinalRubric    string `pg:"final_rubric"`
 	}
 	var rows []row
-	_, err := r.db.Query(&rows, `SELECT id,title,description,level_id,topic_id,user_role,content_status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats ORDER BY id`)
+	_, err := r.db.Query(&rows, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats ORDER BY id`)
 	result := make([]domain.Scenario, len(rows))
 	for i, x := range rows {
 		result[i] = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
@@ -58,14 +58,14 @@ func (r *PostgresRepository) ContentScenario(id int) (domain.Scenario, error) {
 		LevelID        int    `pg:"level_id"`
 		TopicID        int    `pg:"topic_id"`
 		UserRole       string `pg:"user_role"`
-		Status         string `pg:"content_status"`
+		Status         string `pg:"status"`
 		ScamScheme     string `pg:"scam_scheme"`
 		ProductContext string `pg:"product_context"`
 		AISystemPrompt string `pg:"ai_system_prompt"`
 		FinalRubric    string `pg:"final_rubric"`
 	}
 	var x row
-	_, err := r.db.QueryOne(&x, `SELECT id,title,description,level_id,topic_id,user_role,content_status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats WHERE id=?`, id)
+	_, err := r.db.QueryOne(&x, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats WHERE id=?`, id)
 	s = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
 	return s, err
 }

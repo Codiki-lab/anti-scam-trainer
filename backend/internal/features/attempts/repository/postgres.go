@@ -154,7 +154,7 @@ func (r *PostgresRepository) Levels(userID int, userRole string) ([]domain.Level
 
 func (r *PostgresRepository) PublishedScenario(levelNumber int, userRole string) (domain.Scenario, error) {
 	var record gameScenarioRecord
-	query := `SELECT c.id, c.title, c.description, c.level_id, c.topic_id, l.level_number, c.user_role, c.content_status, COALESCE(c.scam_scheme,'') AS scam_scheme, c.product_context::text AS product_context, COALESCE(c.ai_system_prompt,'') AS ai_system_prompt, c.final_rubric::text AS final_rubric FROM chats c JOIN levels l ON l.id = c.level_id WHERE c.content_status = 'published' AND c.archived_at IS NULL`
+	query := `SELECT c.id, c.title, c.description, c.level_id, c.topic_id, l.level_number, c.user_role, c.content_status, COALESCE(c.scam_scheme,'') AS scam_scheme, c.product_context::text AS product_context, COALESCE(c.ai_system_prompt,'') AS ai_system_prompt, c.final_rubric::text AS final_rubric FROM chats c JOIN levels l ON l.id = c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status = 'published' AND c.archived_at IS NULL AND t.content_status='published'`
 	args := []interface{}{}
 	if levelNumber > 0 {
 		query += ` AND l.level_number = ?`
@@ -172,7 +172,7 @@ func (r *PostgresRepository) PublishedScenario(levelNumber int, userRole string)
 
 func (r *PostgresRepository) PublishedTopicScenario(levelNumber int, userRole string, topicID int) (domain.Scenario, error) {
 	var record gameScenarioRecord
-	_, err := r.db.QueryOne(&record, `SELECT c.id,c.title,c.description,c.level_id,c.topic_id,l.level_number,c.user_role,c.content_status,COALESCE(c.scam_scheme,'') scam_scheme,c.product_context::text product_context,COALESCE(c.ai_system_prompt,'') ai_system_prompt,c.final_rubric::text final_rubric FROM chats c JOIN levels l ON l.id=c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status='published' AND c.archived_at IS NULL AND l.level_number=? AND c.user_role=? AND c.topic_id=? AND t.user_role=?`, levelNumber, userRole, topicID, userRole)
+	_, err := r.db.QueryOne(&record, `SELECT c.id,c.title,c.description,c.level_id,c.topic_id,l.level_number,c.user_role,c.content_status,COALESCE(c.scam_scheme,'') scam_scheme,c.product_context::text product_context,COALESCE(c.ai_system_prompt,'') ai_system_prompt,c.final_rubric::text final_rubric FROM chats c JOIN levels l ON l.id=c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status='published' AND c.archived_at IS NULL AND t.content_status='published' AND l.level_number=? AND c.user_role=? AND c.topic_id=? AND t.user_role=?`, levelNumber, userRole, topicID, userRole)
 	if err != nil {
 		return domain.Scenario{}, err
 	}
@@ -181,7 +181,7 @@ func (r *PostgresRepository) PublishedTopicScenario(levelNumber int, userRole st
 
 func (r *PostgresRepository) TopicLevels(userID int, userRole string, topicID int) ([]domain.Level, []domain.Progress, bool, error) {
 	var valid bool
-	_, err := r.db.QueryOne(pg.Scan(&valid), `SELECT EXISTS(SELECT 1 FROM topics WHERE id=? AND user_role=? AND published=TRUE)`, topicID, userRole)
+	_, err := r.db.QueryOne(pg.Scan(&valid), `SELECT EXISTS(SELECT 1 FROM topics WHERE id=? AND user_role=? AND content_status='published')`, topicID, userRole)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -211,7 +211,7 @@ func (r *PostgresRepository) TopicLevels(userID int, userRole string, topicID in
 
 func (r *PostgresRepository) FreePlayUnlocked(userID int, userRole string) (bool, error) {
 	var unlocked bool
-	_, err := r.db.QueryOne(pg.Scan(&unlocked), `SELECT COUNT(DISTINCT p.topic_id)=6 FROM user_level_progress p JOIN topics t ON t.id=p.topic_id JOIN levels l ON l.id=p.level_id WHERE p.user_id=? AND t.user_role=? AND l.level_number=4 AND p.stars>0`, userID, userRole)
+	_, err := r.db.QueryOne(pg.Scan(&unlocked), `SELECT COUNT(DISTINCT p.topic_id)=6 FROM user_level_progress p JOIN topics t ON t.id=p.topic_id JOIN levels l ON l.id=p.level_id WHERE p.user_id=? AND t.user_role=? AND t.content_status='published' AND l.level_number=4 AND p.stars>0`, userID, userRole)
 	return unlocked, err
 }
 
@@ -409,8 +409,8 @@ func (s gameTransactionStore) SaveProgress(progress domain.Progress) error {
 
 func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) error {
 	var userID, level int
-	var userRole string
-	_, err := s.db.QueryOne(pg.Scan(&userID, &level, &userRole), `SELECT cs.user_id,COALESCE(l.level_number,0),COALESCE(c.user_role,cs.user_role,'') FROM chat_sessions cs LEFT JOIN chats c ON c.id=cs.chat_id LEFT JOIN levels l ON l.id=c.level_id WHERE cs.id=?`, result.AttemptID)
+	var userRole, mode string
+	_, err := s.db.QueryOne(pg.Scan(&userID, &level, &userRole, &mode), `SELECT cs.user_id,COALESCE(l.level_number,0),COALESCE(c.user_role,cs.user_role,''),cs.mode FROM chat_sessions cs LEFT JOIN chats c ON c.id=cs.chat_id LEFT JOIN levels l ON l.id=c.level_id WHERE cs.id=?`, result.AttemptID)
 	if err != nil {
 		return err
 	}
@@ -418,6 +418,15 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 	now := time.Now().In(location)
 	activityDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
 	dateText := activityDate.Format("2006-01-02")
+	if mode == string(domain.AttemptModeFreePlay) {
+		if _, err = s.db.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND user_role=? AND action_type='start_free_play'`, userID, dateText, userRole); err != nil {
+			return err
+		}
+	} else if result.Stars > 0 {
+		if _, err = s.db.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND user_role=? AND action_type IN ('start_level','resume_attempt') AND topic_id=? AND (level_number IS NULL OR level_number=?)`, userID, dateText, userRole, result.TopicID, level); err != nil {
+			return err
+		}
+	}
 	if _, err = s.db.Exec(`INSERT INTO daily_activity(user_id,activity_date) VALUES(?,?::date) ON CONFLICT DO NOTHING`, userID, dateText); err != nil {
 		return err
 	}
@@ -530,7 +539,7 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 			result.NextAction = &domain.ContinueAction{Type: "start_free_play"}
 		} else {
 			var nextTopicID int
-			_, err = s.db.QueryOne(pg.Scan(&nextTopicID), `SELECT t.id FROM topics t LEFT JOIN user_topic_progress p ON p.topic_id=t.id AND p.user_id=? WHERE t.user_role=? AND t.published=TRUE AND p.completed_at IS NULL ORDER BY t.sort_order LIMIT 1`, userID, userRole)
+			_, err = s.db.QueryOne(pg.Scan(&nextTopicID), `SELECT t.id FROM topics t LEFT JOIN user_topic_progress p ON p.topic_id=t.id AND p.user_id=? WHERE t.user_role=? AND t.content_status='published' AND p.completed_at IS NULL ORDER BY t.sort_order LIMIT 1`, userID, userRole)
 			if err != nil && err != pg.ErrNoRows {
 				return err
 			}

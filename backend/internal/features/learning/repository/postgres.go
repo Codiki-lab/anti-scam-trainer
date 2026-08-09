@@ -14,16 +14,18 @@ type PostgresRepository struct{ db *pg.DB }
 func NewPostgres(db *pg.DB) *PostgresRepository { return &PostgresRepository{db: db} }
 
 type topicRow struct {
-	ID          int    `pg:"id"`
-	Slug        string `pg:"slug"`
-	UserRole    string `pg:"user_role"`
-	Title       string `pg:"title"`
-	Description string `pg:"description"`
-	SortOrder   int    `pg:"sort_order"`
-	TheoryRead  bool   `pg:"theory_read"`
-	QuizPassed  bool   `pg:"quiz_passed"`
-	QuizScore   int    `pg:"quiz_score"`
-	Completed   bool   `pg:"completed"`
+	ID            int    `pg:"id"`
+	Slug          string `pg:"slug"`
+	UserRole      string `pg:"user_role"`
+	Title         string `pg:"title"`
+	Description   string `pg:"description"`
+	SortOrder     int    `pg:"sort_order"`
+	TheoryRead    bool   `pg:"theory_read"`
+	QuizPassed    bool   `pg:"quiz_passed"`
+	QuizScore     int    `pg:"quiz_score"`
+	Completed     bool   `pg:"completed"`
+	ContentStatus string
+	ArchivedAt    time.Time `pg:"archived_at"`
 }
 
 func (r *PostgresRepository) Topics(userID int, role domain.UserRole) ([]domain.Topic, error) {
@@ -32,7 +34,7 @@ func (r *PostgresRepository) Topics(userID int, role domain.UserRole) ([]domain.
         (p.theory_read_at IS NOT NULL) theory_read,COALESCE(p.quiz_passed,FALSE) quiz_passed,COALESCE(p.quiz_best_score,0) quiz_score,
         (p.completed_at IS NOT NULL) completed
         FROM topics t LEFT JOIN user_topic_progress p ON p.topic_id=t.id AND p.user_id=?
-        WHERE t.user_role=? AND t.published=TRUE ORDER BY t.sort_order`, userID, role)
+		WHERE t.user_role=? AND t.content_status='published' ORDER BY t.sort_order`, userID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +55,7 @@ func (r *PostgresRepository) Topic(userID, topicID int) (domain.Topic, error) {
 	_, err := r.db.QueryOne(&row, `SELECT t.id,t.slug,t.user_role,t.title,t.description,t.sort_order,
         (p.theory_read_at IS NOT NULL) theory_read,COALESCE(p.quiz_passed,FALSE) quiz_passed,COALESCE(p.quiz_best_score,0) quiz_score,
         (p.completed_at IS NOT NULL) completed
-        FROM topics t LEFT JOIN user_topic_progress p ON p.topic_id=t.id AND p.user_id=? WHERE t.id=? AND t.published=TRUE`, userID, topicID)
+		FROM topics t LEFT JOIN user_topic_progress p ON p.topic_id=t.id AND p.user_id=? WHERE t.id=? AND t.content_status='published'`, userID, topicID)
 	if err == pg.ErrNoRows {
 		return domain.Topic{}, service.ErrTopicNotFound
 	}
@@ -67,7 +69,7 @@ func (r *PostgresRepository) Topic(userID, topicID int) (domain.Topic, error) {
 }
 
 func topicFromRow(row topicRow) domain.Topic {
-	return domain.Topic{ID: row.ID, Slug: row.Slug, UserRole: domain.UserRole(row.UserRole), Title: row.Title, Description: row.Description, SortOrder: row.SortOrder, TheoryRead: row.TheoryRead, QuizPassed: row.QuizPassed, QuizScore: row.QuizScore, Completed: row.Completed}
+	return domain.Topic{ID: row.ID, Slug: row.Slug, UserRole: domain.UserRole(row.UserRole), Title: row.Title, Description: row.Description, SortOrder: row.SortOrder, Status: row.ContentStatus, ArchivedAt: row.ArchivedAt, TheoryRead: row.TheoryRead, QuizPassed: row.QuizPassed, QuizScore: row.QuizScore, Completed: row.Completed}
 }
 
 func (r *PostgresRepository) levels(userID, topicID int, quizPassed bool) ([]domain.TopicLevelProgress, error) {
@@ -131,6 +133,9 @@ func (r *PostgresRepository) MarkTheoryRead(userID, topicID int, activityDate ti
 			newlyRead = updated.RowsAffected() > 0
 		}
 		if err = refreshTopicCompletion(tx, userID, topicID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND action_type='read_theory' AND topic_id=?`, userID, activityDate.Format("2006-01-02"), topicID); err != nil {
 			return err
 		}
 		streak, _, err = recordActivity(tx, userID, activityDate)
@@ -226,6 +231,11 @@ func (r *PostgresRepository) SubmitQuiz(userID, topicID int, answers []domain.Qu
 		}
 		if err := refreshTopicCompletion(tx, userID, topicID); err != nil {
 			return err
+		}
+		if passed {
+			if _, err := tx.Exec(`UPDATE daily_tasks SET completed_at=COALESCE(completed_at,NOW()) WHERE user_id=? AND activity_date=?::date AND action_type='take_quiz' AND topic_id=?`, userID, activityDate.Format("2006-01-02"), topicID); err != nil {
+				return err
+			}
 		}
 		result.Streak, _, err = recordActivity(tx, userID, activityDate)
 		return err
@@ -396,7 +406,7 @@ func (r *PostgresRepository) InProgressAttempt(userID int, role domain.UserRole)
 		TopicID   int `pg:"topic_id"`
 		Level     int `pg:"level"`
 	}
-	_, err := r.db.QueryOne(&row, `SELECT s.id attempt_id,c.topic_id,l.level_number level FROM chat_sessions s JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id WHERE s.user_id=? AND c.user_role=? AND s.status='IN_PROGRESS' ORDER BY s.started_at DESC LIMIT 1`, userID, role)
+	_, err := r.db.QueryOne(&row, `SELECT s.id attempt_id,c.topic_id,l.level_number level FROM chat_sessions s JOIN chats c ON c.id=s.chat_id JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id WHERE s.user_id=? AND c.user_role=? AND s.status='IN_PROGRESS' AND c.content_status='published' AND c.archived_at IS NULL AND t.content_status='published' ORDER BY s.started_at DESC LIMIT 1`, userID, role)
 	if err == pg.ErrNoRows {
 		return 0, 0, 0, nil
 	}

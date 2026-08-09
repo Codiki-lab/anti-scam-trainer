@@ -17,3 +17,7 @@ type Repository interface {
 	User(userID int) (domain.User, error)
 	InProgressAttempt(userID int, role domain.UserRole) (int, int, int, error)
 }
+
+type DailyTaskRepository interface {
+	DailyTask(userID int, role domain.UserRole, activityDate time.Time, recommendation domain.ContinueAction) (domain.DailyTask, error)
+}

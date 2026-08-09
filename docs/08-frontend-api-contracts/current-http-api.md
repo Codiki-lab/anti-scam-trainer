@@ -16,6 +16,7 @@
 - Закрытая прогрессией Теория, Quiz или Уровень возвращает `CONTENT_UNAVAILABLE`; недостаточная роль доступа возвращает `FORBIDDEN`.
 - В административных DTO `product_context` и `final_rubric` передаются JSON-объектами, а не строками с вложенным JSON.
 - Ошибка AI возвращается как `502` или `503` и гарантирует отсутствие изменений Прохождения.
+- Ограничение частоты возвращает `429`, `RATE_LIMITED`, целочисленный `Retry-After` и общий error envelope; отклонённая AI-операция не меняет GameState.
 - Credentialed CORS разрешён только origin из `FRONTEND_ORIGINS`; для демо предпочтителен same-origin `/api` через Nginx.
 
 При следующей несовместимой версии API создаётся отдельный OpenAPI-файл и URL `/openapi/vN.yaml`; Swagger UI показывает доступные версии переключателем.
@@ -23,6 +24,7 @@
 ## Игровые методы MVP
 
 - `GET /api/v1/dashboard?role=...` — состояние главного экрана и `continue_action`.
+- Dashboard также возвращает ненулевое Задание дня: московскую дату, роль, состояние выполнения, время выполнения и `action` из словаря `ContinueAction`.
 - `GET /api/v1/topics?role=...`, `GET /topics/{id}` — каталог и карточка Темы.
 - `GET /topics/{id}/theory`, `POST /topics/{id}/theory/read` — Теория и идемпотентная отметка чтения.
 - `GET /topics/{id}/quiz`, `POST /topics/{id}/quiz/attempts` — Quiz без утечки ответов и его результат.
@@ -34,5 +36,12 @@
 - `GET /api/v1/attempts/{id}/result` — неизменный Result завершённого Прохождения.
 - `POST /api/v1/attempts/{id}/abandon` — бросить своё незавершённое Прохождение.
 - `GET /api/v1/progress?role=...`, `GET /api/v1/achievements` — тематический Прогресс, средний Балл только завершённых Прохождений, последние завершённые Прохождения и восемь Достижений.
+
+## Административный учебный контент
+
+- `GET|POST /api/v1/admin/topics`, `GET|PUT|DELETE /api/v1/admin/topics/{id}` — полный каталог, карточка агрегата, черновик, изменение и архивация Темы.
+- `POST /api/v1/admin/topics/{id}/publish|deactivate|restore` — проверяемые lifecycle-переходы.
+- `/api/v1/admin/topics/{id}/theory-blocks` и `/api/v1/admin/topics/{id}/quiz-questions` с вложенными `/options` — CRUD Теории и Quiz только в черновой Теме.
+- Все маршруты требуют роль доступа `admin`; пользовательские методы показывают только `published` и никогда не возвращают `is_correct`.
 
 Подробные DTO, примеры и статусы находятся в каноническом OpenAPI. Восстановление пароля, рейтинг и пользовательская админка не входят в MVP.
