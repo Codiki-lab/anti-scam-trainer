@@ -150,7 +150,11 @@ func gameStateDTO(state service.GameState) map[string]interface{} {
 		}
 		history[i] = map[string]interface{}{"step_id": answer.StepID, "option_id": optionID}
 	}
-	return map[string]interface{}{"attempt_id": state.Attempt.ID, "scenario_id": state.Attempt.ScenarioID, "step": stepDTO(state.Step), "answers": history}
+	messages := make([]map[string]interface{}, len(state.Messages))
+	for i, message := range state.Messages {
+		messages[i] = map[string]interface{}{"id": message.ID, "author": message.Author, "text": message.Text, "created_at": message.CreatedAt}
+	}
+	return map[string]interface{}{"attempt_id": state.Attempt.ID, "scenario_id": state.Attempt.ScenarioID, "step": stepDTO(state.Step), "answers": history, "messages": messages}
 }
 func stepDTO(step domain.ScenarioStep) map[string]interface{} {
 	options := make([]map[string]interface{}, len(step.Options))

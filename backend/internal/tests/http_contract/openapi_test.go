@@ -121,6 +121,31 @@ func TestOpenAPIV1SpecificationIsValid(t *testing.T) {
 			t.Fatalf("OpenAPI v1 does not declare and assign the %q Swagger tag", tag)
 		}
 	}
+	for _, schema := range []string{"OpenLevel", "GameState", "DialogueMessage", "Completion", "AdminScenarioInput", "AdminStepInput", "AdminOptionInput"} {
+		if !strings.Contains(specification, "    "+schema+":") {
+			t.Fatalf("OpenAPI v1 does not define %s", schema)
+		}
+	}
+	contractCases := []struct {
+		path, next string
+		statuses   []string
+	}{
+		{"/api/v1/training/levels:", "/api/v1/training/levels/{level}/start:", []string{"'200'", "'400'", "'401'", "'405'", "'500'"}},
+		{"/api/v1/training/levels/{level}/start:", "/api/v1/attempts/{id}/answers:", []string{"'200'", "'400'", "'401'", "'403'", "'404'", "'405'", "'500'"}},
+		{"/api/v1/attempts/{id}/answers:", "/api/v1/attempts/{id}/abandon:", []string{"'200'", "'400'", "'401'", "'404'", "'405'", "'409'", "'500'"}},
+		{"/api/v1/attempts/{id}/abandon:", "/api/v1/admin/scenarios:", []string{"'204'", "'400'", "'401'", "'404'", "'405'", "'409'", "'500'"}},
+	}
+	for _, testCase := range contractCases {
+		section := specification[strings.Index(specification, "  "+testCase.path):strings.Index(specification, "  "+testCase.next)]
+		for _, status := range testCase.statuses {
+			if !strings.Contains(section, status+":") {
+				t.Fatalf("%s does not document %s", testCase.path, status)
+			}
+		}
+		if !strings.Contains(section, "X-Request-ID") {
+			t.Fatalf("%s success response has no X-Request-ID", testCase.path)
+		}
+	}
 }
 
 func basicAuthorization(username, password string) string {

@@ -109,7 +109,7 @@ func (r *gameRepository) FindInProgress(user, scenario int) (domain.Attempt, err
 	}
 	return domain.Attempt{}, errors.New("missing")
 }
-func (r *gameRepository) CreateGameAttempt(a domain.Attempt) (domain.Attempt, error) {
+func (r *gameRepository) CreateGameAttempt(a domain.Attempt, _ domain.Message) (domain.Attempt, error) {
 	a.ID = r.next
 	r.next++
 	r.attempts[a.ID] = a
@@ -138,6 +138,7 @@ func (r *gameRepository) Answers(id int) ([]domain.UserAnswer, error) {
 	}
 	return out, nil
 }
+func (*gameRepository) Messages(int) ([]domain.Message, error) { return nil, nil }
 func (r *gameRepository) AwardedPoints(int) (int, error) {
 	total := 0
 	for _, a := range r.answers {
@@ -166,6 +167,7 @@ func (r *gameRepository) SaveAnswer(a domain.UserAnswer, p int, e string) error 
 	r.answers = append(r.answers, a)
 	return nil
 }
+func (*gameRepository) SaveMessage(domain.Message) error         { return nil }
 func (r *gameRepository) AdvanceAttempt(id, n int) error         { return r.Advance(id, n) }
 func (r *gameRepository) CompleteAttempt(a domain.Attempt) error { r.attempts[a.ID] = a; return nil }
 func (r *gameRepository) SaveProgress(p domain.Progress) error   { r.progress = p; return nil }

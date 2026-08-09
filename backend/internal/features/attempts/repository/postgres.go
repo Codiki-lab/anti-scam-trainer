@@ -171,10 +171,17 @@ func (r *PostgresRepository) FindInProgress(userID, scenarioID int) (domain.Atte
 	return attemptFromRecord(record), nil
 }
 
-func (r *PostgresRepository) CreateGameAttempt(attempt domain.Attempt) (domain.Attempt, error) {
+func (r *PostgresRepository) CreateGameAttempt(attempt domain.Attempt, initialMessage domain.Message) (domain.Attempt, error) {
 	record := toAttemptRecord(attempt)
 	record.MaxScore = 0
-	if _, err := r.db.Model(&record).Insert(); err != nil {
+	err := r.db.RunInTransaction(func(tx *pg.Tx) error {
+		if _, err := tx.Model(&record).Insert(); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`INSERT INTO messages (session_id, role, message) VALUES (?, ?, ?)`, record.ID, initialMessage.Author, initialMessage.Text)
+		return err
+	})
+	if err != nil {
 		return domain.Attempt{}, err
 	}
 	return attemptFromRecord(record), nil
@@ -220,6 +227,25 @@ func (r *PostgresRepository) Answers(attemptID int) ([]domain.UserAnswer, error)
 	return answers, nil
 }
 
+func (r *PostgresRepository) Messages(attemptID int) ([]domain.Message, error) {
+	type row struct {
+		ID        int       `pg:"id"`
+		SessionID int       `pg:"session_id"`
+		Author    string    `pg:"role"`
+		Text      string    `pg:"message"`
+		CreatedAt time.Time `pg:"created_at"`
+	}
+	var rows []row
+	if _, err := r.db.Query(&rows, `SELECT id, session_id, role, message, created_at FROM messages WHERE session_id = ? ORDER BY created_at, id`, attemptID); err != nil {
+		return nil, err
+	}
+	messages := make([]domain.Message, len(rows))
+	for i, item := range rows {
+		messages[i] = domain.Message{ID: item.ID, AttemptID: item.SessionID, Author: domain.MessageAuthor(item.Author), Text: item.Text, CreatedAt: item.CreatedAt}
+	}
+	return messages, nil
+}
+
 func (r *PostgresRepository) AwardedPoints(attemptID int) (int, error) {
 	var total int
 	_, err := r.db.QueryOne(pg.Scan(&total), `SELECT COALESCE(SUM(awarded_points), 0) FROM session_answers WHERE session_id = ?`, attemptID)
@@ -241,6 +267,10 @@ type gameTransactionStore struct{ db *pg.Tx }
 
 func (s gameTransactionStore) SaveAnswer(answer domain.UserAnswer, points int, explanation string) error {
 	_, err := s.db.Exec(`INSERT INTO session_answers (session_id, step_id, option_id, awarded_points, explanation) VALUES (?, ?, ?, ?, ?)`, answer.AttemptID, answer.StepID, answer.OptionID, points, explanation)
+	return err
+}
+func (s gameTransactionStore) SaveMessage(message domain.Message) error {
+	_, err := s.db.Exec(`INSERT INTO messages (session_id, role, message) VALUES (?, ?, ?)`, message.AttemptID, message.Author, message.Text)
 	return err
 }
 func (s gameTransactionStore) AdvanceAttempt(id, next int) error {

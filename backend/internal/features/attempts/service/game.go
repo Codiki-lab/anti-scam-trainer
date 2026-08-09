@@ -17,9 +17,10 @@ type OpenLevel struct {
 }
 
 type GameState struct {
-	Attempt domain.Attempt
-	Step    domain.ScenarioStep
-	Answers []domain.UserAnswer
+	Attempt  domain.Attempt
+	Step     domain.ScenarioStep
+	Answers  []domain.UserAnswer
+	Messages []domain.Message
 }
 
 type Completion struct {
@@ -92,13 +93,20 @@ func (s *GameService) Start(userID, levelNumber int, role string) (GameState, er
 		if answersErr != nil {
 			return GameState{}, answersErr
 		}
-		return GameState{Attempt: attempt, Step: step, Answers: answers}, nil
+		messages, messagesErr := s.repository.Messages(attempt.ID)
+		if messagesErr != nil {
+			return GameState{}, messagesErr
+		}
+		return GameState{Attempt: attempt, Step: step, Answers: answers, Messages: messages}, nil
 	}
 	step, err := s.repository.Step(target.ScenarioID, 1)
 	if err != nil {
 		return GameState{}, err
 	}
-	attempt, err := s.repository.CreateGameAttempt(domain.Attempt{UserID: userID, ScenarioID: target.ScenarioID, Status: domain.AttemptStatusInProgress, StartedAt: time.Now().UTC(), CurrentStepNumber: 1})
+	attempt, err := s.repository.CreateGameAttempt(
+		domain.Attempt{UserID: userID, ScenarioID: target.ScenarioID, Status: domain.AttemptStatusInProgress, StartedAt: time.Now().UTC(), CurrentStepNumber: 1},
+		domain.Message{Author: domain.MessageAuthorInterlocutor, Text: step.Goal},
+	)
 	if err != nil {
 		return GameState{}, err
 	}
@@ -137,11 +145,17 @@ func (s *GameService) Submit(userID, attemptID, optionID int) (GameState, *Compl
 			return GameState{}, nil, apperrors.ErrInvalidAnswer
 		}
 	}
-	answer := domain.UserAnswer{AttemptID: attemptID, StepID: step.ID, OptionID: &optionID}
+	answer := domain.UserAnswer{AttemptID: attemptID, StepID: step.ID, OptionID: &optionID, OptionText: option.Text}
 	next, nextErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber+1)
 	if nextErr == nil {
 		if err := s.repository.Complete(func(store GameCompletionStore) error {
 			if err := store.SaveAnswer(answer, option.Points, option.Explanation); err != nil {
+				return err
+			}
+			if err := store.SaveMessage(domain.Message{AttemptID: attemptID, Author: domain.MessageAuthorUser, Text: option.Text}); err != nil {
+				return err
+			}
+			if err := store.SaveMessage(domain.Message{AttemptID: attemptID, Author: domain.MessageAuthorInterlocutor, Text: next.Goal}); err != nil {
 				return err
 			}
 			return store.AdvanceAttempt(attemptID, next.Number)
@@ -174,6 +188,9 @@ func (s *GameService) Submit(userID, attemptID, optionID int) (GameState, *Compl
 	progress := domain.Progress{UserID: userID, LevelID: scenario.LevelID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), Attempts: 1, PassedAt: attempt.FinishedAt}
 	if err := s.repository.Complete(func(store GameCompletionStore) error {
 		if err := store.SaveAnswer(answer, option.Points, option.Explanation); err != nil {
+			return err
+		}
+		if err := store.SaveMessage(domain.Message{AttemptID: attemptID, Author: domain.MessageAuthorUser, Text: option.Text}); err != nil {
 			return err
 		}
 		if err := store.CompleteAttempt(attempt); err != nil {
