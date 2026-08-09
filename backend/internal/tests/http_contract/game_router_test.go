@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,22 +22,29 @@ func TestHTTPGameContractExposesMixedStateAndRejectsAmbiguousAnswer(t *testing.T
 	handler := router.New()
 	handler.Register(router.V1, attemptshttp.NewGame(game).Routes())
 
-	start := httptest.NewRequest(http.MethodPost, "/api/v1/training/levels/3/start?role=buyer", nil)
+	start := httptest.NewRequest(http.MethodPost, "/api/v1/training/levels/3/start?role=buyer&topic_id=1", nil)
 	start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
 	startRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(startRecorder, start)
 	if body := startRecorder.Body.String(); startRecorder.Code != http.StatusOK || !strings.Contains(body, `"mode":"mixed"`) || !strings.Contains(body, `"messages"`) {
 		t.Fatalf("level 3 start = (%d, %s), want mixed game state", startRecorder.Code, body)
 	}
-	resumed := httptest.NewRequest(http.MethodPost, "/api/v1/training/levels/3/start?role=buyer", nil)
+	resumed := httptest.NewRequest(http.MethodPost, "/api/v1/training/levels/3/start?role=buyer&topic_id=1", nil)
 	resumed = resumed.WithContext(authservice.WithIdentity(resumed.Context(), authservice.Identity{UserID: 1}))
 	resumedRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(resumedRecorder, resumed)
 	if resumedRecorder.Code != http.StatusOK || !strings.Contains(resumedRecorder.Body.String(), `"attempt_id":1`) {
 		t.Fatalf("resume = (%d, %s)", resumedRecorder.Code, resumedRecorder.Body.String())
 	}
+	restored := httptest.NewRequest(http.MethodGet, "/api/v1/attempts/1", nil)
+	restored = restored.WithContext(authservice.WithIdentity(restored.Context(), authservice.Identity{UserID: 1}))
+	restoredRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(restoredRecorder, restored)
+	if body := restoredRecorder.Body.String(); restoredRecorder.Code != http.StatusOK || !strings.Contains(body, `"step":{"counterparty_message"`) || strings.Contains(body, "step_goal") {
+		t.Fatalf("restore = (%d, %s), want frontend-safe game state", restoredRecorder.Code, body)
+	}
 
-	foreign := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"option_id":11}`))
+	foreign := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":31,"option_id":11}`))
 	foreign = foreign.WithContext(authservice.WithIdentity(foreign.Context(), authservice.Identity{UserID: 2}))
 	foreignRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(foreignRecorder, foreign)
@@ -44,7 +52,7 @@ func TestHTTPGameContractExposesMixedStateAndRejectsAmbiguousAnswer(t *testing.T
 		t.Fatalf("foreign answer = %d, want 404", foreignRecorder.Code)
 	}
 
-	ambiguous := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"option_id":11,"free_text":"мой ответ"}`))
+	ambiguous := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":31,"option_id":11,"free_text":"мой ответ"}`))
 	ambiguous = ambiguous.WithContext(authservice.WithIdentity(ambiguous.Context(), authservice.Identity{UserID: 1}))
 	ambiguousRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(ambiguousRecorder, ambiguous)
@@ -52,7 +60,15 @@ func TestHTTPGameContractExposesMixedStateAndRejectsAmbiguousAnswer(t *testing.T
 		t.Fatalf("ambiguous answer = (%d, %s), want 409 without writes", ambiguousRecorder.Code, ambiguousRecorder.Body.String())
 	}
 
-	optionFinish := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"option_id":11,"finish":true}`))
+	stale := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":999,"option_id":11}`))
+	stale = stale.WithContext(authservice.WithIdentity(stale.Context(), authservice.Identity{UserID: 1}))
+	staleRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(staleRecorder, stale)
+	if body := staleRecorder.Body.String(); staleRecorder.Code != http.StatusConflict || !strings.Contains(body, `"code":"STALE_STEP"`) || len(store.answers) != 0 {
+		t.Fatalf("stale answer = (%d, %s), want STALE_STEP without writes", staleRecorder.Code, body)
+	}
+
+	optionFinish := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":31,"option_id":11,"finish":true}`))
 	optionFinish = optionFinish.WithContext(authservice.WithIdentity(optionFinish.Context(), authservice.Identity{UserID: 1}))
 	optionFinishRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(optionFinishRecorder, optionFinish)
@@ -60,7 +76,7 @@ func TestHTTPGameContractExposesMixedStateAndRejectsAmbiguousAnswer(t *testing.T
 		t.Fatalf("option with finish = (%d, %s), want 409 without writes", optionFinishRecorder.Code, optionFinishRecorder.Body.String())
 	}
 
-	for _, body := range []string{`{"option_id":11,"unknown":true}`, `{"option_id":11} {"option_id":11}`} {
+	for _, body := range []string{`{"step_id":31,"option_id":11,"unknown":true}`, `{"step_id":31,"option_id":11} {"option_id":11}`} {
 		invalid := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(body))
 		invalid = invalid.WithContext(authservice.WithIdentity(invalid.Context(), authservice.Identity{UserID: 1}))
 		invalidRecorder := httptest.NewRecorder()
@@ -86,11 +102,11 @@ func TestHTTPAIFailureIsRetryableAndHasNoSideEffects(t *testing.T) {
 			game := attemptsservice.NewGameWithAI(store, test.ai)
 			handler := router.New()
 			handler.Register(router.V1, attemptshttp.NewGame(game).Routes())
-			start := httptest.NewRequest(http.MethodPost, "/api/v1/training/levels/3/start?role=buyer", nil)
+			start := httptest.NewRequest(http.MethodPost, "/api/v1/training/levels/3/start?role=buyer&topic_id=1", nil)
 			start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
 			handler.ServeHTTP(httptest.NewRecorder(), start)
 			beforeMessages := len(store.messages)
-			answer := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"free_text":"Останусь в сервисе"}`))
+			answer := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":31,"free_text":"Останусь в сервисе"}`))
 			answer = answer.WithContext(authservice.WithIdentity(answer.Context(), authservice.Identity{UserID: 1}))
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, answer)
@@ -115,14 +131,14 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 			if startRecorder.Code != http.StatusOK || strings.Contains(startRecorder.Body.String(), "is_scam") {
 				t.Fatalf("start = (%d,%s), type must stay hidden", startRecorder.Code, startRecorder.Body.String())
 			}
-			wrong := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"option_id":11}`))
+			wrong := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"option_id":11}`))
 			wrong = wrong.WithContext(authservice.WithIdentity(wrong.Context(), authservice.Identity{UserID: 1}))
 			wrongRecorder := httptest.NewRecorder()
 			handler.ServeHTTP(wrongRecorder, wrong)
 			if wrongRecorder.Code != http.StatusConflict {
 				t.Fatalf("option in free play = %d, want 409", wrongRecorder.Code)
 			}
-			foreign := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"free_text":"Чужой ответ"}`))
+			foreign := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"free_text":"Чужой ответ"}`))
 			foreign = foreign.WithContext(authservice.WithIdentity(foreign.Context(), authservice.Identity{UserID: 2}))
 			foreignRecorder := httptest.NewRecorder()
 			handler.ServeHTTP(foreignRecorder, foreign)
@@ -130,9 +146,9 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 				t.Fatalf("foreign free play answer = %d, want 404", foreignRecorder.Code)
 			}
 			for turn := 1; turn <= 3; turn++ {
-				body := `{"free_text":"Безопасный ответ"}`
+				body := `{"step_id":` + strconv.Itoa(turn) + `,"free_text":"Безопасный ответ"}`
 				if turn == 3 {
-					body = `{"free_text":"Безопасный ответ","finish":true}`
+					body = `{"step_id":3,"free_text":"Безопасный ответ","finish":true}`
 				}
 				request := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(body))
 				request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
@@ -143,6 +159,15 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 				}
 				if turn < 3 && strings.Contains(recorder.Body.String(), "is_scam") {
 					t.Fatalf("turn %d revealed type", turn)
+				}
+				if turn == 1 {
+					stale := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"free_text":"Повтор"}`))
+					stale = stale.WithContext(authservice.WithIdentity(stale.Context(), authservice.Identity{UserID: 1}))
+					staleRecorder := httptest.NewRecorder()
+					handler.ServeHTTP(staleRecorder, stale)
+					if staleRecorder.Code != http.StatusConflict || !strings.Contains(staleRecorder.Body.String(), `"code":"STALE_STEP"`) {
+						t.Fatalf("repeated free-play step = (%d,%s)", staleRecorder.Code, staleRecorder.Body.String())
+					}
 				}
 				if turn == 3 && !strings.Contains(recorder.Body.String(), `"is_scam"`) {
 					t.Fatalf("completion lacks reveal: %s", recorder.Body.String())
@@ -162,7 +187,7 @@ func TestHTTPFreePlayAIFailureHasNoSideEffects(t *testing.T) {
 	start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
 	handler.ServeHTTP(httptest.NewRecorder(), start)
 	beforeMessages := len(store.messages)
-	answer := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"free_text":"Безопасный ответ"}`))
+	answer := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":1,"free_text":"Безопасный ответ"}`))
 	answer = answer.WithContext(authservice.WithIdentity(answer.Context(), authservice.Identity{UserID: 1}))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, answer)
@@ -306,4 +331,5 @@ func (s *httpGameStore) CompleteAttempt(attempt domain.Attempt) error {
 	s.attempts[attempt.ID] = attempt
 	return nil
 }
-func (s *httpGameStore) SaveProgress(domain.Progress) error { return nil }
+func (s *httpGameStore) SaveProgress(domain.Progress) error           { return nil }
+func (s *httpGameStore) FinalizeLearning(*domain.AttemptResult) error { return nil }

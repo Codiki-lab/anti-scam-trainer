@@ -18,16 +18,29 @@ func (s *GameService) SubmitAnswer(ctx context.Context, userID, attemptID int, c
 		if command.Finish {
 			return GameState{}, nil, apperrors.ErrInvalidAnswer
 		}
-		return s.Submit(userID, attemptID, *command.OptionID)
+		if command.StepID == nil {
+			return s.Submit(userID, attemptID, *command.OptionID)
+		}
+		return s.Submit(userID, attemptID, *command.OptionID, *command.StepID)
 	}
 	text := strings.TrimSpace(*command.FreeText)
-	if text == "" {
+	if text == "" || len([]rune(text)) > 400 || approximateTokens(text) > 220 {
 		return GameState{}, nil, apperrors.ErrInvalidAnswer
 	}
-	return s.submitFreeText(ctx, userID, attemptID, text, command.Finish)
+	return s.submitFreeText(ctx, userID, attemptID, text, command.Finish, command.StepID)
 }
 
-func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int, text string, finish bool) (GameState, *Completion, error) {
+func approximateTokens(text string) int {
+	fields := strings.Fields(text)
+	tokens := 0
+	for _, field := range fields {
+		runes := len([]rune(field))
+		tokens += (runes + 3) / 4
+	}
+	return tokens
+}
+
+func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int, text string, finish bool, expectedStepID *int) (GameState, *Completion, error) {
 	attempt, err := s.repository.GetGameAttempt(attemptID)
 	if err != nil || attempt.UserID != userID {
 		return GameState{}, nil, apperrors.ErrAttemptNotFound
@@ -53,10 +66,17 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		if err != nil {
 			return GameState{}, nil, err
 		}
+		if expectedStepID != nil && *expectedStepID != step.ID {
+			return GameState{}, nil, apperrors.ErrStaleStep
+		}
 		if step.ResponseType != domain.ResponseTypeMixed && step.ResponseType != domain.ResponseTypeFreeText {
 			return GameState{}, nil, apperrors.ErrInvalidAnswer
 		}
 	} else {
+		if expectedStepID != nil && *expectedStepID != attempt.FreeTextCount+1 {
+			return GameState{}, nil, apperrors.ErrStaleStep
+		}
+		step = freePlayStep(attempt.FreeTextCount)
 		config, configErr := s.repository.FreePlayConfig(attempt.UserRole)
 		if configErr != nil {
 			return GameState{}, nil, configErr
@@ -92,8 +112,10 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	}
 
 	nextNumber := attempt.CurrentStepNumber
-	if step.ResponseType == domain.ResponseTypeMixed {
-		nextNumber++
+	if step.ResponseType == domain.ResponseTypeMixed || step.ResponseType == domain.ResponseTypeFreeText {
+		if _, nextErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber+1); nextErr == nil {
+			nextNumber++
+		}
 	}
 	if err := s.repository.Complete(func(store GameCompletionStore) error {
 		if err := store.SaveAnswer(answer); err != nil {
@@ -113,10 +135,13 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		}
 		return nil
 	}); err != nil {
-		return GameState{}, nil, err
+		return GameState{}, nil, s.completionError(attempt, err)
 	}
 	attempt.FreeTextCount, attempt.CurrentStepNumber = count, nextNumber
 	nextStep := step
+	if attempt.Mode == domain.AttemptModeFreePlay {
+		nextStep = freePlayStep(count)
+	}
 	if nextNumber != step.Number {
 		nextStep, err = s.repository.Step(attempt.ScenarioID, nextNumber)
 		if err != nil {
@@ -124,7 +149,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		}
 	}
 	messages = append(messages, userMessage, replyMessage)
-	return GameState{Attempt: attempt, Step: nextStep, Messages: messages, CanFinishEarly: count >= 2}, nil, nil
+	return GameState{Attempt: attempt, Scenario: scenario, Step: nextStep, Answers: append(existingAnswers, answer), Messages: messages, CanFinishEarly: count >= 2}, nil, nil
 }
 
 func (s *GameService) evaluate(ctx context.Context, attempt domain.Attempt, scenario domain.Scenario, step domain.ScenarioStep, history []domain.DialogueMessage, text string) (AIResult, error) {
@@ -196,6 +221,17 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 		breakdown = append(breakdown, entry)
 	}
 	attempt.FinalBreakdown = breakdown
+	riskSignals := make([]string, 0)
+	seenRisk := make(map[string]struct{})
+	for _, item := range breakdown {
+		for _, signal := range item.RiskSignals {
+			if _, exists := seenRisk[signal]; !exists {
+				seenRisk[signal] = struct{}{}
+				riskSignals = append(riskSignals, signal)
+			}
+		}
+	}
+	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), DecisionReview: breakdown, RiskSignals: riskSignals, TopicID: scenario.TopicID, IsScam: attempt.IsScam, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать секретные данные", "Остановиться при давлении"}}
 	if err := s.repository.Complete(func(store GameCompletionStore) error {
 		if err := store.SaveAnswer(answer); err != nil {
 			return err
@@ -212,13 +248,19 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 		if err := store.CompleteAttempt(attempt); err != nil {
 			return err
 		}
-		if attempt.Mode == domain.AttemptModeFreePlay {
-			return nil
+		if attempt.Mode != domain.AttemptModeFreePlay {
+			passedAt := time.Time{}
+			if result.Stars > 0 {
+				passedAt = attempt.FinishedAt
+			}
+			progress := domain.Progress{UserID: attempt.UserID, LevelID: scenario.LevelID, TopicID: scenario.TopicID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: result.Stars, Attempts: 1, PassedAt: passedAt}
+			if err := store.SaveProgress(progress); err != nil {
+				return err
+			}
 		}
-		progress := domain.Progress{UserID: attempt.UserID, LevelID: scenario.LevelID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), Attempts: 1, PassedAt: attempt.FinishedAt}
-		return store.SaveProgress(progress)
+		return store.FinalizeLearning(&result)
 	}); err != nil {
-		return GameState{}, nil, err
+		return GameState{}, nil, s.completionError(attempt, err)
 	}
-	return GameState{}, &Completion{Attempt: attempt, Stars: domain.StarsFromScore(attempt.Score), Answers: allAnswers, Breakdown: breakdown}, nil
+	return GameState{}, &Completion{Attempt: attempt, Stars: domain.StarsFromScore(attempt.Score), Answers: allAnswers, Breakdown: breakdown, Result: result}, nil
 }

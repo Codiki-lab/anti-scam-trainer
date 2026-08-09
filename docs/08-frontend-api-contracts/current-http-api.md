@@ -8,10 +8,12 @@
 
 - Базовый адрес локального API: `http://localhost:8080`; продуктовые маршруты используют префикс `/api/v1`.
 - Каждый ответ содержит `X-Request-ID`.
+- Каждая ошибка имеет JSON envelope `error.code`, `error.message`, `error.details`, `error.request_id`; `error.request_id` совпадает с `X-Request-ID`.
 - Открыты только health-check, регистрация, вход и выход. Остальные методы тренажёра требуют подписанную JWT-cookie `access_token`.
 - Роль доступа учётной записи (`user` или `admin`) не является ролью Пользователя в Сценарии (`buyer` или `seller`).
 - Прохождения всегда принадлежат текущему Пользователю из JWT: `user_id` не передаётся в теле и не возвращается в ответах.
-- `POST /attempts/{id}/answers` принимает ровно одно из `option_id` и `free_text`; `finish=true` относится только к свободному тексту.
+- `POST /attempts/{id}/answers` требует актуальный `step_id` и ровно одно из `option_id` и `free_text`; устаревший Шаг возвращает `STALE_STEP`.
+- Закрытая прогрессией Теория, Quiz или Уровень возвращает `CONTENT_UNAVAILABLE`; недостаточная роль доступа возвращает `FORBIDDEN`.
 - В административных DTO `product_context` и `final_rubric` передаются JSON-объектами, а не строками с вложенным JSON.
 - Ошибка AI возвращается как `502` или `503` и гарантирует отсутствие изменений Прохождения.
 - Credentialed CORS разрешён только origin из `FRONTEND_ORIGINS`; для демо предпочтителен same-origin `/api` через Nginx.
@@ -20,10 +22,17 @@
 
 ## Игровые методы MVP
 
-- `GET /api/v1/training/levels?role=buyer|seller` — четыре Уровня и их открытость.
-- `POST /api/v1/training/levels/{level}/start?role=...` — начать или продолжить Прохождение Уровня 1–4.
-- `POST /api/v1/training/free-play/start?role=...` — начать или продолжить Свободную игру после прохождения Уровня 4.
+- `GET /api/v1/dashboard?role=...` — состояние главного экрана и `continue_action`.
+- `GET /api/v1/topics?role=...`, `GET /topics/{id}` — каталог и карточка Темы.
+- `GET /topics/{id}/theory`, `POST /topics/{id}/theory/read` — Теория и идемпотентная отметка чтения.
+- `GET /topics/{id}/quiz`, `POST /topics/{id}/quiz/attempts` — Quiz без утечки ответов и его результат.
+- `GET /api/v1/training/levels?role=...&topic_id=...` — четыре Уровня Темы и их открытость.
+- `POST /api/v1/training/levels/{level}/start?role=...&topic_id=...` — начать или продолжить тематическое Прохождение.
+- `POST /api/v1/training/free-play/start?role=...` — Свободная игра после Уровня 4 во всех шести Темах роли.
+- `GET /api/v1/attempts/{id}` — полный GameState для восстановления.
 - `POST /api/v1/attempts/{id}/answers` — вариант или свободный Ответ пользователя и переход/итог.
+- `GET /api/v1/attempts/{id}/result` — неизменный Result завершённого Прохождения.
 - `POST /api/v1/attempts/{id}/abandon` — бросить своё незавершённое Прохождение.
+- `GET /api/v1/progress?role=...`, `GET /api/v1/achievements` — тематический Прогресс, средний Балл только завершённых Прохождений, последние завершённые Прохождения и восемь Достижений.
 
-Подробные DTO, примеры и статусы находятся в каноническом OpenAPI. Восстановление пароля, достижения, рейтинг и пользовательская админка не входят в MVP.
+Подробные DTO, примеры и статусы находятся в каноническом OpenAPI. Восстановление пароля, рейтинг и пользовательская админка не входят в MVP.

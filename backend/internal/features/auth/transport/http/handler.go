@@ -17,14 +17,17 @@ const AccessTokenCookie = "access_token"
 type Handler struct{ service *auth.Service }
 
 type credentialsDTO struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username     string          `json:"username"`
+	Password     string          `json:"password"`
+	TrainingRole domain.UserRole `json:"training_role"`
 }
 
 type accountDTO struct {
-	ID         int    `json:"id"`
-	Username   string `json:"username"`
-	AccessRole string `json:"access_role"`
+	ID           int             `json:"id"`
+	Username     string          `json:"username"`
+	AccessRole   string          `json:"access_role"`
+	TrainingRole domain.UserRole `json:"training_role"`
+	Streak       domain.Streak   `json:"streak"`
 }
 
 func New(service *auth.Service) *Handler { return &Handler{service: service} }
@@ -35,6 +38,7 @@ func (h *Handler) Routes() []router.Route {
 		{Path: "/auth/login", Handler: h.login},
 		{Path: "/auth/logout", Handler: h.logout},
 		{Path: "/auth/me", Handler: h.me},
+		{Path: "/profile/preferences", Handler: h.preferences},
 	}
 }
 
@@ -44,16 +48,41 @@ func (h *Handler) register(writer http.ResponseWriter, httpRequest *http.Request
 		return
 	}
 	var credentials credentialsDTO
-	if err := request.DecodeJSON(httpRequest, &credentials); err != nil {
+	if err := request.DecodeStrictJSON(httpRequest, &credentials); err != nil {
 		response.Error(writer, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	user, err := h.service.Register(credentials.Username, credentials.Password)
+	user, err := h.service.Register(credentials.Username, credentials.Password, credentials.TrainingRole)
 	if err != nil {
 		handleCredentialsError(writer, err)
 		return
 	}
 	response.JSONStatus(writer, accountFromDomain(user), http.StatusCreated)
+}
+
+func (h *Handler) preferences(writer http.ResponseWriter, httpRequest *http.Request) {
+	if httpRequest.Method != http.MethodPatch {
+		response.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	identity, ok := auth.IdentityFromContext(httpRequest.Context())
+	if !ok {
+		response.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var input struct {
+		TrainingRole domain.UserRole `json:"training_role"`
+	}
+	if err := request.DecodeStrictJSON(httpRequest, &input); err != nil {
+		response.Error(writer, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	user, err := h.service.UpdateTrainingRole(identity, input.TrainingRole)
+	if err != nil {
+		response.Error(writer, "training_role must be buyer or seller", http.StatusBadRequest)
+		return
+	}
+	response.JSON(writer, accountFromDomain(user))
 }
 
 func (h *Handler) login(writer http.ResponseWriter, httpRequest *http.Request) {
@@ -62,7 +91,7 @@ func (h *Handler) login(writer http.ResponseWriter, httpRequest *http.Request) {
 		return
 	}
 	var credentials credentialsDTO
-	if err := request.DecodeJSON(httpRequest, &credentials); err != nil {
+	if err := request.DecodeStrictJSON(httpRequest, &credentials); err != nil {
 		response.Error(writer, "invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -114,5 +143,5 @@ func handleCredentialsError(writer http.ResponseWriter, err error) {
 }
 
 func accountFromDomain(user domain.User) accountDTO {
-	return accountDTO{ID: user.ID, Username: user.Username, AccessRole: string(user.AccessRole)}
+	return accountDTO{ID: user.ID, Username: user.Username, AccessRole: string(user.AccessRole), TrainingRole: user.TrainingRole, Streak: user.Streak}
 }

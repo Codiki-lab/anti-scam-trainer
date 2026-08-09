@@ -17,6 +17,9 @@ import (
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
 	authservice "anti-scam-trainer/backend/internal/features/auth/service"
 	authhttp "anti-scam-trainer/backend/internal/features/auth/transport/http"
+	learningrepository "anti-scam-trainer/backend/internal/features/learning/repository"
+	learningservice "anti-scam-trainer/backend/internal/features/learning/service"
+	learninghttp "anti-scam-trainer/backend/internal/features/learning/transport/http"
 	scenariosrepository "anti-scam-trainer/backend/internal/features/scenarios/repository"
 	scenariosservice "anti-scam-trainer/backend/internal/features/scenarios/service"
 	scenarioshttp "anti-scam-trainer/backend/internal/features/scenarios/transport/http"
@@ -79,11 +82,13 @@ func New() (*App, error) {
 	}
 	authentication := authservice.New(users, tokens)
 	content := scenariosservice.NewContent(scenariosrepository.NewPostgres(db))
+	learning := learningservice.New(learningrepository.NewPostgres(db))
 	attemptRepository := attemptsrepository.NewPostgres(db)
 	game := attemptsservice.NewGameWithAI(attemptRepository, gameAIAdapter{provider: provider})
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, []router.Route{{Path: "/health", Handler: health}})
 	versionedRouter.Register(router.V1, authhttp.New(authentication).Routes())
+	versionedRouter.Register(router.V1, learninghttp.New(learning).Routes())
 	versionedRouter.Register(router.V1, scenarioshttp.NewAdmin(content).Routes())
 	versionedRouter.Register(router.V1, attemptshttp.NewGame(game).Routes())
 	routes := http.NewServeMux()
@@ -92,7 +97,7 @@ func New() (*App, error) {
 	routes.Handle("/swagger/", documentationHandler)
 	routes.Handle("/openapi/", documentationHandler)
 	routes.Handle("/", versionedRouter)
-	handler := middleware.Chain(routes, middleware.CORS(cfg.FrontendOrigins), middleware.RequestID(), middleware.Logger(log), middleware.Panic(), middleware.Trace(), authhttp.RequireAuthentication(tokens))
+	handler := middleware.Chain(routes, middleware.RequestID(), middleware.CORS(cfg.FrontendOrigins), middleware.Logger(log), middleware.Panic(), middleware.Trace(), authhttp.RequireAuthentication(tokens))
 	app := &App{DB: db, Log: log, Handler: handler, Port: cfg.Port, AIProvider: provider}
 	app.server = serverruntime.New(server.Config{Addr: ":" + cfg.Port, Handler: handler})
 	initialized = true

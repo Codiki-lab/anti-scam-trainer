@@ -8,6 +8,7 @@ type Scenario struct {
 	Description    string
 	Level          string
 	LevelID        int
+	TopicID        int
 	UserRole       string
 	IsActive       bool
 	Status         string
@@ -40,15 +41,16 @@ const (
 )
 
 type ScenarioStep struct {
-	ID              int
-	ScenarioID      int
-	Number          int
-	ResponseType    ResponseType
-	Goal            string
-	MaxPoints       int
-	AIInstruction   string
-	FallbackMessage string
-	Options         []ScenarioOption
+	ID                  int
+	ScenarioID          int
+	Number              int
+	ResponseType        ResponseType
+	Goal                string
+	CounterpartyMessage string
+	MaxPoints           int
+	AIInstruction       string
+	FallbackMessage     string
+	Options             []ScenarioOption
 }
 
 type DialogueMessage struct {

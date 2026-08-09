@@ -1,329 +1,284 @@
 openapi: 3.1.0
 info:
   title: Anti-scam trainer API
-  version: v1
-  description: |
-    Контракт фактически реализованного API тренажёра. Роль доступа учётной записи
-    (`user` или `admin`) не является ролью Пользователя в Сценарии (`buyer` или `seller`).
-    Каждый ответ приложения содержит заголовок `X-Request-ID`.
+  version: 1.0.0
+  description: Канонический контракт 11 пользовательских экранов. Эта версия содержит согласованную разовую несовместимую замену раннего v1.
 servers:
-  - url: /
+  - url: http://localhost:8080
 tags:
   - name: Состояние сервиса
-    description: Техническая проверка доступности API.
   - name: Аутентификация
-    description: Регистрация, вход и текущая учётная запись Пользователя.
-  - name: Сценарии
-    description: Управление тренировочными Сценариями.
+  - name: Обучение
   - name: Прохождения
-    description: Управление Прохождениями текущего Пользователя.
+  - name: Прогресс
+  - name: Сценарии
 paths:
   /api/v1/health:
     get:
       tags: [Состояние сервиса]
-      summary: Проверка состояния
+      security: []
       responses:
-        '200': { description: Сервис работает, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } }
+        '200': { $ref: '#/components/responses/Health' }
   /api/v1/auth/register:
     post:
       tags: [Аутентификация]
-      summary: Регистрация Пользователя
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Credentials' } } } }
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
       responses:
-        '201': { description: Учётная запись создана, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '201': { description: Учётная запись создана без автоматического входа, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
   /api/v1/auth/login:
     post:
       tags: [Аутентификация]
-      summary: Вход Пользователя
+      security: []
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Credentials' } } } }
       responses:
-        '204': { description: Cookie access_token установлена, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '204': { description: Вход выполнен; access_token установлен в HttpOnly cookie, headers: { Set-Cookie: { schema: { type: string } }, X-Request-ID: { $ref: '#/components/headers/RequestID' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '405': { $ref: '#/components/responses/MethodNotAllowed' }
   /api/v1/auth/logout:
     post:
       tags: [Аутентификация]
-      summary: Выход Пользователя
+      security: []
       responses:
-        '204': { description: Cookie access_token удалена, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }
-        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '204': { description: Cookie текущего браузера очищена, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }
   /api/v1/auth/me:
     get:
       tags: [Аутентификация]
-      summary: Текущая учётная запись
-      security: [{ accessToken: [] }]
       responses:
-        '200': { description: Текущая учётная запись, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '200': { description: Текущий Пользователь, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /api/v1/profile/preferences:
+    patch:
+      tags: [Аутентификация]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [training_role], properties: { training_role: { $ref: '#/components/schemas/UserRole' } }, additionalProperties: false } } } }
+      responses:
+        '200': { description: Предпочтительная ролевая ветка изменена, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/topics:
+    get:
+      tags: [Обучение]
+      parameters: [{ $ref: '#/components/parameters/Role' }]
+      responses:
+        '200': { description: Шесть Тем выбранной ролевой ветки, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Topic' } } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/topics/{id}:
+    get:
+      tags: [Обучение]
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      responses:
+        '200': { description: Карточка Темы, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Topic' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/topics/{id}/theory:
+    get:
+      tags: [Обучение]
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      responses:
+        '200': { description: Пять упорядоченных theory-блоков, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: object, required: [topic, blocks], properties: { topic: { $ref: '#/components/schemas/Topic' }, blocks: { type: array, minItems: 5, maxItems: 5, items: { $ref: '#/components/schemas/TheoryBlock' } } } } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/topics/{id}/theory/read:
+    post:
+      tags: [Обучение]
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      responses:
+        '200': { description: Идемпотентная отметка чтения, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: object, required: [theory_read, newly_read, streak], properties: { theory_read: { const: true }, newly_read: { type: boolean }, streak: { $ref: '#/components/schemas/Streak' } } } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/topics/{id}/quiz:
+    get:
+      tags: [Обучение]
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      responses:
+        '200': { description: Quiz без правильных ответов и объяснений, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Quiz' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/topics/{id}/quiz/attempts:
+    post:
+      tags: [Обучение]
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [answers], properties: { answers: { type: array, minItems: 5, maxItems: 5, items: { $ref: '#/components/schemas/QuizAnswer' } } }, additionalProperties: false } } } }
+      responses:
+        '200': { description: Результат попытки; 80 процентов открывают практику, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/QuizResult' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/training/levels:
     get:
       tags: [Прохождения]
-      summary: Открытые уровни ролевой ветки
-      security: [{ accessToken: [] }]
-      parameters: [{ name: role, in: query, required: true, schema: { type: string, enum: [buyer, seller] } }]
-      responses: { '200': { description: Уровни и Открытость }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } }
+      parameters: [{ $ref: '#/components/parameters/Role' }, { $ref: '#/components/parameters/TopicID' }]
+      responses:
+        '200': { description: Уровни Темы и их открытость, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/LevelState' } } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/training/levels/{level}/start:
     post:
       tags: [Прохождения]
-      summary: Начать или продолжить Прохождение опубликованного Сценария
-      security: [{ accessToken: [] }]
-      parameters: [{ name: level, in: path, required: true, schema: { type: integer, enum: [1, 2, 3, 4] } }, { name: role, in: query, required: true, schema: { type: string, enum: [buyer, seller] } }]
+      parameters: [{ name: level, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 4 } }, { $ref: '#/components/parameters/Role' }, { $ref: '#/components/parameters/TopicID' }]
       responses:
-        '200': { description: Текущий режим Шага сценария, история и допустимые варианты, content: { application/json: { schema: { $ref: '#/components/schemas/GameState' } } } }
+        '200': { description: Полный GameState, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/GameState' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { description: Уровень закрыт }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '502': { $ref: '#/components/responses/BadGateway' }
-        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /api/v1/training/free-play/start:
     post:
       tags: [Прохождения]
-      summary: Начать или продолжить Свободную игру
-      security: [{ accessToken: [] }]
-      parameters: [{ name: role, in: query, required: true, schema: { type: string, enum: [buyer, seller] } }]
+      parameters: [{ $ref: '#/components/parameters/Role' }]
       responses:
-        '200': { description: Свободная игра с первой репликой без раскрытия типа собеседника, content: { application/json: { schema: { $ref: '#/components/schemas/GameState' } } } }
+        '200': { description: Свободная игра без раскрытия типа собеседника, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/GameState' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { description: Свободная игра ещё не открыта }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '502': { $ref: '#/components/responses/BadGateway' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/attempts/{id}:
+    get:
+      tags: [Прохождения]
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      responses:
+        '200': { description: Восстановленный GameState собственного Прохождения, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/GameState' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/attempts/{id}/answers:
     post:
       tags: [Прохождения]
-      summary: Ответить на текущий Шаг сценария
-      security: [{ accessToken: [] }]
       parameters: [{ $ref: '#/components/parameters/ID' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AnswerCommand' } } } }
       responses:
-        '200': { description: Следующий Шаг либо итоговый Балл, Звёзды и разбор, content: { application/json: { schema: { oneOf: [{ $ref: '#/components/schemas/GameState' }, { $ref: '#/components/schemas/Completion' }] } } } }
+        '200': { description: Следующий GameState или Result, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { oneOf: [{ $ref: '#/components/schemas/GameState' }, { $ref: '#/components/schemas/Result' }] } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '502': { $ref: '#/components/responses/BadGateway' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /api/v1/attempts/{id}/result:
+    get:
+      tags: [Прохождения]
+      parameters: [{ $ref: '#/components/parameters/ID' }]
+      responses:
+        '200': { description: Неизменный повторно читаемый Result, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Result' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/attempts/{id}/abandon:
     post:
       tags: [Прохождения]
-      summary: Бросить собственное незавершённое Прохождение
-      security: [{ accessToken: [] }]
       parameters: [{ $ref: '#/components/parameters/ID' }]
-      responses: { '204': { description: Прохождение брошено }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } }
+      responses:
+        '204': { description: Прохождение брошено, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/progress:
+    get:
+      tags: [Прогресс]
+      parameters: [{ $ref: '#/components/parameters/Role' }]
+      responses:
+        '200': { description: Тематический Прогресс выбранной ролевой ветки, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: object, required: [role, summary, topics, recent_attempts], properties: { role: { $ref: '#/components/schemas/UserRole' }, summary: { $ref: '#/components/schemas/ProgressSummary' }, topics: { type: array, items: { $ref: '#/components/schemas/Topic' } }, recent_attempts: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/RecentAttempt' } } } } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/achievements:
+    get:
+      tags: [Прогресс]
+      responses:
+        '200': { description: Восемь достижений, разделённых на earned и available, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: object, required: [earned, available], properties: { earned: { type: array, items: { $ref: '#/components/schemas/Achievement' } }, available: { type: array, items: { $ref: '#/components/schemas/Achievement' } } } } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/dashboard:
+    get:
+      tags: [Прогресс]
+      parameters: [{ $ref: '#/components/parameters/Role' }]
+      responses:
+        '200': { description: Полное состояние главного экрана; daily_task всегда null, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Dashboard' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/admin/scenarios:
     get:
       tags: [Сценарии]
-      summary: Список контента для администратора
-      security: [{ accessToken: [] }]
-      responses: { '200': { description: Сценарии, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AdminScenario' } } } } }, '403': { description: Требуется роль доступа admin } }
+      responses: { '200': { description: Список Сценариев с topic_id, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AdminScenario' } } } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' } }
     post:
       tags: [Сценарии]
-      summary: Создать черновой Сценарий
-      security: [{ accessToken: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenarioInput' } } } }
-      responses: { '201': { description: Черновик создан, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' } } } }, '403': { description: Требуется роль доступа admin } }
-  /api/v1/admin/scenarios/{id}/publish:
-    post:
-      tags: [Сценарии]
-      summary: Опубликовать черновой Сценарий
-      security: [{ accessToken: [] }]
-      parameters: [{ $ref: '#/components/parameters/ID' }]
-      responses: { '204': { description: Сценарий опубликован }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' } } } }
+      responses: { '201': { description: Черновик Сценария, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' } }
   /api/v1/admin/scenarios/{id}:
-    parameters: [{ $ref: '#/components/parameters/ID' }]
-    put:
-      tags: [Сценарии]
-      summary: Изменить черновой Сценарий
-      security: [{ accessToken: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenarioInput' } } } }
-      responses: { '204': { description: Сценарий изменён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
-    delete:
-      tags: [Сценарии]
-      summary: Архивировать Сценарий
-      security: [{ accessToken: [] }]
-      responses: { '204': { description: Сценарий архивирован }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+    put: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' } } } }, responses: { '204': { description: Черновик изменён, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
+    delete: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }], responses: { '204': { description: Сценарий архивирован, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
+  /api/v1/admin/scenarios/{id}/publish:
+    post: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }], responses: { '204': { description: Сценарий опубликован, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
   /api/v1/admin/scenarios/{id}/deactivate:
-    post:
-      tags: [Сценарии]
-      summary: Деактивировать опубликованный Сценарий
-      security: [{ accessToken: [] }]
-      parameters: [{ $ref: '#/components/parameters/ID' }]
-      responses: { '204': { description: Сценарий возвращён в черновик }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+    post: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }], responses: { '204': { description: Сценарий возвращён в draft, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
   /api/v1/admin/scenarios/{id}/restore:
-    post:
-      tags: [Сценарии]
-      summary: Восстановить архивный Сценарий как черновик
-      security: [{ accessToken: [] }]
-      parameters: [{ $ref: '#/components/parameters/ID' }]
-      responses: { '204': { description: Сценарий восстановлен как черновик }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+    post: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }], responses: { '204': { description: Сценарий восстановлен как draft, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
   /api/v1/admin/scenarios/{id}/steps:
-    post:
-      tags: [Сценарии]
-      summary: Добавить Шаг сценария в черновик
-      security: [{ accessToken: [] }]
-      parameters: [{ $ref: '#/components/parameters/ID' }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStepInput' } } } }
-      responses: { '201': { description: Шаг создан, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStep' } } } }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+    post: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStep' } } } }, responses: { '201': { description: Шаг с counterparty_message создан, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStep' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
   /api/v1/admin/scenarios/{id}/steps/{step_id}:
-    parameters: [{ $ref: '#/components/parameters/ID' }, { name: step_id, in: path, required: true, schema: { type: integer } }]
-    put:
-      tags: [Сценарии]
-      summary: Изменить Шаг сценария в черновике
-      security: [{ accessToken: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStepInput' } } } }
-      responses: { '204': { description: Шаг изменён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
-    delete:
-      tags: [Сценарии]
-      summary: Удалить Шаг сценария из черновика
-      security: [{ accessToken: [] }]
-      responses: { '204': { description: Шаг удалён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+    put: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }, { $ref: '#/components/parameters/StepID' }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminStep' } } } }, responses: { '204': { description: Шаг изменён, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
+    delete: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }, { $ref: '#/components/parameters/StepID' }], responses: { '204': { description: Шаг удалён, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
   /api/v1/admin/steps/{id}/options:
-    post:
-      tags: [Сценарии]
-      summary: Добавить вариант Ответа пользователя в черновик
-      security: [{ accessToken: [] }]
-      parameters: [{ $ref: '#/components/parameters/ID' }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOptionInput' } } } }
-      responses: { '201': { description: Вариант создан, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOption' } } } }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+    post: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOption' } } } }, responses: { '201': { description: Вариант создан, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOption' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
   /api/v1/admin/steps/{id}/options/{option_id}:
-    parameters: [{ $ref: '#/components/parameters/ID' }, { name: option_id, in: path, required: true, schema: { type: integer } }]
-    put:
-      tags: [Сценарии]
-      summary: Изменить вариант Ответа пользователя в черновике
-      security: [{ accessToken: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOptionInput' } } } }
-      responses: { '204': { description: Вариант изменён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
-    delete:
-      tags: [Сценарии]
-      summary: Удалить вариант Ответа пользователя из черновика
-      security: [{ accessToken: [] }]
-      responses: { '204': { description: Вариант удалён }, '403': { description: Требуется роль доступа admin }, '409': { $ref: '#/components/responses/Conflict' } }
+    put: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }, { $ref: '#/components/parameters/OptionID' }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminOption' } } } }, responses: { '204': { description: Вариант изменён, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
+    delete: { tags: [Сценарии], parameters: [{ $ref: '#/components/parameters/ID' }, { $ref: '#/components/parameters/OptionID' }], responses: { '204': { description: Вариант удалён, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
 components:
-  headers:
-    RequestID: { description: Идентификатор HTTP-запроса, schema: { type: string } }
   securitySchemes:
-    accessToken: { type: apiKey, in: cookie, name: access_token, description: Подписанная JWT cookie; устанавливается после входа. }
+    accessToken: { type: apiKey, in: cookie, name: access_token }
+  headers:
+    RequestID: { description: Идентификатор запроса для корреляции с логами, schema: { type: string } }
   parameters:
     ID: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    StepID: { name: step_id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    OptionID: { name: option_id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    Role: { name: role, in: query, required: true, schema: { $ref: '#/components/schemas/UserRole' } }
+    TopicID: { name: topic_id, in: query, required: true, schema: { type: integer, minimum: 1 } }
   responses:
-    BadRequest: { description: Некорректный JSON, пустые обязательные поля или неверный ID, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
-    Unauthorized: { description: Отсутствующая, невалидная или истёкшая cookie access_token, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
-    Conflict: { description: Логин уже занят, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
-    NotFound: { description: Ресурс не найден или Прохождение принадлежит другому Пользователю, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
-    MethodNotAllowed: { description: Метод не поддерживается, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
-    InternalServerError: { description: Внутренняя ошибка, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { text/plain: { schema: { type: string } } } }
-    BadGateway: { description: AI вернул невалидный результат или контекст не помещается; состояние не изменено, content: { text/plain: { schema: { type: string } } } }
-    ServiceUnavailable: { description: AI недоступен или превысил таймаут; состояние не изменено, content: { text/plain: { schema: { type: string } } } }
+    Health: { description: Сервис работает, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: object, required: [status], properties: { status: { const: ok } } } } } }
+    BadRequest: { description: VALIDATION_ERROR, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    Unauthorized: { description: AUTHENTICATION_REQUIRED, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    Forbidden: { description: FORBIDDEN для прав доступа или CONTENT_UNAVAILABLE для закрытого учебного контента, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    NotFound: { description: NOT_FOUND; также скрывает чужие ресурсы, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    Conflict: { description: STATE_CONFLICT или STALE_STEP, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    BadGateway: { description: AI_INVALID_RESPONSE; состояние не изменено, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+    ServiceUnavailable: { description: AI_UNAVAILABLE; состояние не изменено, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   schemas:
-    Health: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
-    Credentials: { type: object, required: [username, password], properties: { username: { type: string, minLength: 1, example: alex }, password: { type: string, minLength: 1, format: password, writeOnly: true, example: secret } } }
-    Account: { type: object, required: [id, username, access_role], properties: { id: { type: integer, example: 1 }, username: { type: string, example: alex }, access_role: { type: string, enum: [user, admin], description: Роль доступа учётной записи. } } }
-    AdminScenarioInput:
-      type: object
-      required: [title, description, level_id, role]
-      properties:
-        title: { type: string }
-        description: { type: string }
-        level_id: { type: integer, minimum: 1 }
-        role: { type: string, enum: [buyer, seller] }
-        scam_scheme: { type: string }
-        product_context: { type: object, additionalProperties: true, description: Структурированный контекст сделки }
-        ai_system_prompt: { type: string }
-        final_rubric: { type: object, additionalProperties: true, description: Структурированная итоговая рубрика }
-    AdminScenario:
-      allOf:
-        - { $ref: '#/components/schemas/AdminScenarioInput' }
-        - type: object
-          required: [id, status]
-          properties: { id: { type: integer }, status: { type: string, enum: [draft, published, archived] } }
-    AdminStepInput:
-      type: object
-      required: [number, response_type, goal, max_points]
-      properties:
-        number: { type: integer, minimum: 1 }
-        response_type: { type: string, enum: [multiple_choice, similar_choice, mixed, free_text] }
-        goal: { type: string }
-        max_points: { type: integer, minimum: 0 }
-        ai_instruction: { type: string }
-        fallback_message: { type: string }
-    AdminStep:
-      allOf: [{ $ref: '#/components/schemas/AdminStepInput' }, { type: object, required: [id], properties: { id: { type: integer } } }]
-    AdminOptionInput:
-      type: object
-      required: [text, explanation, points, sort_order]
-      properties:
-        text: { type: string }
-        explanation: { type: string }
-        points: { type: integer, enum: [0, 25, 50, 75, 100] }
-        sort_order: { type: integer, minimum: 0 }
-    AdminOption:
-      allOf: [{ $ref: '#/components/schemas/AdminOptionInput' }, { type: object, required: [id], properties: { id: { type: integer } } }]
-    ScenarioInput: { type: object, required: [title, description, difficulty, role, is_active], properties: { title: { type: string, example: Безопасная доставка }, description: { type: string, example: Покупатель обсуждает доставку товара. }, difficulty: { type: string, example: '1' }, role: { type: string, enum: [buyer, seller], description: Роль Пользователя в Сценарии, а не роль доступа учётной записи. }, is_active: { type: boolean, example: true } } }
-    Scenario: { allOf: [{ $ref: '#/components/schemas/ScenarioInput' }, { type: object, required: [id], properties: { id: { type: integer, example: 1 } } }] }
-    AttemptInput: { type: object, required: [scenario_id, status, started_at, finished_at, score], properties: { scenario_id: { type: integer, example: 1 }, status: { type: string, example: IN_PROGRESS }, started_at: { type: string, format: date-time, example: '2026-08-07T18:00:00Z' }, finished_at: { type: string, format: date-time, example: '0001-01-01T00:00:00Z' }, score: { type: integer, example: 0 } } }
-    Attempt: { allOf: [{ $ref: '#/components/schemas/AttemptInput' }, { type: object, required: [id], properties: { id: { type: integer, example: 1 } } }] }
-    AnswerCommand:
-      type: object
-      properties:
-        option_id: { type: integer, minimum: 1 }
-        free_text: { type: string, minLength: 1 }
-        finish: { type: boolean, default: false }
-      oneOf:
-        - required: [option_id]
-          properties: { finish: { const: false } }
-          not: { required: [free_text] }
-        - required: [free_text]
-          not: { required: [option_id] }
-      additionalProperties: false
-    DialogueMessage:
-      type: object
-      required: [role, text]
-      properties: { role: { type: string, enum: [user, assistant] }, text: { type: string } }
-    GameOption:
-      type: object
-      required: [id, text]
-      properties: { id: { type: integer }, text: { type: string } }
-    GameStep:
-      type: object
-      required: [id, number, goal, options]
-      properties:
-        id: { type: integer }
-        number: { type: integer }
-        goal: { type: string }
-        options: { type: array, items: { $ref: '#/components/schemas/GameOption' } }
-    GameState:
-      type: object
-      required: [attempt_id, scenario_id, mode, step, answers, messages, can_finish_early]
-      properties:
-        attempt_id: { type: integer }
-        scenario_id: { type: integer, description: 0 для Свободной игры }
-        mode: { type: string, enum: [multiple_choice, similar_choice, mixed, free_text] }
-        step: { $ref: '#/components/schemas/GameStep' }
-        answers: { type: array, items: { type: object } }
-        messages: { type: array, items: { $ref: '#/components/schemas/DialogueMessage' } }
-        can_finish_early: { type: boolean, description: true после двух сохранённых свободных Ответов пользователя }
-    AnswerBreakdown:
-      type: object
-      required: [step_id, option_id, option_text, free_text, points, explanation, risk_signals]
-      properties:
-        step_id: { type: integer }
-        option_id: { type: integer }
-        option_text: { type: string }
-        free_text: { type: string }
-        points: { type: integer, enum: [0, 25, 50, 75, 100] }
-        explanation: { type: string }
-        risk_signals: { type: array, items: { type: string } }
-    Completion:
-      type: object
-      required: [attempt_id, score, stars, answers]
-      properties:
-        attempt_id: { type: integer }
-        score: { type: integer, minimum: 0, maximum: 100 }
-        stars: { type: integer, minimum: 0, maximum: 3 }
-        is_scam: { type: boolean, description: Тип Виртуального собеседника; присутствует только в завершённой Свободной игре. }
-        answers: { type: array, items: { $ref: '#/components/schemas/AnswerBreakdown' } }
+    UserRole: { type: string, enum: [buyer, seller] }
+    Credentials: { type: object, required: [username, password], properties: { username: { type: string, minLength: 1 }, password: { type: string, minLength: 1, format: password, writeOnly: true } }, additionalProperties: false }
+    Registration: { type: object, required: [username, password, training_role], properties: { username: { type: string, minLength: 1 }, password: { type: string, minLength: 1, format: password, writeOnly: true }, training_role: { $ref: '#/components/schemas/UserRole' } }, additionalProperties: false }
+    Streak: { type: object, required: [current, longest, active_today], properties: { current: { type: integer, minimum: 0 }, longest: { type: integer, minimum: 0 }, active_today: { type: boolean }, last_activity_date: { type: string, format: date } } }
+    Account: { type: object, required: [id, username, access_role, training_role, streak], properties: { id: { type: integer }, username: { type: string }, access_role: { type: string, enum: [user, admin] }, training_role: { $ref: '#/components/schemas/UserRole' }, streak: { $ref: '#/components/schemas/Streak' } } }
+    TheoryBlock: { type: object, required: [id, sort_order, kind, title, body], properties: { id: { type: integer }, sort_order: { type: integer, minimum: 1, maximum: 5 }, kind: { type: string }, title: { type: string }, body: { type: string } } }
+    LevelState: { type: object, required: [number, opened, scenario_id], properties: { number: { type: integer, minimum: 1, maximum: 4 }, opened: { type: boolean }, scenario_id: { type: integer } } }
+    TopicLevelProgress: { type: object, required: [number, opened, best_score, stars, attempts, last_attempt_id], properties: { number: { type: integer }, opened: { type: boolean }, best_score: { type: integer }, stars: { type: integer, minimum: 0, maximum: 3 }, attempts: { type: integer }, last_attempt_id: { type: integer } } }
+    Topic: { type: object, required: [id, slug, role, title, description, sort_order, theory_read, quiz_passed, quiz_best_score, completed, levels], properties: { id: { type: integer }, slug: { type: string }, role: { $ref: '#/components/schemas/UserRole' }, title: { type: string }, description: { type: string }, sort_order: { type: integer }, theory_read: { type: boolean }, quiz_passed: { type: boolean }, quiz_best_score: { type: integer }, completed: { type: boolean }, levels: { type: array, items: { $ref: '#/components/schemas/TopicLevelProgress' } } } }
+    QuizOption: { type: object, required: [id, text], properties: { id: { type: integer }, text: { type: string } } }
+    QuizQuestion: { type: object, required: [id, sort_order, text, options], properties: { id: { type: integer }, sort_order: { type: integer }, text: { type: string }, options: { type: array, minItems: 4, maxItems: 4, items: { $ref: '#/components/schemas/QuizOption' } } } }
+    Quiz: { type: object, required: [questions, pass_threshold], properties: { questions: { type: array, minItems: 5, maxItems: 5, items: { $ref: '#/components/schemas/QuizQuestion' } }, pass_threshold: { const: 80 } } }
+    QuizAnswer: { type: object, required: [question_id, option_id], properties: { question_id: { type: integer }, option_id: { type: integer } }, additionalProperties: false }
+    QuizResult: { type: object, required: [score, passed, best_score, newly_passed, streak], properties: { score: { type: integer, minimum: 0, maximum: 100 }, passed: { type: boolean }, best_score: { type: integer }, newly_passed: { type: boolean }, streak: { $ref: '#/components/schemas/Streak' } } }
+    GameOption: { type: object, required: [id, text], properties: { id: { type: integer }, text: { type: string, maxLength: 140 } } }
+    GameStep: { type: object, required: [id, number, counterparty_message, options], properties: { id: { type: integer }, number: { type: integer }, counterparty_message: { type: string, maxLength: 280 }, options: { type: array, items: { $ref: '#/components/schemas/GameOption' } } } }
+    DialogueMessage: { type: object, required: [role, text], properties: { role: { type: string, enum: [user, assistant] }, text: { type: string, maxLength: 400 } } }
+    StepProgress: { type: object, required: [current, answered], properties: { current: { type: integer, minimum: 0 }, answered: { type: integer, minimum: 0 } } }
+    SubmittedAnswer: { type: object, required: [step_id, option_id], properties: { step_id: { type: integer, minimum: 0 }, option_id: { type: integer, minimum: 0 } } }
+    GameState: { type: object, required: [attempt_id, status, scenario_id, topic_id, product_context, mode, step_progress, step, answers, messages, can_finish_early], properties: { attempt_id: { type: integer }, status: { type: string, enum: [IN_PROGRESS, COMPLETED, ABANDONED] }, scenario_id: { type: integer, minimum: 0 }, topic_id: { type: integer, minimum: 0 }, product_context: { type: object, additionalProperties: true }, mode: { type: string, enum: [multiple_choice, similar_choice, mixed, free_text] }, step_progress: { $ref: '#/components/schemas/StepProgress' }, step: { $ref: '#/components/schemas/GameStep' }, answers: { type: array, items: { $ref: '#/components/schemas/SubmittedAnswer' } }, messages: { type: array, items: { $ref: '#/components/schemas/DialogueMessage' } }, can_finish_early: { type: boolean } } }
+    AnswerCommand: { type: object, required: [step_id], properties: { step_id: { type: integer, minimum: 1 }, option_id: { type: integer, minimum: 1 }, free_text: { type: string, minLength: 1, maxLength: 400 }, finish: { type: boolean, default: false } }, oneOf: [{ required: [option_id], not: { required: [free_text] } }, { required: [free_text], not: { required: [option_id] } }], additionalProperties: false }
+    AnswerBreakdown: { type: object, required: [step_id, points, explanation], properties: { step_id: { type: integer }, option_id: { type: integer }, option_text: { type: string }, free_text: { type: string }, points: { type: integer, enum: [0, 25, 50, 75, 100] }, explanation: { type: string }, risk_signals: { type: array, items: { type: string } } } }
+    Achievement: { type: object, required: [code, title, description, icon, earned, progress], properties: { code: { type: string, enum: [first_training, five_trainings, perfect_score, first_topic_completed, all_buyer_topics, all_seller_topics, streak_3, streak_7] }, title: { type: string }, description: { type: string }, icon: { type: string }, earned: { type: boolean }, earned_at: { type: string, format: date-time }, progress: { type: object, required: [current, target], properties: { current: { type: integer, minimum: 0 }, target: { type: integer, minimum: 1 } } } } }
+    ContinueAction: { type: object, required: [type], properties: { type: { type: string, enum: [resume_attempt, read_theory, take_quiz, start_level, start_free_play] }, topic_id: { type: integer }, level: { type: integer }, attempt_id: { type: integer } } }
+    Result: { type: object, required: [attempt_id, score, stars, decision_review, risk_signals, safe_actions, level_progress, topic_id, topic_completed, new_achievements, streak], properties: { attempt_id: { type: integer }, score: { type: integer }, stars: { type: integer }, decision_review: { type: array, items: { $ref: '#/components/schemas/AnswerBreakdown' } }, risk_signals: { type: array, items: { type: string } }, safe_actions: { type: array, items: { type: string } }, level_progress: { $ref: '#/components/schemas/TopicLevelProgress' }, topic_id: { type: integer }, topic_completed: { type: boolean }, next_action: { oneOf: [{ $ref: '#/components/schemas/ContinueAction' }, { type: 'null' }] }, new_achievements: { type: array, items: { $ref: '#/components/schemas/Achievement' } }, streak: { $ref: '#/components/schemas/Streak' }, is_scam: { type: boolean } } }
+    ProgressSummary: { type: object, required: [completed_topics, total_topics, completed_levels, total_levels, stars, average_score], properties: { completed_topics: { type: integer, minimum: 0 }, total_topics: { type: integer, const: 6 }, completed_levels: { type: integer, minimum: 0, maximum: 24 }, total_levels: { type: integer, const: 24 }, stars: { type: integer, minimum: 0 }, average_score: { type: number, minimum: 0, maximum: 100 } } }
+    RecentAttempt: { type: object, required: [attempt_id, topic_id, level, score, stars, finished_at], properties: { attempt_id: { type: integer }, topic_id: { type: integer }, level: { type: integer, minimum: 1, maximum: 4 }, score: { type: integer, minimum: 0, maximum: 100 }, stars: { type: integer, minimum: 0, maximum: 3 }, finished_at: { type: string, format: date-time } } }
+    DashboardProfile: { type: object, required: [id, username, training_role], properties: { id: { type: integer }, username: { type: string }, training_role: { $ref: '#/components/schemas/UserRole' } } }
+    Dashboard: { type: object, required: [profile, streak, topics, achievements, continue_action, daily_task], properties: { profile: { $ref: '#/components/schemas/DashboardProfile' }, streak: { $ref: '#/components/schemas/Streak' }, topics: { type: array, minItems: 6, maxItems: 6, items: { $ref: '#/components/schemas/Topic' } }, achievements: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/Achievement' } }, continue_action: { oneOf: [{ $ref: '#/components/schemas/ContinueAction' }, { type: 'null' }] }, daily_task: { type: 'null' } } }
+    AdminScenario: { type: object, required: [title, description, level_id, topic_id, role, scam_scheme, product_context, ai_system_prompt, final_rubric], properties: { id: { type: integer, readOnly: true }, title: { type: string }, description: { type: string }, level_id: { type: integer }, topic_id: { type: integer }, role: { $ref: '#/components/schemas/UserRole' }, status: { type: string, enum: [draft, published, archived], readOnly: true }, scam_scheme: { type: string }, product_context: { type: object, additionalProperties: true }, ai_system_prompt: { type: string }, final_rubric: { type: object, additionalProperties: true } } }
+    AdminStep: { type: object, required: [number, response_type, goal, counterparty_message, max_points, ai_instruction, fallback_message], properties: { id: { type: integer, readOnly: true }, number: { type: integer, minimum: 1 }, response_type: { type: string, enum: [multiple_choice, similar_choice, mixed, free_text] }, goal: { type: string }, counterparty_message: { type: string, minLength: 1, maxLength: 280 }, max_points: { type: integer, minimum: 0 }, ai_instruction: { type: string }, fallback_message: { type: string } } }
+    AdminOption: { type: object, required: [text, explanation, points, sort_order], properties: { id: { type: integer, readOnly: true }, text: { type: string, minLength: 1, maxLength: 140 }, explanation: { type: string }, points: { type: integer, enum: [0, 25, 50, 75, 100] }, sort_order: { type: integer, minimum: 1 } } }
+    ErrorEnvelope: { type: object, required: [error], properties: { error: { type: object, required: [code, message, details, request_id], properties: { code: { type: string, enum: [VALIDATION_ERROR, AUTHENTICATION_REQUIRED, FORBIDDEN, CONTENT_UNAVAILABLE, NOT_FOUND, STATE_CONFLICT, STALE_STEP, AI_INVALID_RESPONSE, AI_UNAVAILABLE, METHOD_NOT_ALLOWED, INTERNAL_ERROR] }, message: { type: string }, details: { type: object, additionalProperties: true }, request_id: { type: string } } } } }
+security:
+  - accessToken: []

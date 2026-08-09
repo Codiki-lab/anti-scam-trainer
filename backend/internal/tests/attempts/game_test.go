@@ -74,7 +74,7 @@ func TestAIFailureLeavesAnswerAndDialogueUnchanged(t *testing.T) {
 func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequestedAnswer(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"seller": {{LevelID: 4, Stars: 1}}}
-	ai := fakeAI{result: `{"awarded_points":75,"explanation":"Осторожная стратегия","reply":"Хорошо, продолжим в сервисе","risk_signals":[]}`}
+	ai := fakeAI{result: `{"awarded_points":75,"explanation":"Осторожная стратегия","reply":"Хорошо, продолжим в сервисе","risk_signals":["давление"]}`}
 	game := service.NewGameWithDependencies(repo, ai, func() bool { return false })
 	state, err := game.StartFreePlay(context.Background(), 1, "seller")
 	if err != nil || state.Attempt.IsScam == nil || *state.Attempt.IsScam || len(state.Messages) != 1 {
@@ -91,6 +91,14 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 	_, completed, err := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text, Finish: true})
 	if err != nil || completed == nil || completed.Attempt.Score != 75 || repo.progress.Stars != 0 {
 		t.Fatalf("free play completion = (%#v, %v), want score without level progress", completed, err)
+	}
+	if len(completed.Result.RiskSignals) != 1 || completed.Result.RiskSignals[0] != "давление" {
+		t.Fatalf("result risk signals=%v", completed.Result.RiskSignals)
+	}
+	for index, item := range completed.Result.DecisionReview {
+		if item.StepID != index+1 {
+			t.Fatalf("decision step %d has id %d", index+1, item.StepID)
+		}
 	}
 }
 
@@ -169,7 +177,7 @@ func TestGameCompletesOnlyAfterLastAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	next, finished, err := game.Submit(1, state.Attempt.ID, 11)
-	if err != nil || finished != nil || next.Step.Number != 2 || len(next.Messages) != 2 {
+	if err != nil || finished != nil || next.Step.Number != 2 || len(next.Messages) != 3 {
 		t.Fatalf("first answer = (%#v,%#v,%v), want next step", next, finished, err)
 	}
 	_, finished, err = game.Submit(1, state.Attempt.ID, 21)
@@ -178,6 +186,26 @@ func TestGameCompletesOnlyAfterLastAnswer(t *testing.T) {
 	}
 	if repo.progress.Stars != 3 || repo.progress.UserRole != "buyer" {
 		t.Fatalf("progress=%#v, want buyer three stars", repo.progress)
+	}
+}
+
+func TestFailedGameDoesNotSetPassedAt(t *testing.T) {
+	repo := newGameRepository()
+	repo.steps[1].Options[0].Points = 0
+	repo.steps[2].Options[0].Points = 0
+	game := service.NewGame(repo)
+	state, err := game.Start(1, 1, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = game.Submit(1, state.Attempt.ID, 11); err != nil {
+		t.Fatal(err)
+	}
+	if _, completed, err := game.Submit(1, state.Attempt.ID, 21); err != nil || completed == nil {
+		t.Fatalf("completion = (%#v,%v)", completed, err)
+	}
+	if repo.progress.Stars != 0 || !repo.progress.PassedAt.IsZero() {
+		t.Fatalf("failed progress = %#v, want zero stars and no passed_at", repo.progress)
 	}
 }
 
@@ -371,4 +399,5 @@ func (r *gameRepository) CompleteAttempt(a domain.Attempt) error {
 	r.attempts[a.ID] = a
 	return nil
 }
-func (r *gameRepository) SaveProgress(p domain.Progress) error { r.progress = p; return nil }
+func (r *gameRepository) SaveProgress(p domain.Progress) error         { r.progress = p; return nil }
+func (r *gameRepository) FinalizeLearning(*domain.AttemptResult) error { return nil }

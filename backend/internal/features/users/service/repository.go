@@ -7,4 +7,5 @@ type Repository interface {
 	Create(domain.User) (domain.User, error)
 	GetByID(int) (domain.User, error)
 	GetByUsername(string) (domain.User, error)
+	UpdateTrainingRole(int, domain.UserRole) (domain.User, error)
 }

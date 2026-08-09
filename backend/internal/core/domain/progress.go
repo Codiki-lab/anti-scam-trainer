@@ -11,6 +11,7 @@ type Progress struct {
 	UserID    int
 	LevelID   int
 	UserRole  string
+	TopicID   int
 	BestScore int
 	Stars     int
 	Attempts  int

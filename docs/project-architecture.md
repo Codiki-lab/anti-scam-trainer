@@ -195,12 +195,18 @@ features/
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /auth/me`
-- `GET /training/levels?role=buyer|seller`
-- `POST /training/levels/{level}/start?role=buyer|seller`
+- `PATCH /profile/preferences`
+- `GET /dashboard`, `/topics`, `/progress`, `/achievements`
+- `GET /topics/{id}/theory`, `GET /topics/{id}/quiz`
+- `POST /topics/{id}/theory/read`, `POST /topics/{id}/quiz/attempts`
+- `GET /training/levels?role=buyer|seller&topic_id=...`
+- `POST /training/levels/{level}/start?role=buyer|seller&topic_id=...`
+- `POST /training/free-play/start?role=buyer|seller`
+- `GET /attempts/{id}`, `GET /attempts/{id}/result`
 - `POST /attempts/{id}/answers`
 - `POST /attempts/{id}/abandon`
 
-Для дизайна из 11 экранов контракт расширяется Темами, теорией, quiz, прогрессом, достижениями и серией дней. Полный перечень целевых endpoints, DTO и миграций находится в `docs/frontend-backend-integration.md`. До появления этих методов frontend использует OpenAPI-моки и не считает целевое поле реализованным.
+Контракт 11 экранов реализован Темами, Теорией, Quiz, Прогрессом, Достижениями и Серией дней. Полный frontend handoff находится в `docs/frontend-backend-integration.md`.
 
 ### Основные типы
 
@@ -213,15 +219,13 @@ AttemptStatus = IN_PROGRESS | COMPLETED | ABANDONED
 
 На внешней границе неизвестное enum-значение должно приводить к безопасной ошибке или fallback-отображению, а не к падению приложения.
 
-### Известные несостыковки, которые нельзя додумывать
+### Границы, которые frontend не додумывает
 
-1. Дизайн требует 12 Тем, теорию и quiz, но этих сущностей ещё нет в актуальной модели.
-2. Текущий уникальный индекс допускает один опубликованный Сценарий на ролевую ветку и Уровень; целевой дизайн требует один на Тему и Уровень.
-3. Игровой DTO пока не возвращает product context, пользовательскую реплику виртуального собеседника и полноценную историю.
-4. `backend/.env.example` указывает `llama3.2:3b`, а сценарная спецификация рассчитана на `qwen3:8b`.
+1. Доступность Тем и Уровней, Балл, Звёзды, Достижения и `continue_action` вычисляет backend.
+2. Опубликованный Сценарий уникален для пары Тема–Уровень.
+3. GameState возвращает product context, видимую реплику и историю, но не раскрывает внутренние инструкции и правильность ответа.
+4. qwen3:8b вызывается только через backend; ошибку AI можно повторить без побочных эффектов.
 5. Число Шагов сценария является данными и не хардкодится frontend.
-
-Окончательные решения фиксируются в OpenAPI, миграциях, тестах и при необходимости ADR.
 
 ## 7. AI-архитектура и защита от галлюцинаций
 
@@ -234,9 +238,9 @@ AttemptStatus = IN_PROGRESS | COMPLETED | ABANDONED
 - жёсткая проверка: `input + maxOutput <= 0.75 × num_ctx`;
 - полные документы, обе роли и все сценарии никогда не передаются в один prompt;
 - L3: не более двух free-text точек;
-- L4 не входит в обязательный MVP;
+- L4 и Свободная игра входят в реализованный MVP и используют четыре управляемые AI-фазы либо до пяти свободных Ответов пользователя;
 - structured output проходит schema и policy validation;
-- при превышении бюджета или двух ошибках используется scripted fallback.
+- при ошибке модели состояние не меняется и запрос можно повторить; Сценарий хранит безопасную fallback-реплику.
 
 Продуктовая гарантия формулируется так:
 

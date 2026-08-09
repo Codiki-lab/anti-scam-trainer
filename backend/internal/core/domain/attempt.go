@@ -25,6 +25,22 @@ type Attempt struct {
 	FinalBreakdown    []AnswerBreakdown
 }
 
+type AttemptResult struct {
+	AttemptID       int                `json:"attempt_id"`
+	Score           int                `json:"score"`
+	Stars           int                `json:"stars"`
+	DecisionReview  []AnswerBreakdown  `json:"decision_review"`
+	RiskSignals     []string           `json:"risk_signals"`
+	SafeActions     []string           `json:"safe_actions"`
+	LevelProgress   TopicLevelProgress `json:"level_progress"`
+	TopicID         int                `json:"topic_id"`
+	TopicCompleted  bool               `json:"topic_completed"`
+	NextAction      *ContinueAction    `json:"next_action"`
+	NewAchievements []Achievement      `json:"new_achievements"`
+	Streak          Streak             `json:"streak"`
+	IsScam          *bool              `json:"is_scam,omitempty"`
+}
+
 type AttemptMode string
 
 const (
