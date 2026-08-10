@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
-import { TopicCompletionRing, type Topic } from '@/entities/learning'
+import { getCompletedLevelCount, TopicCompletionRing, type Topic } from '@/entities/learning'
 import styles from './Dashboard.module.scss'
 
 export function TopicCard({ topic, basePath }: { topic: Topic; basePath: string }) {
+  const completedLevels = getCompletedLevelCount(topic)
+
   return (
     <Link className={styles.topicCard} to={`${basePath}/lessons/${topic.id}`}>
       <div className={styles.topicCardHeader}>
@@ -13,7 +15,7 @@ export function TopicCard({ topic, basePath }: { topic: Topic; basePath: string 
         <h3>{topic.title}</h3>
         <p>{topic.description}</p>
         <span className={styles.topicProgressLabel}>
-          {topic.levels.filter((level) => level.stars > 0).length} из {topic.levels.length} Уровней
+          {completedLevels} из {topic.levels.length} Уровней
         </span>
       </div>
     </Link>

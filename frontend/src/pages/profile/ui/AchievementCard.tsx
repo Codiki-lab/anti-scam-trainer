@@ -7,37 +7,33 @@ import {
   Star,
   Storefront,
   Trophy,
+  type Icon,
 } from '@phosphor-icons/react'
 import type { Achievement } from '@/entities/progress'
 import styles from './Profile.module.scss'
 
-const achievementPictures = {
+const achievementPictures: Record<string, Icon> = {
   star: Star,
-  stack: Stack,
-  shield: ShieldCheck,
-  book: BookOpen,
-  buyer: ShoppingCart,
-  seller: Storefront,
-  flame: Fire,
-} as const
-
-const achievementPicturesByCode = {
   first_training: Star,
+  stack: Stack,
   five_trainings: Stack,
+  shield: ShieldCheck,
   perfect_score: ShieldCheck,
+  book: BookOpen,
   first_topic_completed: BookOpen,
+  buyer: ShoppingCart,
   all_buyer_topics: ShoppingCart,
+  seller: Storefront,
   all_seller_topics: Storefront,
+  flame: Fire,
   streak_3: Fire,
   streak_7: Fire,
-} as const
+}
 
 export function AchievementCard({ achievement }: { achievement: Achievement }) {
   const progress = Math.min(100, Math.round((achievement.current / achievement.target) * 100))
   const Picture =
-    achievementPictures[achievement.icon as keyof typeof achievementPictures] ??
-    achievementPicturesByCode[achievement.code as keyof typeof achievementPicturesByCode] ??
-    Trophy
+    achievementPictures[achievement.icon] ?? achievementPictures[achievement.code] ?? Trophy
 
   return (
     <div className={`${styles.achievement} ${achievement.earned ? styles.earned : ''}`}>

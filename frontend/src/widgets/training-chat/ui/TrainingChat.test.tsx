@@ -39,7 +39,7 @@ const session: TrainingSession = {
 }
 
 describe('TrainingChat', () => {
-  it('sends a prepared reply as the user message immediately', async () => {
+  it('sends a prepared user reply immediately', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn().mockResolvedValue(true)
     render(
