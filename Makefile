@@ -10,9 +10,9 @@ COMPOSE_OLLAMA := docker compose \
 	-f deploy/docker-compose.yml \
 	-f deploy/docker-compose.ollama.yml
 
-.PHONY: help env setup build up down logs lint test gateway-regression demo-reset \
+.PHONY: help env setup build up down logs lint test gateway-regression demo-reset db-reset \
 	build-ollama up-ollama down-ollama logs-ollama ollama-init ollama-reset \
-	migrate-create migrate-up migrate-down clean
+	start-ollama migrate-create migrate-up migrate-down clean
 
 help:
 	@echo "Available commands:"
@@ -20,6 +20,7 @@ help:
 	@echo "  make setup                  Initial project setup"
 	@echo "  make build                  Build images without starting containers"
 	@echo "  make build-ollama           Build images with the Ollama configuration"
+	@echo "  make start-ollama           Build and start all services with Ollama, then pull the model"
 	@echo "  make up                     Start previously built infrastructure without Ollama"
 	@echo "  make up-ollama              Start previously built infrastructure with Ollama"
 	@echo "  make down                   Stop infrastructure without Ollama"
@@ -30,6 +31,7 @@ help:
 	@echo "  make test                   Run tests"
 	@echo "  make gateway-regression     Verify Register → Login → Dashboard through the gateway"
 	@echo "  make demo-reset             Recreate the deterministic seller demo account"
+	@echo "  make db-reset               Delete all local PostgreSQL data; migrations restore seed content on next start"
 	@echo "  make migrate-create seq=xx  Create migration"
 	@echo "  make migrate-up             Apply migrations"
 	@echo "  make migrate-down           Rollback migrations"
@@ -62,6 +64,8 @@ build: env
 build-ollama: env
 	@$(COMPOSE_OLLAMA) build
 
+start-ollama: build-ollama up-ollama ollama-init
+
 up: env
 	@$(COMPOSE) up -d --no-build
 
@@ -93,6 +97,10 @@ gateway-regression:
 
 demo-reset:
 	@cd backend && go run ./cmd/demo-reset
+
+db-reset:
+	@$(COMPOSE_OLLAMA) down --remove-orphans
+	@rm -rf "$(PROJECT_ROOT)/out/pgdata"
 
 migrate-create:
 	@if [ -z "$(seq)" ]; then \

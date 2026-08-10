@@ -104,14 +104,15 @@ curl http://localhost:8080/api/v1/health
 
 ## Ollama
 
-PostgreSQL и Ollama можно поднять вместе:
+Для полной сборки и запуска PostgreSQL, API, gateway и Ollama одной командой используйте:
 
 ```bash
-make up-ollama
-make ollama-init
+make start-ollama
 ```
 
-`ollama-init` загружает модель из `OLLAMA_MODEL`. По умолчанию в примере окружения указана `qwen3:8b`.
+Команда собирает образы, запускает сервисы и загружает модель из `OLLAMA_MODEL`. По умолчанию в примере окружения указана `qwen3:8b`. Первый запуск может занять продолжительное время из-за скачивания модели.
+
+Для раздельного управления по-прежнему доступны `make build-ollama`, `make up-ollama` и `make ollama-init`.
 
 ```bash
 make logs-ollama
@@ -132,6 +133,14 @@ make down-ollama
 ```
 
 `make clean` удаляет контейнеры и именованные Docker volumes, но каталог `out/pgdata` подключён как bind mount и остаётся на диске.
+
+### Полный сброс локальной БД
+
+```bash
+make db-reset
+```
+
+Команда останавливает конфигурацию с Ollama и необратимо удаляет `out/pgdata`: локальные Пользователи, Прохождения, Result и прочие не-seed данные будут потеряны. Последующий `make up` или `make start-ollama` применит миграции на чистой БД и восстановит только штатный seed-контент. Backend затем создаст администратора из `ADMIN_USERNAME` и `ADMIN_PASSWORD`.
 
 ## Веб-клиент и публичное демо
 
