@@ -51,6 +51,20 @@ func TestPublishedContentMatrix(t *testing.T) {
 	if invalid != 0 {
 		t.Fatalf("invalid scenario structures=%d", invalid)
 	}
+	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM chats c
+		WHERE c.content_status='published' AND c.archived_at IS NULL AND (
+			c.risk_type NOT IN ('phishing','prepayment','fake_payment','delivery','external_messenger','account_takeover','sms_code','social_engineering')
+			OR NULLIF(c.product_context->>'item_title','') IS NULL
+			OR NULLIF(c.product_context->>'category','') IS NULL
+			OR NULLIF(c.product_context->>'deal_method','') IS NULL
+			OR c.product_context ? 'url'
+		)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invalid != 0 {
+		t.Fatalf("published scenarios with invalid risk or product context=%d", invalid)
+	}
 	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM (
 		SELECT s.id FROM chat_steps s JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id LEFT JOIN chat_options o ON o.step_id=s.id
 		WHERE c.content_status='published' GROUP BY s.id,l.level_number,s.step_number HAVING COUNT(o.id)<>CASE WHEN l.level_number IN(1,2) OR (l.level_number=3 AND s.step_number=1) THEN 3 ELSE 0 END
