@@ -50,7 +50,7 @@ test('navigation and focus remain accessible at every breakpoint', async ({ page
   const viewport = page.viewportSize()
   if (viewport && viewport.width <= 560) {
     const targets = await page
-      .locator('button:visible, input:visible, select:visible, textarea:visible, nav a:visible')
+      .locator('button:visible, input:visible, select:visible, textarea:visible, a:visible')
       .evaluateAll((elements) =>
         elements.map((element) => {
           const rect = element.getBoundingClientRect()

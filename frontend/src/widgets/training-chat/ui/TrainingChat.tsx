@@ -57,18 +57,13 @@ export function TrainingChat({
   }
 
   const selectedOption = session.step.options.find((option) => option.id === selectedOptionId)
-  const assistantMessages = session.messages.filter((message) => message.role === 'assistant')
-  const dialogueHistory = assistantMessages.flatMap((message, index) => {
-    const answer = session.answers[index]
+  let answerIndex = 0
+  const dialogueHistory = session.messages.map((message) => {
+    if (message.role !== 'user') return message
+    const answer = session.answers[answerIndex++]
     return answer
-      ? [
-          message,
-          {
-            role: 'user' as const,
-            text: answer.optionText || answer.freeText || 'Ответ сохранён',
-          },
-        ]
-      : [message]
+      ? { role: 'user' as const, text: answer.optionText || answer.freeText || 'Ответ сохранён' }
+      : message
   })
   const productImageKey = productImageKeys.has(session.productContext.imageKey ?? '')
     ? session.productContext.imageKey

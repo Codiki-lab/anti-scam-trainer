@@ -106,7 +106,10 @@ describe('TrainingChat', () => {
           messages: [
             { role: 'assistant', text: 'Я уже оплатил заказ.' },
             { role: 'user', text: 'legacy text that must not be parsed' },
+            { role: 'assistant', text: 'Оплата подтверждена.' },
             { role: 'assistant', text: 'Тогда откройте ссылку.' },
+            { role: 'user', text: 'second legacy text' },
+            { role: 'assistant', text: 'Хорошо, не открывайте.' },
           ],
         }}
         isSubmitting={false}
@@ -120,6 +123,10 @@ describe('TrainingChat', () => {
     expect(screen.getByText('Проверю оплату в приложении')).toBeVisible()
     expect(screen.getByText('Не буду открывать ссылку')).toBeVisible()
     expect(screen.queryByText('legacy text that must not be parsed')).not.toBeInTheDocument()
+    expect(screen.queryByText('second legacy text')).not.toBeInTheDocument()
+    expect(screen.getByText('Я уже оплатил заказ.').parentElement?.textContent).toMatch(
+      /Я уже оплатил заказ.*Проверю оплату в приложении.*Оплата подтверждена.*Тогда откройте ссылку.*Не буду открывать ссылку.*Хорошо, не открывайте/,
+    )
   })
 
   it('blocks free-text submission during cooldown', async () => {
