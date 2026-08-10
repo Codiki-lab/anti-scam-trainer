@@ -10,6 +10,8 @@ export const apiTags = {
   dashboard: 'Dashboard',
   progress: 'Progress',
   achievements: 'Achievements',
+  adminTopics: 'AdminTopics',
+  adminScenarios: 'AdminScenarios',
 } as const
 
 const baseQuery = fetchBaseQuery({

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
+import { lazy, Suspense, useState } from 'react'
+import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   CurrentAccountProvider,
   useCurrentAccount,
@@ -30,6 +30,10 @@ import {
   previewSession,
 } from './preview/data'
 import styles from './App.module.scss'
+
+const AdminPage = lazy(() =>
+  import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
+)
 
 function LoadingScreen() {
   return <div className={styles.splash}>Загружаем тренажёр безопасности…</div>
@@ -63,22 +67,23 @@ function AuthOnly({ mode }: { mode: 'login' | 'register' }) {
 
   if (isLoading) return <LoadingScreen />
 
-  return account ? <Navigate to="/dashboard" replace /> : <AuthPage mode={mode} />
+  return account ? (
+    <Navigate to={account.accessRole === 'admin' ? '/admin' : '/dashboard'} replace />
+  ) : (
+    <AuthPage mode={mode} />
+  )
 }
 
-const previewRoutes = [
-  ['/preview/login', '01 Вход'],
-  ['/preview/register', '02 Регистрация'],
-  ['/preview/dashboard', '03 Главная'],
-  ['/preview/lessons', '04 Уроки'],
-  ['/preview/lessons/phishing-links', '05 Теория'],
-  ['/preview/lessons/phishing-links/quiz', '06 Квиз'],
-  ['/preview/chats', '07 Тренировки'],
-  ['/preview/sessions/demo', '08 Чат'],
-  ['/preview/sessions/demo/result', '09 Результат'],
-  ['/preview/progress', '10 Прогресс'],
-  ['/preview/achievements', '11 Достижения'],
-] as const
+function AdminOnly() {
+  const { account } = useCurrentAccount()
+  return account.accessRole === 'admin' ? (
+    <Suspense fallback={<LoadingScreen />}>
+      <AdminPage />
+    </Suspense>
+  ) : (
+    <Navigate to="/dashboard" replace />
+  )
+}
 
 function PreviewLayout() {
   const [account, setAccount] = useState<Account>(previewAccount)
@@ -91,13 +96,6 @@ function PreviewLayout() {
       <CurrentAccountProvider value={{ account, changeTrainingRole }}>
         <div>
           <AppHeader account={account} basePath="/preview" />
-          <div className={styles.previewStrip}>
-            {previewRoutes.map(([to, label]) => (
-              <Link key={to} to={to}>
-                {label}
-              </Link>
-            ))}
-          </div>
           <main className={styles.page}>
             <Outlet />
           </main>
@@ -203,6 +201,7 @@ export function App() {
       <Route path="/preview" element={<Navigate to="/preview/dashboard" replace />} />
 
       <Route element={<ProtectedLayout />}>
+        <Route path="/admin" element={<AdminOnly />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/lessons" element={<LessonsPage />} />
         <Route path="/lessons/:lessonId" element={<TheoryPage />} />
