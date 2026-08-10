@@ -18,6 +18,7 @@
 | [03-operations/ai-calibration.md](03-operations/ai-calibration.md) | Русскоязычная калибровка qwen3:8b |
 | [04-guides](04-guides/backend-development.md) | Правила развития текущего бэкенда |
 | [08-frontend-api-contracts](08-frontend-api-contracts/current-http-api.md) | HTTP-контракт, который фактически реализован сейчас |
+| [submission](submission/one-page.md) | One-page командного решения для отправки на хакатон |
 
 Разделы из исходного шаблона не копируются автоматически. История, шаблоны, сниппеты и рабочие черновики появятся только тогда, когда для них возникнет реальное содержимое.
 
