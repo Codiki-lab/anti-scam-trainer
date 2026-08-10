@@ -1,15 +1,15 @@
 import { execFileSync } from 'node:child_process'
 import { expect, test } from '@playwright/test'
 
-test.beforeEach(({ page: _page }, testInfo) => {
+test.beforeEach(({ page }, testInfo) => {
+  void page
   test.skip(testInfo.project.name === 'tablet', 'Tablet uses responsive smoke coverage')
   execFileSync('make', ['demo-reset'], { cwd: '..', stdio: 'pipe' })
 })
 
-test('returning seller completes the saved smartphone attempt through HTTP API', async (
-  { page },
-  testInfo,
-) => {
+test('returning seller completes the saved smartphone attempt through HTTP API', async ({
+  page,
+}, testInfo) => {
   await page.goto('/login')
   await page.getByRole('textbox', { name: 'Логин' }).fill('demo-seller')
   await page.getByLabel('Пароль').fill('demo1234')
