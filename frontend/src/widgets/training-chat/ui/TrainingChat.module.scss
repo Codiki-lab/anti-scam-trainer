@@ -154,7 +154,12 @@
   border-radius: 12px;
   place-items: center;
   background: #fff;
-  font-size: 44px;
+
+  svg {
+    width: 100%;
+    max-width: 160px;
+    height: 118px;
+  }
 }
 
 .price {

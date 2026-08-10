@@ -18,6 +18,17 @@ const dealMethodLabels = {
   pickup: 'Самовывоз',
 }
 
+const productImageKeys = new Set([
+  'smartphone',
+  'electronics',
+  'appliance',
+  'camera',
+  'bicycle',
+  'laptop',
+  'headphones',
+  'console',
+])
+
 export function TrainingChat({
   session,
   isSubmitting,
@@ -46,6 +57,22 @@ export function TrainingChat({
   }
 
   const selectedOption = session.step.options.find((option) => option.id === selectedOptionId)
+  const assistantMessages = session.messages.filter((message) => message.role === 'assistant')
+  const dialogueHistory = assistantMessages.flatMap((message, index) => {
+    const answer = session.answers[index]
+    return answer
+      ? [
+          message,
+          {
+            role: 'user' as const,
+            text: answer.optionText || answer.freeText || 'Ответ сохранён',
+          },
+        ]
+      : [message]
+  })
+  const productImageKey = productImageKeys.has(session.productContext.imageKey ?? '')
+    ? session.productContext.imageKey
+    : 'electronics'
   const price = session.productContext.price
     ? new Intl.NumberFormat('ru-RU').format(session.productContext.price) + ' ₽'
     : 'Цена не указана'
@@ -80,7 +107,7 @@ export function TrainingChat({
           <small>{dealMethodLabels[session.productContext.dealMethod]}</small>
         </div>
         <div className={styles.messages}>
-          {session.messages.map((message, index) => (
+          {dialogueHistory.map((message, index) => (
             <p
               key={`${message.role}-${index}`}
               className={`${styles.bubble} ${message.role === 'assistant' ? styles.other : styles.mine}`}
@@ -158,7 +185,9 @@ export function TrainingChat({
       <aside className={styles.side} aria-label="Контекст товара и сделки">
         <p className={uiStyles.eyebrow}>Контекст сделки</p>
         <div className={styles.productImage} aria-hidden="true">
-          {session.productContext.imageKey ? '📦' : '🛍️'}
+          <svg viewBox="0 0 160 120" role="presentation">
+            <use href={`/assets/product-illustrations.svg#${productImageKey}`} />
+          </svg>
         </div>
         <h3>{session.productContext.itemTitle}</h3>
         <strong className={styles.price}>{price}</strong>

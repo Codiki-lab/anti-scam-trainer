@@ -82,4 +82,33 @@ describe('TrainingChat', () => {
     await user.click(screen.getByRole('button', { name: 'Отправить' }))
     expect(input).toHaveValue('Продолжим только внутри приложения')
   })
+
+  it('restores option and free-text answers from structured history', () => {
+    render(
+      <TrainingChat
+        session={{
+          ...session,
+          productContext: { ...session.productContext, imageKey: 'smartphone' },
+          answers: [
+            { stepId: 8, answerType: 'option', optionText: 'Проверю оплату в приложении', points: 100 },
+            { stepId: 9, answerType: 'free_text', freeText: 'Не буду открывать ссылку', points: 100 },
+          ],
+          messages: [
+            { role: 'assistant', text: 'Я уже оплатил заказ.' },
+            { role: 'user', text: 'legacy text that must not be parsed' },
+            { role: 'assistant', text: 'Тогда откройте ссылку.' },
+          ],
+        }}
+        isSubmitting={false}
+        error=""
+        cooldown={0}
+        onSubmit={vi.fn()}
+        onAbandon={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Проверю оплату в приложении')).toBeVisible()
+    expect(screen.getByText('Не буду открывать ссылку')).toBeVisible()
+    expect(screen.queryByText('legacy text that must not be parsed')).not.toBeInTheDocument()
+  })
 })
