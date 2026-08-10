@@ -15,13 +15,44 @@ test('preview user can open the main learning flow', async ({ page }) => {
   await expect(page.locator('main a')).toHaveCount(6)
 })
 
-test('free play is available without completed levels', async ({ page }) => {
+test('free play stays locked until all topics are completed', async ({ page }) => {
   await page.goto('/preview/dashboard')
 
-  await page.getByRole('button', { name: 'Начать игру →' }).click()
+  await expect(page.getByRole('button', { name: 'Начать игру →' })).toBeDisabled()
+  await expect(page.getByText(/Закрыта: завершите все 6 Темы.*\(0\/6\)/)).toBeVisible()
+})
 
-  await expect(page).toHaveURL(/\/preview\/sessions\/free-play$/)
-  await expect(page.getByPlaceholder('Напишите безопасный ответ…')).toBeVisible()
+test('navigation and focus remain accessible at every breakpoint', async ({ page }) => {
+  await page.goto('/preview/dashboard')
+
+  await expect(page.getByRole('link', { name: 'Главная', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await page.keyboard.press('Tab')
+  const focus = await page.evaluate(() => {
+    const element = document.activeElement as HTMLElement | null
+    const style = element ? getComputedStyle(element) : null
+    return {
+      tag: element?.tagName,
+      outlineStyle: style?.outlineStyle,
+      outlineWidth: style?.outlineWidth,
+    }
+  })
+  expect(focus.tag).not.toBe('BODY')
+  expect(focus.outlineStyle).not.toBe('none')
+  expect(focus.outlineWidth).not.toBe('0px')
+
+  const viewport = page.viewportSize()
+  if (viewport && viewport.width <= 560) {
+    const targets = await page.locator('nav a').evaluateAll((links) =>
+      links.map((link) => {
+        const rect = link.getBoundingClientRect()
+        return { width: rect.width, height: rect.height }
+      }),
+    )
+    expect(targets.some(({ width, height }) => width >= 44 && height >= 44)).toBe(true)
+  }
 })
 
 test('each topic opens its own theory', async ({ page }) => {

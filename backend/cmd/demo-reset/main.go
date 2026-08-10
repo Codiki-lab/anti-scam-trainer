@@ -40,6 +40,9 @@ func main() {
 
 func reset(db *pg.DB, passwordHash string) error {
 	return db.RunInTransaction(func(tx *pg.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM chat_sessions WHERE user_id=(SELECT id FROM users WHERE username=?)`, demoUsername); err != nil {
+			return fmt.Errorf("remove previous attempts: %w", err)
+		}
 		if _, err := tx.Exec(`DELETE FROM users WHERE username = ?`, demoUsername); err != nil {
 			return fmt.Errorf("remove previous account: %w", err)
 		}
@@ -47,7 +50,7 @@ func reset(db *pg.DB, passwordHash string) error {
 		var userID, topicID, levelOneID, levelTwoID, levelOneScenarioID, levelTwoScenarioID int
 		if _, err := tx.QueryOne(pg.Scan(&userID), `
 			INSERT INTO users(username,password_hash,access_role,training_role,current_streak,longest_streak,last_activity_date)
-			VALUES(? ,? ,'user','seller',2,3,(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date)
+			VALUES(? ,? ,'user','seller',2,3,(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date-1)
 			RETURNING id`, demoUsername, passwordHash); err != nil {
 			return fmt.Errorf("create account: %w", err)
 		}
@@ -74,6 +77,14 @@ func reset(db *pg.DB, passwordHash string) error {
 		}
 		if _, err := tx.Exec(`INSERT INTO quiz_attempts(user_id,topic_id,score,passed) VALUES(?,?,100,TRUE)`, userID, topicID); err != nil {
 			return fmt.Errorf("seed quiz: %w", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO daily_tasks(user_id,activity_date,user_role,messages,verdict,signals,safe_action)
+			VALUES(?,(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::date,'seller',
+				'[{"role":"assistant","text":"Я уже оплатил смартфон. Отдайте товар курьеру по скриншоту."},{"role":"user","text":"В приложении поступление денег пока не отображается."}]'::jsonb,
+				TRUE,'["Скриншот не подтверждает оплату","Давление с передачей товара"]'::jsonb,
+				'Проверить оплату в собственном интерфейсе банка и заказа.')`, userID); err != nil {
+			return fmt.Errorf("seed daily task: %w", err)
 		}
 
 		var completedAttemptID int
@@ -110,7 +121,7 @@ func reset(db *pg.DB, passwordHash string) error {
 
 		if _, err := tx.Exec(`
 			INSERT INTO chat_sessions(user_id,chat_id,status,started_at,score,mode,current_step_number,max_score,user_role,free_text_count)
-			VALUES(?,?,'IN_PROGRESS',CURRENT_TIMESTAMP,0,'scenario',0,0,'seller',0)`, userID, levelTwoScenarioID); err != nil {
+			VALUES(?,?,'IN_PROGRESS',CURRENT_TIMESTAMP,0,'scenario',1,0,'seller',0)`, userID, levelTwoScenarioID); err != nil {
 			return fmt.Errorf("seed unfinished level 2 attempt: %w", err)
 		}
 		return nil

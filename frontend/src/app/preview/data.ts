@@ -281,7 +281,6 @@ export const previewResult: AttemptResult = {
     },
   ],
   streak: previewAccount.streak,
-  isScam: true,
 }
 
 export const previewAchievements: Achievements = {
@@ -295,15 +294,6 @@ export const previewAchievements: Achievements = {
       current: 1,
       target: 1,
     },
-    {
-      code: 'perfect_score',
-      title: 'Идеальный результат',
-      description: 'Наберите 100 баллов',
-      icon: '★',
-      earned: true,
-      current: 1,
-      target: 1,
-    },
   ],
   available: [
     {
@@ -312,7 +302,7 @@ export const previewAchievements: Achievements = {
       description: 'Пройдите все темы роли',
       icon: '🛡️',
       earned: false,
-      current: 1,
+      current: 0,
       target: 6,
     },
     {
@@ -351,29 +341,21 @@ export function createPreviewProgress(role: UserRole): Progress {
   return {
     role,
     summary: {
-      completedTopics: 1,
+      completedTopics: 0,
       totalTopics: 6,
-      completedLevels: 4,
+      completedLevels: 1,
       totalLevels: 24,
-      stars: 8,
-      averageScore: 76,
+      stars: 2,
+      averageScore: 75,
     },
     topics: createPreviewTopics(role),
     recentAttempts: [
       {
-        attemptId: 9001,
+        attemptId: 9000,
         topicId: 1,
-        level: 2,
+        level: 1,
         score: 75,
         stars: 2,
-        finishedAt: '2026-08-09T09:00:00Z',
-      },
-      {
-        attemptId: 9000,
-        topicId: 5,
-        level: 1,
-        score: 100,
-        stars: 3,
         finishedAt: '2026-08-08T09:00:00Z',
       },
     ],

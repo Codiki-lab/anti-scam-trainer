@@ -115,11 +115,6 @@
     text-transform: uppercase;
   }
 
-  .recommendation {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   h3 {
     margin: 8px 0 7px;
     color: #16262d;
@@ -313,6 +308,17 @@
 }
 
 @media (max-width: 560px) {
+  .recommendation {
+    align-items: stretch;
+    flex-direction: column;
+
+    > a,
+    > button {
+      width: 100%;
+      white-space: normal;
+    }
+  }
+
   .topicGrid {
     grid-template-columns: 1fr;
   }
