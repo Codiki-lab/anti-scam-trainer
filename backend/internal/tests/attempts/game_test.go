@@ -206,7 +206,7 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 	if err != nil || completed == nil || completed.Attempt.Score != 75 || repo.progress.Stars != 0 {
 		t.Fatalf("free play completion = (%#v, %v), want score without level progress", completed, err)
 	}
-	if len(completed.Result.RiskSignals) != 1 || completed.Result.RiskSignals[0] != "давление" {
+	if len(completed.Result.RiskSignals) != 1 || completed.Result.RiskSignals[0].Code != "pressure" || completed.Result.RiskSignals[0].Label == "" {
 		t.Fatalf("result risk signals=%v", completed.Result.RiskSignals)
 	}
 	for index, item := range completed.Result.DecisionReview {

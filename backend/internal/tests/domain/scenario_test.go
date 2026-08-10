@@ -52,3 +52,11 @@ func TestScenarioPublicationDataRequiresSupportedRiskAndProductContext(t *testin
 		t.Fatal("unsupported risk type accepted")
 	}
 }
+
+func TestAssessmentCategoriesFollowAllowedPoints(t *testing.T) {
+	for points, want := range map[int]string{0: "unsafe", 25: "unsafe", 50: "risky", 75: "mostly_safe", 100: "safe"} {
+		if got := domain.AssessmentForPoints(points); got != want {
+			t.Errorf("AssessmentForPoints(%d)=%q, want %q", points, got, want)
+		}
+	}
+}

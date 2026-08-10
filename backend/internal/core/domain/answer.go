@@ -23,11 +23,33 @@ type AIEvaluation struct {
 }
 
 type AnswerBreakdown struct {
-	StepID      int      `json:"step_id"`
-	OptionID    int      `json:"option_id"`
-	Points      int      `json:"points"`
-	Explanation string   `json:"explanation"`
-	OptionText  string   `json:"option_text"`
-	FreeText    string   `json:"free_text"`
-	RiskSignals []string `json:"risk_signals"`
+	StepID      int          `json:"step_id"`
+	StepNumber  int          `json:"step_number"`
+	AnswerType  string       `json:"answer_type"`
+	OptionID    int          `json:"option_id,omitempty"`
+	Points      int          `json:"points"`
+	Assessment  string       `json:"assessment"`
+	Explanation string       `json:"explanation"`
+	SafeAction  string       `json:"safe_action"`
+	OptionText  string       `json:"option_text,omitempty"`
+	FreeText    string       `json:"free_text,omitempty"`
+	RiskSignals []RiskSignal `json:"risk_signals"`
+}
+
+type RiskSignal struct {
+	Code  string `json:"code"`
+	Label string `json:"label"`
+}
+
+func AssessmentForPoints(points int) string {
+	switch {
+	case points <= 25:
+		return "unsafe"
+	case points == 50:
+		return "risky"
+	case points == 75:
+		return "mostly_safe"
+	default:
+		return "safe"
+	}
 }

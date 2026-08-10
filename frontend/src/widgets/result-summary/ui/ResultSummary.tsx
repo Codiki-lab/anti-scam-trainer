@@ -11,6 +11,12 @@ interface ResultSummaryProps {
 }
 
 export function ResultSummary({ result, basePath = '', nextActionHref }: ResultSummaryProps) {
+  const assessmentLabels = {
+    unsafe: 'небезопасно',
+    risky: 'рискованно',
+    mostly_safe: 'почти безопасно',
+    safe: 'безопасно',
+  }
   return (
     <section className={styles.result}>
       <p className={uiStyles.eyebrow}>Прохождение завершено</p>
@@ -27,14 +33,22 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
       </div>
       <h2>Разбор сделки</h2>
       <div className={styles.checkList}>
-        {result.decisionReview.map((answer, index) => (
+        {result.decisionReview.map((answer) => (
           <p key={answer.stepId} className={answer.points >= 75 ? undefined : styles.risk}>
             {answer.points >= 75 ? '✓' : '!'}
             <span>
               <b>
-                Шаг {index + 1} — {answer.points >= 75 ? 'безопасно' : 'риск'}
+                Шаг {answer.stepNumber} — {assessmentLabels[answer.assessment]} · {answer.points}{' '}
+                Баллов
               </b>
+              <em>Ваш ответ: {answer.optionText || answer.freeText}</em>
               {answer.explanation}
+              <small>Безопасная альтернатива: {answer.safeAction}</small>
+              {answer.riskSignals.length > 0 && (
+                <span className={styles.signals}>
+                  {answer.riskSignals.map((signal) => signal.label).join(' · ')}
+                </span>
+              )}
             </span>
           </p>
         ))}
@@ -45,7 +59,7 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
             <h2>Сигналы риска</h2>
             <ul>
               {result.riskSignals.map((signal) => (
-                <li key={signal}>{signal}</li>
+                <li key={signal.code}>{signal.label}</li>
               ))}
             </ul>
           </div>
@@ -58,6 +72,12 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
             </ul>
           </div>
         </div>
+      )}
+      {result.isScam !== undefined && (
+        <p className={styles.reveal}>
+          Собеседник в Свободной игре:{' '}
+          <b>{result.isScam ? 'мошенник' : 'обычный участник сделки'}</b>.
+        </p>
       )}
       {result.newAchievements.length > 0 && (
         <section className={styles.achievements}>

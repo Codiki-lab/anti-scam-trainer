@@ -10,12 +10,20 @@ export interface LevelStateDto {
   number: number
   opened: boolean
   scenario_id: number
+  scenario_title: string
+  scenario_description: string
+  response_type: ResponseModeDto
+  in_progress_attempt_id?: number
 }
 
 export const levelStateDtoSchema = z.object({
   number: z.number().int().min(1).max(4),
   opened: z.boolean(),
   scenario_id: z.number().int(),
+  scenario_title: z.string(),
+  scenario_description: z.string(),
+  response_type: z.enum(['multiple_choice', 'similar_choice', 'mixed', 'free_text']),
+  in_progress_attempt_id: z.number().int().positive().optional(),
 })
 
 export interface GameStateDto {
@@ -77,12 +85,16 @@ export interface AnswerCommandDto {
 
 export interface AnswerBreakdownDto {
   step_id: number
+  step_number: number
+  answer_type: 'option' | 'free_text'
   option_id?: number
   option_text?: string
   free_text?: string
   points: number
+  assessment: 'unsafe' | 'risky' | 'mostly_safe' | 'safe'
   explanation: string
-  risk_signals?: string[]
+  safe_action: string
+  risk_signals: Array<{ code: string; label: string }>
 }
 
 export interface AchievementDto {
@@ -107,7 +119,7 @@ export interface AttemptResultDto {
   score: number
   stars: number
   decision_review: AnswerBreakdownDto[]
-  risk_signals: string[]
+  risk_signals: Array<{ code: string; label: string }>
   safe_actions: string[]
   level_progress: TopicLevelProgress
   topic_id: number
@@ -205,15 +217,19 @@ export const attemptResultDtoSchema = z.object({
   decision_review: z.array(
     z.object({
       step_id: z.number().int(),
+      step_number: z.number().int().positive(),
+      answer_type: z.enum(['option', 'free_text']),
       option_id: z.number().int().optional(),
       option_text: z.string().optional(),
       free_text: z.string().optional(),
       points: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]),
+      assessment: z.enum(['unsafe', 'risky', 'mostly_safe', 'safe']),
       explanation: z.string(),
-      risk_signals: z.array(z.string()).optional(),
+      safe_action: z.string(),
+      risk_signals: z.array(z.object({ code: z.string(), label: z.string() })),
     }),
   ),
-  risk_signals: z.array(z.string()),
+  risk_signals: z.array(z.object({ code: z.string(), label: z.string() })),
   safe_actions: z.array(z.string()),
   level_progress: topicLevelProgressSchema,
   topic_id: z.number().int(),

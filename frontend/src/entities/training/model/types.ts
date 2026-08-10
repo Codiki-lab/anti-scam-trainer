@@ -8,6 +8,10 @@ export interface LevelState {
   number: number
   isOpened: boolean
   scenarioId: number
+  scenarioTitle: string
+  scenarioDescription: string
+  responseType: ResponseMode
+  inProgressAttemptId?: number
 }
 
 export interface TrainingMessage {
@@ -66,12 +70,16 @@ export type TrainingAnswer =
 
 export interface DecisionReview {
   stepId: number
+  stepNumber: number
+  answerType: 'option' | 'free_text'
   optionId?: number
   optionText?: string
   freeText?: string
   points: number
+  assessment: 'unsafe' | 'risky' | 'mostly_safe' | 'safe'
   explanation: string
-  riskSignals: string[]
+  safeAction: string
+  riskSignals: Array<{ code: string; label: string }>
 }
 
 export interface AttemptResult {
@@ -79,7 +87,7 @@ export interface AttemptResult {
   score: number
   stars: number
   decisionReview: DecisionReview[]
-  riskSignals: string[]
+  riskSignals: Array<{ code: string; label: string }>
   safeActions: string[]
   levelProgress: LevelProgress
   topicId: number

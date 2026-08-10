@@ -60,13 +60,17 @@ func (h *Handler) levels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type dto struct {
-		Number     int  `json:"number"`
-		Opened     bool `json:"opened"`
-		ScenarioID int  `json:"scenario_id"`
+		Number              int                 `json:"number"`
+		Opened              bool                `json:"opened"`
+		ScenarioID          int                 `json:"scenario_id"`
+		ScenarioTitle       string              `json:"scenario_title"`
+		ScenarioDescription string              `json:"scenario_description"`
+		ResponseType        domain.ResponseType `json:"response_type"`
+		InProgressAttemptID int                 `json:"in_progress_attempt_id,omitempty"`
 	}
 	result := make([]dto, len(levels))
 	for i, level := range levels {
-		result[i] = dto{Number: level.Level.Number, Opened: level.Opened, ScenarioID: level.ScenarioID}
+		result[i] = dto{Number: level.Level.Number, Opened: level.Opened, ScenarioID: level.ScenarioID, ScenarioTitle: level.ScenarioTitle, ScenarioDescription: level.ScenarioDescription, ResponseType: level.ResponseType, InProgressAttemptID: level.InProgressAttemptID}
 	}
 	response.JSON(w, result)
 }
@@ -176,7 +180,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request) {
 		if completed != nil {
 			breakdown := make([]map[string]interface{}, len(completed.Breakdown))
 			for i, answer := range completed.Breakdown {
-				breakdown[i] = map[string]interface{}{"step_id": answer.StepID, "option_id": answer.OptionID, "option_text": answer.OptionText, "free_text": answer.FreeText, "points": answer.Points, "explanation": answer.Explanation, "risk_signals": answer.RiskSignals}
+				breakdown[i] = map[string]interface{}{"step_id": answer.StepID, "step_number": answer.StepNumber, "answer_type": answer.AnswerType, "option_id": answer.OptionID, "option_text": answer.OptionText, "free_text": answer.FreeText, "points": answer.Points, "assessment": answer.Assessment, "explanation": answer.Explanation, "safe_action": answer.SafeAction, "risk_signals": answer.RiskSignals}
 			}
 			result := map[string]interface{}{"attempt_id": completed.Attempt.ID, "score": completed.Attempt.Score, "stars": completed.Stars, "answers": breakdown}
 			if completed.Attempt.Mode == domain.AttemptModeFreePlay && completed.Attempt.IsScam != nil {

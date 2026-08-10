@@ -3,7 +3,15 @@ import type { AttemptResult, LevelState, TrainingSession } from '../model/types'
 import { mapStreak } from '@/entities/user'
 
 export function mapLevelState(dto: LevelStateDto): LevelState {
-  return { number: dto.number, isOpened: dto.opened, scenarioId: dto.scenario_id }
+  return {
+    number: dto.number,
+    isOpened: dto.opened,
+    scenarioId: dto.scenario_id,
+    scenarioTitle: dto.scenario_title,
+    scenarioDescription: dto.scenario_description,
+    responseType: dto.response_type,
+    inProgressAttemptId: dto.in_progress_attempt_id,
+  }
 }
 
 export function mapTrainingSession(dto: GameStateDto): TrainingSession {
@@ -59,12 +67,16 @@ export function mapAttemptResult(dto: AttemptResultDto): AttemptResult {
     stars: dto.stars,
     decisionReview: dto.decision_review.map((answer) => ({
       stepId: answer.step_id,
+      stepNumber: answer.step_number,
+      answerType: answer.answer_type,
       optionId: answer.option_id,
       optionText: answer.option_text,
       freeText: answer.free_text,
       points: answer.points,
+      assessment: answer.assessment,
       explanation: answer.explanation,
-      riskSignals: answer.risk_signals ?? [],
+      safeAction: answer.safe_action,
+      riskSignals: answer.risk_signals,
     })),
     riskSignals: dto.risk_signals,
     safeActions: dto.safe_actions,

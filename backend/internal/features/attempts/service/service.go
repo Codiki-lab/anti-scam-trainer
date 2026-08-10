@@ -70,9 +70,13 @@ func randomScam() bool {
 }
 
 type OpenLevel struct {
-	Level      domain.Level
-	Opened     bool
-	ScenarioID int
+	Level               domain.Level
+	Opened              bool
+	ScenarioID          int
+	ScenarioTitle       string
+	ScenarioDescription string
+	ResponseType        domain.ResponseType
+	InProgressAttemptID int
 }
 
 type GameState struct {
@@ -168,7 +172,12 @@ func (s *GameService) Levels(userID int, role string, topicID ...int) ([]OpenLev
 		if scenarioErr != nil {
 			continue
 		}
-		result = append(result, OpenLevel{Level: level, Opened: opened, ScenarioID: scenario.ID})
+		firstStep, _ := s.repository.Step(scenario.ID, 1)
+		inProgressID := 0
+		if attempt, findErr := s.repository.FindInProgress(userID, scenario.ID); findErr == nil {
+			inProgressID = attempt.ID
+		}
+		result = append(result, OpenLevel{Level: level, Opened: opened, ScenarioID: scenario.ID, ScenarioTitle: scenario.Title, ScenarioDescription: scenario.Description, ResponseType: firstStep.ResponseType, InProgressAttemptID: inProgressID})
 	}
 	return result, nil
 }
@@ -646,24 +655,21 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 	attempt.FreeTextCount = count
 	breakdown := make([]AnswerBreakdown, 0, len(allAnswers))
 	for _, item := range allAnswers {
-		entry := AnswerBreakdown{StepID: item.StepID, Points: item.AwardedPoints, Explanation: item.Explanation, FreeText: item.FreeText}
+		entry := breakdownEntry(item, scenario)
 		if item.OptionID != nil {
 			entry.OptionID = *item.OptionID
-		}
-		if item.Evaluation != nil {
-			entry.RiskSignals = item.Evaluation.DetectedSignals
 		}
 		breakdown = append(breakdown, entry)
 	}
 	attempt.FinalBreakdown = breakdown
-	riskSignals := make([]string, 0)
+	riskSignals := make([]domain.RiskSignal, 0)
 	seenRisk := make(map[string]struct{})
 	safeActions := make([]string, 0)
 	seenAction := make(map[string]struct{})
 	for _, item := range breakdown {
 		for _, signal := range item.RiskSignals {
-			if _, exists := seenRisk[signal]; !exists {
-				seenRisk[signal] = struct{}{}
+			if _, exists := seenRisk[signal.Code]; !exists {
+				seenRisk[signal.Code] = struct{}{}
 				riskSignals = append(riskSignals, signal)
 			}
 		}
@@ -828,7 +834,7 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 		passedAt = attempt.FinishedAt
 	}
 	progress := domain.Progress{UserID: userID, LevelID: scenario.LevelID, TopicID: scenario.TopicID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: stars, Attempts: 1, PassedAt: passedAt}
-	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: stars, TopicID: scenario.TopicID, RiskSignals: []string{}, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать коды и данные карты", "Проверять статус сделки самостоятельно"}}
+	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: stars, TopicID: scenario.TopicID, RiskSignals: []domain.RiskSignal{}, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать коды и данные карты", "Проверять статус сделки самостоятельно"}}
 	var reactionMessage *domain.DialogueMessage
 	if strings.TrimSpace(option.Reaction) != "" {
 		message := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleAssistant, Text: option.Reaction, CreatedAt: time.Now().UTC()}
@@ -853,7 +859,7 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 		if err := store.SaveProgress(progress); err != nil {
 			return err
 		}
-		result.DecisionReview = breakdownForAnswers(append(answers, answer))
+		result.DecisionReview = breakdownForAnswers(append(answers, answer), scenario)
 		return store.FinalizeLearning(&result)
 	}); err != nil {
 		return GameState{}, nil, s.completionError(attempt, err)
@@ -865,23 +871,108 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 		if item.OptionID != nil {
 			option = *item.OptionID
 		}
-		breakdown = append(breakdown, AnswerBreakdown{StepID: item.StepID, OptionID: option, Points: item.AwardedPoints, Explanation: item.Explanation, OptionText: item.OptionText, RiskSignals: []string{}})
+		entry := breakdownEntry(item, scenario)
+		entry.OptionID = option
+		breakdown = append(breakdown, entry)
 	}
 	breakdown[len(breakdown)-1].Points, breakdown[len(breakdown)-1].Explanation, breakdown[len(breakdown)-1].OptionText = option.Points, option.Explanation, option.Text
 	result.DecisionReview = breakdown
 	return GameState{}, &Completion{Attempt: attempt, Stars: stars, Answers: answers, Breakdown: breakdown, Result: result}, nil
 }
 
-func breakdownForAnswers(answers []domain.UserAnswer) []domain.AnswerBreakdown {
+func breakdownForAnswers(answers []domain.UserAnswer, scenario domain.Scenario) []domain.AnswerBreakdown {
 	result := make([]domain.AnswerBreakdown, 0, len(answers))
 	for _, item := range answers {
 		optionID := 0
 		if item.OptionID != nil {
 			optionID = *item.OptionID
 		}
-		result = append(result, domain.AnswerBreakdown{StepID: item.StepID, OptionID: optionID, OptionText: item.OptionText, FreeText: item.FreeText, Points: item.AwardedPoints, Explanation: item.Explanation})
+		entry := breakdownEntry(item, scenario)
+		entry.OptionID = optionID
+		result = append(result, entry)
 	}
 	return result
+}
+
+func breakdownEntry(item domain.UserAnswer, scenario domain.Scenario) domain.AnswerBreakdown {
+	answerType := "free_text"
+	if item.OptionID != nil {
+		answerType = "option"
+	}
+	safeAction := rubricString(scenario.FinalRubric, "safe_action")
+	rawSignals := []string{rubricString(scenario.FinalRubric, "risk_signal")}
+	if item.Evaluation != nil {
+		if strings.TrimSpace(item.Evaluation.SafeAction) != "" {
+			safeAction = item.Evaluation.SafeAction
+		}
+		rawSignals = item.Evaluation.DetectedSignals
+	}
+	if strings.TrimSpace(safeAction) == "" {
+		safeAction = "Проверить сделку самостоятельно внутри приложения и не выполнять просьбу собеседника."
+	}
+	return domain.AnswerBreakdown{StepID: item.StepID, StepNumber: item.TurnNumber, AnswerType: answerType, OptionText: item.OptionText, FreeText: item.FreeText, Points: item.AwardedPoints, Assessment: domain.AssessmentForPoints(item.AwardedPoints), Explanation: item.Explanation, SafeAction: safeAction, RiskSignals: normalizeRiskSignals(rawSignals, scenario.RiskType)}
+}
+
+func rubricString(rubric domain.JSONObject, key string) string {
+	value, _ := rubric[key].(string)
+	return strings.TrimSpace(value)
+}
+
+var signalLabels = map[string]string{
+	"external_link":      "Внешняя ссылка или форма вместо штатного экрана",
+	"prepayment":         "Предоплата незнакомому человеку до проверки",
+	"fake_payment":       "Оплата подтверждается скриншотом, сообщением или чужой формой",
+	"fake_delivery":      "Выдуманная комиссия, страховка или активация доставки",
+	"external_messenger": "Перевод сделки во внешний канал без проверяемой истории",
+	"account_takeover":   "Запрос секрета, который подтверждает действие в аккаунте",
+	"sms_code":           "Просьба передать код из SMS",
+	"pressure":           "Срочность и давление мешают самостоятельной проверке",
+}
+
+func normalizeRiskSignals(values []string, riskType domain.RiskType) []domain.RiskSignal {
+	result := make([]domain.RiskSignal, 0, 3)
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		lower := strings.ToLower(value)
+		code := "pressure"
+		switch {
+		case strings.Contains(lower, "ссыл") || strings.Contains(lower, "форм"):
+			code = "external_link"
+		case strings.Contains(lower, "предоплат") || strings.Contains(lower, "брон"):
+			code = "prepayment"
+		case strings.Contains(lower, "скрин") || strings.Contains(lower, "поступлен"):
+			code = "fake_payment"
+		case strings.Contains(lower, "достав") || strings.Contains(lower, "страхов") || strings.Contains(lower, "комисс"):
+			code = "fake_delivery"
+		case strings.Contains(lower, "мессендж") || strings.Contains(lower, "внешн"):
+			code = "external_messenger"
+		case strings.Contains(lower, "sms") || strings.Contains(lower, "смс") || strings.Contains(lower, "код"):
+			code = "sms_code"
+		case strings.Contains(lower, "аккаунт") || strings.Contains(lower, "вход"):
+			code = "account_takeover"
+		default:
+			if normalized := signalCodeForRisk(riskType); normalized != "" {
+				code = normalized
+			}
+		}
+		if _, exists := seen[code]; exists {
+			continue
+		}
+		seen[code] = struct{}{}
+		result = append(result, domain.RiskSignal{Code: code, Label: signalLabels[code]})
+		if len(result) == 3 {
+			break
+		}
+	}
+	return result
+}
+
+func signalCodeForRisk(riskType domain.RiskType) string {
+	return map[domain.RiskType]string{
+		domain.RiskPhishing: "external_link", domain.RiskPrepayment: "prepayment", domain.RiskFakePayment: "fake_payment",
+		domain.RiskDelivery: "fake_delivery", domain.RiskExternalMessenger: "external_messenger", domain.RiskAccountTakeover: "account_takeover",
+		domain.RiskSMSCode: "sms_code", domain.RiskSocialEngineering: "pressure",
+	}[riskType]
 }
 
 func (s *GameService) Abandon(userID, attemptID int) error {
