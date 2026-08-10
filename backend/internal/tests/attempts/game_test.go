@@ -101,7 +101,7 @@ func TestLevelThreeUsesEvaluatorForExactlyTwoFreeAnswers(t *testing.T) {
 	if err != nil || completed == nil || completed.Attempt.Score != 75 {
 		t.Fatalf("second free answer = (%#v,%v), want score 75", completed, err)
 	}
-	if len(ai.evaluations) != 2 || len(ai.generations) != 0 || ai.evaluations[0].EvaluationContext != "Отказ от внешней формы" || len(ai.evaluations[0].History) > 2 {
+	if len(ai.evaluations) != 2 || len(ai.generations) != 0 || ai.evaluations[0].EvaluationContext != "Отказ от внешней формы" || ai.evaluations[0].ScenarioInstruction != "Верни JSON" || ai.evaluations[0].Rubric["safe_action"] != "Остаться в сервисе" || len(ai.evaluations[0].History) > 2 {
 		t.Fatalf("AI calls = evaluations %#v generations %#v", ai.evaluations, ai.generations)
 	}
 }
@@ -141,7 +141,7 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndFiveTurnLimit(t *testing.T) {
 		t.Fatalf("AI calls=(evaluations=%d generations=%d)", len(ai.evaluations), len(ai.generations))
 	}
 	for index, generation := range ai.generations {
-		if generation.Phase != wantPhases[index] || len(generation.History) > 6 {
+		if generation.Phase != wantPhases[index] || generation.ScenarioInstruction != "Верни JSON" || generation.Rubric["safe_action"] != "Остаться в сервисе" || len(generation.History) > 6 {
 			t.Fatalf("generation %d=%#v", index+1, generation)
 		}
 	}
@@ -474,7 +474,7 @@ func (r *gameRepository) FreePlayConfig(role string) (domain.FreePlayConfig, err
 	return domain.FreePlayConfig{UserRole: role, ProductContext: domain.ProductContext{ItemTitle: "Товар", Category: "Другое", DealMethod: "delivery"}, SystemPrompt: "Веди диалог", FinalRubric: domain.JSONObject{"safe": 100}}, nil
 }
 func (r *gameRepository) Scenario(id int) (domain.Scenario, error) {
-	return domain.Scenario{ID: id, Level: strconv.Itoa(id), LevelID: id, UserRole: "buyer", ScamScheme: "phishing", AISystemPrompt: "Верни JSON"}, nil
+	return domain.Scenario{ID: id, Level: strconv.Itoa(id), LevelID: id, UserRole: "buyer", ScamScheme: "phishing", AISystemPrompt: "Верни JSON", FinalRubric: domain.JSONObject{"safe_action": "Остаться в сервисе"}}, nil
 }
 func (r *gameRepository) FindInProgress(user, scenario int) (domain.Attempt, error) {
 	for _, a := range r.attempts {
