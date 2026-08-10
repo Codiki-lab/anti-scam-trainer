@@ -1,5 +1,4 @@
 import { lazy, Suspense, useState } from 'react'
-import { useState } from 'react'
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   CurrentAccountProvider,

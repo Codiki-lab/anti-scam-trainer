@@ -134,10 +134,10 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
               <small>
                 {completedTopics === 6
                   ? 'Открыта: завершены 6 из 6 Тем.'
-                  : `Закрыта: завершите все 6 Темы этой ролевой ветки (${completedTopics}/6).`}
+                  : `Вы ещё не завершили теорию и Уровни этой ролевой ветки (${completedTopics}/6 Тем). Игра доступна для тестирования Ollama.`}
               </small>
               <button
-                disabled={isFreePlayStarting || completedTopics < 6}
+                disabled={isFreePlayStarting}
                 type="button"
                 onClick={() =>
                   void startFreePlay().then((message) => setFreePlayError(message ?? ''))

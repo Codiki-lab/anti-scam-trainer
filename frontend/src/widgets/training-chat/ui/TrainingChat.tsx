@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TrainingAnswer, TrainingSession } from '@/entities/training'
 import { ConfirmDialog, uiStyles } from '@/shared/ui-kit'
 import styles from './TrainingChat.module.scss'
@@ -38,9 +38,11 @@ export function TrainingChat({
   onAbandon,
 }: TrainingChatProps) {
   const [freeText, setFreeText] = useState('')
+  const [pendingText, setPendingText] = useState('')
   const [selectedOptionId, setSelectedOptionId] = useState<number>()
   const [finishOpen, setFinishOpen] = useState(false)
   const [abandonOpen, setAbandonOpen] = useState(false)
+  const submittingText = useRef(false)
   const acceptsText = session.step.options.length === 0
 
   useEffect(() => {
@@ -50,10 +52,17 @@ export function TrainingChat({
 
   const submitText = async (finish = false) => {
     const text = freeText.trim()
-    if (!text) return
-    const succeeded = await onSubmit({ type: 'text', stepId: session.step.id, text, finish })
-    if (succeeded) setFreeText('')
-    setFinishOpen(false)
+    if (!text || isSubmitting || submittingText.current || cooldown > 0) return
+    submittingText.current = true
+    setPendingText(text)
+    try {
+      const succeeded = await onSubmit({ type: 'text', stepId: session.step.id, text, finish })
+      if (succeeded) setFreeText('')
+    } finally {
+      submittingText.current = false
+      setPendingText('')
+      setFinishOpen(false)
+    }
   }
 
   const selectedOption = session.step.options.find((option) => option.id === selectedOptionId)
@@ -66,6 +75,7 @@ export function TrainingChat({
       ? { role: 'user' as const, text: answer.optionText || answer.freeText || 'Ответ сохранён' }
       : message
   })
+  if (pendingText) dialogueHistory.push({ role: 'user', text: pendingText })
   const productImageKey = productImageKeys.has(session.productContext.imageKey ?? '')
     ? session.productContext.imageKey
     : 'electronics'
@@ -152,6 +162,12 @@ export function TrainingChat({
               placeholder="Напишите ответ собеседнику…"
               value={freeText}
               onChange={(event) => setFreeText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  void submitText(false)
+                }
+              }}
             />
             <button
               className={`${uiStyles.primaryButton} ${styles.sendButton}`}
@@ -175,7 +191,7 @@ export function TrainingChat({
         )}
         {isSubmitting && (
           <p className={styles.typing} role="status">
-            Собеседник печатает… Это может занять до 30 секунд.
+            Собеседник печатает…
           </p>
         )}
         {error && <p className={uiStyles.formError}>{error}</p>}

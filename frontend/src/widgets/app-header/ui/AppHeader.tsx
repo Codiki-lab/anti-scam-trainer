@@ -43,20 +43,18 @@ export function AppHeader({ account, basePath = '' }: AppHeaderProps) {
     (path.endsWith('/lessons') && location.pathname.startsWith(`${path}/`))
 
   return (
-    <header className={styles.topbar}>
-      <Brand />
-      <nav className={styles.nav}>
-        {account.accessRole === 'admin' && !basePath && (
-          <Link className={isActive('/admin') ? styles.active : undefined} to="/admin">
-            Админ-панель
-          </Link>
-        )}
-        {navItems.map(([to, label]) => {
-          const href = `${basePath}${to}`
     <>
       <header className={styles.topbar}>
         <Brand />
         <nav className={styles.nav} aria-label="Основная навигация">
+          {account.accessRole === 'admin' && !basePath && (
+            <Link
+              className={isActive('/admin') ? styles.active : undefined}
+              to="/admin"
+            >
+              Админ-панель
+            </Link>
+          )}
           {navItems.map(([to, label]) => {
             const href = `${basePath}${to}`
 

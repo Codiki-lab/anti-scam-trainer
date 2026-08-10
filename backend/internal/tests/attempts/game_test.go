@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -123,7 +124,7 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndFiveTurnLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPhases := []string{"hook", "hook", "escalation", "escalation", "critical_request"}
+	wantPhases := []string{"escalation", "escalation", "critical_request", "critical_request", "resolution"}
 	for turn := 1; turn <= 5; turn++ {
 		text := "Проверяю сделку только внутри приложения"
 		next, completed, submitErr := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text})
@@ -145,7 +146,7 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndFiveTurnLimit(t *testing.T) {
 			t.Fatalf("generation %d=%#v", index+1, generation)
 		}
 	}
-	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "critical_request" {
+	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "resolution" {
 		t.Fatalf("persisted dialogue state=%#v, fifth request=%#v", repo.attempts[state.Attempt.ID], ai.generations[4])
 	}
 }
@@ -194,11 +195,17 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 	if err != nil || state.Attempt.IsScam == nil || *state.Attempt.IsScam || len(state.Messages) != 1 {
 		t.Fatalf("StartFreePlay() = (%#v, %v), want hidden honest counterpart and first message", state, err)
 	}
+	if state.Scenario.ProductContext.ItemTitle == "" || !strings.HasPrefix(state.Attempt.CompactSummary, "[free-play-context:") {
+		t.Fatalf("free-play context was not selected and pinned: %#v", state)
+	}
 	for n := 1; n <= 2; n++ {
 		text := "Продолжим безопасно в чате сервиса"
 		next, completed, submitErr := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text})
 		if submitErr != nil || completed != nil || next.Attempt.FreeTextCount != n {
 			t.Fatalf("turn %d = (%#v, %#v, %v), want continuation", n, next, completed, submitErr)
+		}
+		if len(repo.answers) != n || repo.answers[n-1].StepID != 0 {
+			t.Fatalf("turn %d stored answer = %#v, want no scenario step", n, repo.answers)
 		}
 	}
 	text := "Завершаю сделку только штатным способом"
@@ -221,6 +228,21 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 		if request.CounterpartKind != "обычный участник сделки" || request.RiskType != "ordinary_transaction" || containsString(request.AllowedTactics, "payment") || containsString(request.AllowedTactics, "credential_request") {
 			t.Fatalf("honest counterpart received scam policy: %#v", request)
 		}
+	}
+	nextState, nextErr := game.StartFreePlay(context.Background(), 1, "seller")
+	if nextErr != nil || nextState.Scenario.ProductContext.ItemTitle == state.Scenario.ProductContext.ItemTitle {
+		t.Fatalf("next free play repeated product context: first=%q next=%q err=%v", state.Scenario.ProductContext.ItemTitle, nextState.Scenario.ProductContext.ItemTitle, nextErr)
+	}
+}
+
+func TestFreePlayStartsBeforeTrainingIsCompleted(t *testing.T) {
+	repo := newGameRepository()
+	ai := fakeAI{generated: service.GeneratorResult{Message: "Первая реплика", Tactic: "rapport", Phase: "hook"}}
+	game := service.NewGameWithDependencies(repo, ai, ai, func() bool { return true })
+
+	state, err := game.StartFreePlay(context.Background(), 1, "buyer")
+	if err != nil || state.Attempt.Mode != domain.AttemptModeFreePlay || len(state.Messages) != 1 {
+		t.Fatalf("StartFreePlay() = (%#v, %v), want a free-play attempt with opening message", state, err)
 	}
 }
 
@@ -517,7 +539,10 @@ func (r *gameRepository) GetGameAttempt(id int) (domain.Attempt, error) {
 	}
 	return a, nil
 }
-func (r *gameRepository) Step(_ int, n int) (domain.ScenarioStep, error) {
+func (r *gameRepository) Step(scenarioID, n int) (domain.ScenarioStep, error) {
+	if scenarioID == 0 {
+		return domain.ScenarioStep{}, errors.New("free play has no scenario steps")
+	}
 	v, ok := r.steps[n]
 	if !ok {
 		return domain.ScenarioStep{}, errors.New("missing")

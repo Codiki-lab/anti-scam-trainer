@@ -99,6 +99,57 @@ describe('TrainingChat', () => {
     expect(input).toHaveValue('Продолжим только внутри приложения')
   })
 
+  it('adds a typed reply to the chat and submits it with Enter', async () => {
+    const user = userEvent.setup()
+    let resolveSubmit: (value: boolean) => void = () => undefined
+    const onSubmit = vi.fn(
+      () => new Promise<boolean>((resolve) => {
+        resolveSubmit = resolve
+      }),
+    )
+    render(
+      <TrainingChat
+        session={{ ...session, mode: 'free_text', step: { ...session.step, options: [] } }}
+        isSubmitting={false}
+        error=""
+        cooldown={0}
+        onSubmit={onSubmit}
+        onAbandon={vi.fn()}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText('Напишите ответ собеседнику…')
+    await user.type(input, 'Проверю условия в приложении{Enter}')
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: 'text',
+      stepId: 10,
+      text: 'Проверю условия в приложении',
+      finish: false,
+    })
+    expect(screen.getAllByText('Проверю условия в приложении')[0]).toBeVisible()
+    resolveSubmit(true)
+  })
+
+  it('does not submit the same text twice while the first Enter is pending', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(() => new Promise<boolean>(() => undefined))
+    render(
+      <TrainingChat
+        session={{ ...session, mode: 'free_text', step: { ...session.step, options: [] } }}
+        isSubmitting={false}
+        error=""
+        cooldown={0}
+        onSubmit={onSubmit}
+        onAbandon={vi.fn()}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText('Напишите ответ собеседнику…')
+    await user.type(input, 'Проверю условия в приложении')
+    await user.keyboard('{Enter}{Enter}')
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
   it('restores option and free-text answers from structured history', () => {
     render(
       <TrainingChat
