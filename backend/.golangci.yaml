@@ -1,0 +1,26 @@
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck and unused.
+  default: standard
+  settings:
+    errcheck:
+      # API and database operations must not silently drop an error.
+      check-type-assertions: true
+      check-blank: true
+  enable:
+    # Additional low-noise checks suitable for the current Go backend.
+    - gocritic
+    - misspell
+    - unconvert
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  # Show every distinct problem instead of hiding repeated occurrences.
+  max-same-issues: 0
