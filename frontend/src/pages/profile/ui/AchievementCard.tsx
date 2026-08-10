@@ -14,26 +14,17 @@ import styles from './Profile.module.scss'
 
 const achievementPictures: Record<string, Icon> = {
   star: Star,
-  first_training: Star,
   stack: Stack,
-  five_trainings: Stack,
   shield: ShieldCheck,
-  perfect_score: ShieldCheck,
   book: BookOpen,
-  first_topic_completed: BookOpen,
   buyer: ShoppingCart,
-  all_buyer_topics: ShoppingCart,
   seller: Storefront,
-  all_seller_topics: Storefront,
   flame: Fire,
-  streak_3: Fire,
-  streak_7: Fire,
 }
 
 export function AchievementCard({ achievement }: { achievement: Achievement }) {
   const progress = Math.min(100, Math.round((achievement.current / achievement.target) * 100))
-  const Picture =
-    achievementPictures[achievement.icon] ?? achievementPictures[achievement.code] ?? Trophy
+  const Picture = achievementPictures[achievement.icon] ?? Trophy
 
   return (
     <div className={`${styles.achievement} ${achievement.earned ? styles.earned : ''}`}>

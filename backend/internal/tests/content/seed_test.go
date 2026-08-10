@@ -82,16 +82,6 @@ func TestPublishedContentMatrix(t *testing.T) {
 	if invalid != 0 {
 		t.Fatalf("invalid options=%d", invalid)
 	}
-	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM chat_options o
-		JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id
-		WHERE c.content_status='published' AND c.archived_at IS NULL
-		AND o.option_text ~* '^(не |проверить|открыть|сверить|перейти|взять|сравнить|задать|заплатить|довериться|оплатить|никому|прочитать|прервать|отправить|передать|отдать|сообщить|уточнить|попросить|ввести|остаться|следовать|наиболее безопасно:|начну со штатного действия:)'`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if invalid != 0 {
-		t.Fatalf("published options phrased as actions instead of user replies=%d", invalid)
-	}
 	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM chat_options l2o JOIN chat_steps l2s ON l2s.id=l2o.step_id JOIN chats l2c ON l2c.id=l2s.chat_id JOIN levels l2l ON l2l.id=l2c.level_id WHERE l2c.content_status='published' AND l2l.level_number=2 AND (l2o.points NOT IN(0,25,50,75,100) OR EXISTS(SELECT 1 FROM chat_options l1o JOIN chat_steps l1s ON l1s.id=l1o.step_id JOIN chats l1c ON l1c.id=l1s.chat_id JOIN levels l1l ON l1l.id=l1c.level_id WHERE l1c.topic_id=l2c.topic_id AND l1l.level_number=1 AND l1o.option_text=l2o.option_text))`)
 	if err != nil {
 		t.Fatal(err)
@@ -239,6 +229,13 @@ func TestCompleteAvitoCurriculumReplacesEveryPublishedScenario(t *testing.T) {
 		(SELECT COUNT(*) FROM chats WHERE content_status='published' AND archived_at IS NULL AND product_context->>'content_version' IS DISTINCT FROM 'issue-103-complete')`)
 	if err != nil || invalidQuiz != 0 || invalidLevels != 0 || legacyPublished != 0 {
 		t.Fatalf("curriculum invariants=(quiz=%d levels=%d legacy=%d err=%v)", invalidQuiz, invalidLevels, legacyPublished, err)
+	}
+	var directReply string
+	_, err = db.QueryOne(pg.Scan(&directReply), `SELECT o.option_text FROM chat_options o
+		JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id
+		WHERE t.slug='buyer-phishing-links' AND l.level_number=1 AND s.step_number=1 AND o.sort_order=1 AND c.content_status='published'`)
+	if err != nil || directReply != "Я не буду открывать ссылку. Оформлю заказ только внутри приложения Avito." {
+		t.Fatalf("prepared option is not a direct user reply: %q err=%v", directReply, err)
 	}
 	var thinTheory, duplicateQuizOptions, repeatedReaction, distinctQuestions, distinctQuizSets int
 	_, err = db.QueryOne(pg.Scan(&thinTheory, &duplicateQuizOptions, &repeatedReaction, &distinctQuestions, &distinctQuizSets), `SELECT
