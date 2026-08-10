@@ -80,3 +80,14 @@ test('unavailable training levels are visibly locked', async ({ page }) => {
   await expect(page.getByRole('button', { name: /закрыто/i })).toHaveCount(2)
   await expect(page.getByRole('button', { name: /закрыто/i }).first()).toBeDisabled()
 })
+
+test('shared UI foundation documents its production states', async ({ page }) => {
+  await page.goto('/preview/ui-states')
+
+  await expect(page.getByRole('heading', { name: 'Состояния UI-основы' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Загружаем данные…' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Пока пусто' })).toBeVisible()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.getByRole('button', { name: 'Открыть диалог' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+})

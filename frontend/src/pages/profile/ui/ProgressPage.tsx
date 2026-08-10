@@ -4,7 +4,7 @@ import { useCurrentAccount } from '@/entities/user'
 import { useProgressData } from '@/features/view-progress'
 import { ErrorState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { uiStyles } from '@/shared/ui-kit'
+import { EmptyState, LoadingState, uiStyles } from '@/shared/ui-kit'
 import { Metric } from './Metric'
 import styles from './Profile.module.scss'
 
@@ -16,7 +16,7 @@ export function ProgressPage({ previewProgress }: { previewProgress?: Progress }
     previewProgress,
   )
 
-  if (isLoading) return <p className={uiStyles.muted}>Загружаем прогресс…</p>
+  if (isLoading) return <LoadingState label="Загружаем прогресс…" />
   if (error) return <ErrorState message={error} onRetry={() => void retry()} />
   if (!progress) return <p className={uiStyles.formError}>Не удалось загрузить прогресс.</p>
 
@@ -57,12 +57,15 @@ export function ProgressPage({ previewProgress }: { previewProgress?: Progress }
       <section>
         <h2>Последние тренировки</h2>
         {progress.recentAttempts.length === 0 ? (
-          <div className={styles.emptyState}>
-            <p>Здесь появятся завершённые Прохождения и ссылки на их Result.</p>
-            <Link className={uiStyles.primaryButton} to={`${basePath}/lessons`}>
-              Начать с Теории
-            </Link>
-          </div>
+          <EmptyState
+            title="Прохождений пока нет"
+            description="Здесь появятся завершённые Прохождения и ссылки на их Result."
+            action={
+              <Link className={uiStyles.primaryButton} to={`${basePath}/lessons`}>
+                Начать с Теории
+              </Link>
+            }
+          />
         ) : (
           <div className={styles.history}>
             {progress.recentAttempts.map((attempt) => {

@@ -7,7 +7,7 @@ import { useStartTraining } from '@/features/start-training'
 import { ErrorState } from '@/shared/error-state'
 import { getApiErrorMessage } from '@/shared/http-error'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { uiStyles } from '@/shared/ui-kit'
+import { LoadingState, uiStyles } from '@/shared/ui-kit'
 import { parsePositiveInteger } from '@/shared/url'
 import { TrainingList } from '@/widgets/training-list'
 import type { TrainingPreview } from '../model/types'
@@ -30,8 +30,7 @@ export function TrainingPage({ preview }: { preview?: TrainingPreview }) {
 
   const startLevel = async (level: number) => setError((await start(level)) ?? '')
 
-  if (areTopicsLoading || levelsQuery.isLoading)
-    return <p className={uiStyles.muted}>Загружаем Уровни…</p>
+  if (areTopicsLoading || levelsQuery.isLoading) return <LoadingState label="Загружаем Уровни…" />
   if (!isPreview && levelsQuery.error) {
     return (
       <ErrorState

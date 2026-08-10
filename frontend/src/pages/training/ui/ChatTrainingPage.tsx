@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTrainingSession } from '@/features/training-session'
 import { InvalidRouteState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { uiStyles } from '@/shared/ui-kit'
+import { LoadingState, uiStyles } from '@/shared/ui-kit'
 import { parsePositiveInteger } from '@/shared/url'
 import { TrainingChat } from '@/widgets/training-chat'
 import type { TrainingPreview } from '../model/types'
@@ -29,7 +29,7 @@ export function ChatTrainingPage({ preview }: ChatTrainingPageProps) {
   if (!isPreview && !parsedAttemptId) {
     return <InvalidRouteState backTo="/chats" backLabel="К тренировкам" />
   }
-  if (state.isLoading) return <p className={uiStyles.muted}>Восстанавливаем Прохождение…</p>
+  if (state.isLoading) return <LoadingState label="Восстанавливаем Прохождение…" />
   if (!state.session) {
     return (
       <section className={uiStyles.pageHeading}>

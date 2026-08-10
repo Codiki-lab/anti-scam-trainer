@@ -7,7 +7,7 @@ import { useStartFreePlay } from '@/features/start-training'
 import { useDashboardData } from '@/features/view-progress'
 import { ErrorState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { uiStyles } from '@/shared/ui-kit'
+import { LoadingState, uiStyles } from '@/shared/ui-kit'
 import { DailyTaskModal } from '@/widgets/daily-task'
 import { TopicCard } from './TopicCard'
 import { TrainingRow } from './TrainingRow'
@@ -28,7 +28,7 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
   const [freePlayError, setFreePlayError] = useState('')
   const [isDailyTaskOpen, setDailyTaskOpen] = useState(false)
 
-  if (isLoading) return <p className={uiStyles.muted}>Загружаем главную…</p>
+  if (isLoading) return <LoadingState label="Загружаем главную…" />
   if (error) return <ErrorState message={error} onRetry={() => void retry()} />
   if (!dashboard) return <p className={uiStyles.formError}>Не удалось загрузить главную.</p>
 

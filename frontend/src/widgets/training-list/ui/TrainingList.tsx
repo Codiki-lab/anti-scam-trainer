@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { LevelState } from '@/entities/training'
 import type { Topic } from '@/entities/learning'
 import { Stars } from '@/shared/stars'
-import { uiStyles } from '@/shared/ui-kit'
+import { StatusBadge, uiStyles } from '@/shared/ui-kit'
 import styles from './TrainingList.module.scss'
 
 interface TrainingListProps {
@@ -35,14 +35,16 @@ export function TrainingList({ topic, levels, isStarting, onStart, basePath }: T
               <h2>{level?.scenarioTitle ?? topic.title}</h2>
               <p>{level?.scenarioDescription ?? topic.description}</p>
               {level && <p className={styles.mechanic}>{mechanics[level.responseType]}</p>}
-              <span className={`${uiStyles.tag} ${isOpened ? '' : styles.lockedTag}`}>
+              <StatusBadge
+                tone={isOpened ? (level?.inProgressAttemptId ? 'progress' : 'success') : 'locked'}
+              >
                 {!isOpened && <LockKey aria-hidden="true" size={15} weight="bold" />}
                 {isOpened
                   ? 'Доступен'
                   : progress.number === 1
                     ? 'Пройдите Quiz минимум на 80%'
                     : `Получите хотя бы одну Звезду за Уровень ${progress.number - 1}`}
-              </span>
+              </StatusBadge>
             </div>
             <div className={styles.action}>
               <Stars value={progress.stars} />

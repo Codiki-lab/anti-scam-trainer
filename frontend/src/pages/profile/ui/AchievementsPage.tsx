@@ -4,7 +4,7 @@ import { useCurrentAccount } from '@/entities/user'
 import { useAchievementData } from '@/features/view-progress'
 import { ErrorState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { uiStyles } from '@/shared/ui-kit'
+import { LoadingState, uiStyles } from '@/shared/ui-kit'
 import { AchievementCard } from './AchievementCard'
 import styles from './Profile.module.scss'
 
@@ -47,7 +47,7 @@ export function AchievementsPage({ previewAchievements }: { previewAchievements?
             </span>
           )}
         </div>
-        {isLoading && <p className={uiStyles.muted}>Загружаем достижения…</p>}
+        {isLoading && <LoadingState label="Загружаем достижения…" />}
         {!isLoading && error && <ErrorState message={error} onRetry={() => void retry()} />}
         {!isLoading && !error && !achievements && (
           <p className={uiStyles.formError}>Не удалось загрузить достижения.</p>
