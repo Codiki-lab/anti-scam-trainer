@@ -60,9 +60,18 @@ export function AchievementsPage({ previewAchievements }: { previewAchievements?
                 <span>{achievements.earned.length}</span>
               </div>
               <div className={styles.achievementGrid}>
-                {achievements.earned.map((achievement) => (
-                  <AchievementCard key={achievement.code} achievement={achievement} />
-                ))}
+                {achievements.earned.length === 0 ? (
+                  <div className={styles.emptyState}>
+                    <p>Первая награда откроется после завершённого Прохождения.</p>
+                    <Link className={uiStyles.primaryButton} to={`${basePath}/lessons`}>
+                      Начать обучение
+                    </Link>
+                  </div>
+                ) : (
+                  achievements.earned.map((achievement) => (
+                    <AchievementCard key={achievement.code} achievement={achievement} />
+                  ))
+                )}
               </div>
             </section>
             <section>

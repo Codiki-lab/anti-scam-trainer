@@ -1,12 +1,15 @@
+import { Link } from 'react-router-dom'
 import type { Progress } from '@/entities/progress'
 import { useCurrentAccount } from '@/entities/user'
 import { useProgressData } from '@/features/view-progress'
 import { ErrorState } from '@/shared/error-state'
+import { useIsPreview } from '@/shared/runtime-mode'
 import { uiStyles } from '@/shared/ui-kit'
 import { Metric } from './Metric'
 import styles from './Profile.module.scss'
 
 export function ProgressPage({ previewProgress }: { previewProgress?: Progress }) {
+  const isPreview = useIsPreview()
   const { account } = useCurrentAccount()
   const { progress, isLoading, error, retry } = useProgressData(
     account.trainingRole,
@@ -20,6 +23,7 @@ export function ProgressPage({ previewProgress }: { previewProgress?: Progress }
   const completion = Math.round(
     (progress.summary.completedTopics / Math.max(progress.summary.totalTopics, 1)) * 100,
   )
+  const basePath = isPreview ? '/preview' : ''
 
   return (
     <>
@@ -52,22 +56,37 @@ export function ProgressPage({ previewProgress }: { previewProgress?: Progress }
 
       <section>
         <h2>Последние тренировки</h2>
-        <div className={styles.history}>
-          {progress.recentAttempts.map((attempt) => {
-            const topic = progress.topics.find((item) => item.id === attempt.topicId)
-            return (
-              <p key={attempt.attemptId}>
-                <span>
-                  {topic?.title ?? `Тема ${attempt.topicId}`}
-                  <small>Уровень {attempt.level}</small>
-                </span>
-                <b className={attempt.score === 100 ? styles.success : undefined}>
-                  {attempt.score}%
-                </b>
-              </p>
-            )
-          })}
-        </div>
+        {progress.recentAttempts.length === 0 ? (
+          <div className={styles.emptyState}>
+            <p>Здесь появятся завершённые Прохождения и ссылки на их Result.</p>
+            <Link className={uiStyles.primaryButton} to={`${basePath}/lessons`}>
+              Начать с Теории
+            </Link>
+          </div>
+        ) : (
+          <div className={styles.history}>
+            {progress.recentAttempts.map((attempt) => {
+              const topic = progress.topics.find((item) => item.id === attempt.topicId)
+              return (
+                <Link
+                  className={styles.historyRow}
+                  key={attempt.attemptId}
+                  to={`${basePath}/sessions/${attempt.attemptId}/result`}
+                >
+                  <span>
+                    {topic?.title ?? `Тема ${attempt.topicId}`}
+                    <small>
+                      Уровень {attempt.level} · {attempt.stars} ★
+                    </small>
+                  </span>
+                  <b className={attempt.score === 100 ? styles.success : undefined}>
+                    {attempt.score}%
+                  </b>
+                </Link>
+              )
+            })}
+          </div>
+        )}
       </section>
     </>
   )
