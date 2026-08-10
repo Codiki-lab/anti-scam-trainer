@@ -126,7 +126,7 @@ func TestOpenAPIV1SpecificationIsValid(t *testing.T) {
 			t.Fatalf("OpenAPI v1 does not document %q", fragment)
 		}
 	}
-	if !strings.Contains(specification, "requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' }") || !strings.Contains(specification, "counterparty_message: { type: string, minLength: 1, maxLength: 280 }") {
+	if !strings.Contains(specification, "requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminScenario' }") || !strings.Contains(specification, "counterparty_message: { type: string, minLength: 1, maxLength: 280 }") || !strings.Contains(specification, "counterparty_reaction: { type: string, minLength: 1, maxLength: 280") {
 		t.Fatal("OpenAPI v1 does not fully document admin topic_id/counterparty_message DTOs")
 	}
 	for _, tag := range []string{"Состояние сервиса", "Аутентификация", "Сценарии", "Прохождения"} {

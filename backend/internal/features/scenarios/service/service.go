@@ -33,6 +33,9 @@ func (s *Service) Publish(id int) error {
 	if current.Status != domain.ScenarioStatusDraft {
 		return apperrors.ErrInvalidScenarioState
 	}
+	if !domain.ValidRiskType(current.RiskType) || !domain.ValidProductContext(current.ProductContext) {
+		return apperrors.ErrInvalidScenarioState
+	}
 	valid, err := s.repository.ValidContent(id)
 	if err != nil {
 		return err
@@ -79,7 +82,7 @@ func (s *Service) AddStep(step domain.ScenarioStep) (domain.ScenarioStep, error)
 	return s.repository.CreateStep(step)
 }
 func (s *Service) AddOption(option domain.ScenarioOption) (domain.ScenarioOption, error) {
-	if !domain.ValidOptionPoints(option.Points) || len([]rune(option.Text)) == 0 || len([]rune(option.Text)) > 140 {
+	if !validOption(option) {
 		return domain.ScenarioOption{}, apperrors.ErrInvalidAnswer
 	}
 	scenario, err := s.repository.StepScenario(option.StepID)
@@ -118,7 +121,7 @@ func (s *Service) DeleteStep(id int) error {
 }
 
 func (s *Service) UpdateOption(option domain.ScenarioOption) error {
-	if !domain.ValidOptionPoints(option.Points) || len([]rune(option.Text)) == 0 || len([]rune(option.Text)) > 140 {
+	if !validOption(option) {
 		return apperrors.ErrInvalidAnswer
 	}
 	scenario, err := s.repository.OptionScenario(option.ID)
@@ -129,6 +132,10 @@ func (s *Service) UpdateOption(option domain.ScenarioOption) error {
 		return apperrors.ErrInvalidScenarioState
 	}
 	return s.repository.UpdateOption(option)
+}
+
+func validOption(option domain.ScenarioOption) bool {
+	return domain.ValidOptionPoints(option.Points) && len([]rune(option.Text)) > 0 && len([]rune(option.Text)) <= 140 && len([]rune(option.Reaction)) <= 280
 }
 
 func (s *Service) DeleteOption(id int) error {

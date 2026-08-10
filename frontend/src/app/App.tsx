@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
+import { useState } from 'react'
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import {
   CurrentAccountProvider,
@@ -30,6 +31,7 @@ import {
   previewSession,
 } from './preview/data'
 import styles from './App.module.scss'
+import { UIFoundationPreview } from './preview/UIFoundationPreview'
 
 const AdminPage = lazy(() =>
   import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
@@ -183,6 +185,7 @@ export function App() {
       <Route path="/preview/register" element={<PreviewAuth mode="register" />} />
       <Route element={<PreviewLayout />}>
         <Route path="/preview/dashboard" element={<PreviewDashboardRoute />} />
+        <Route path="/preview/ui-states" element={<UIFoundationPreview />} />
         <Route path="/preview/lessons" element={<PreviewLessonsRoute />} />
         <Route path="/preview/lessons/:lessonId" element={<PreviewTheoryRoute />} />
         <Route path="/preview/lessons/:lessonId/quiz" element={<PreviewQuizRoute />} />

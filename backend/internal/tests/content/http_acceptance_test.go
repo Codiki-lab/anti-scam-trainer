@@ -80,31 +80,31 @@ func TestPostgresHTTPPublishesAndServesCompleteTopicAggregate(t *testing.T) {
 	}
 
 	for level := 1; level <= 4; level++ {
-		scenario := call(admin, http.MethodPost, "/api/v1/admin/scenarios", fmt.Sprintf(`{"title":"Сценарий %d","description":"Описание","level_id":%d,"topic_id":%d,"role":"buyer","scam_scheme":"scheme","product_context":{},"ai_system_prompt":"prompt","final_rubric":{}}`, level, level, topicID))
+		scenario := call(admin, http.MethodPost, "/api/v1/admin/scenarios", fmt.Sprintf(`{"title":"Сценарий %d","description":"Описание","level_id":%d,"topic_id":%d,"role":"buyer","scam_scheme":"phishing","risk_type":"phishing","product_context":{"item_title":"Смартфон","category":"Электроника","deal_method":"delivery","price":42000,"currency":"RUB","image_key":"smartphone"},"ai_system_prompt":"prompt","final_rubric":{}}`, level, level, topicID))
 		assertHTTPStatus(t, scenario, http.StatusCreated, "create scenario")
 		scenarioID := responseID(t, scenario)
 		storedScenario, err := scenarioRepo.ContentScenario(scenarioID)
 		if err != nil || storedScenario.Status != domain.ScenarioStatusDraft {
 			t.Fatalf("stored scenario %d = (%+v,%v)", scenarioID, storedScenario, err)
 		}
-		stepCount := 3
-		if level == 4 {
-			stepCount = 4
-		}
+		stepCount := map[int]int{1: 3, 2: 2, 3: 3, 4: 5}[level]
 		for stepNumber := 1; stepNumber <= stepCount; stepNumber++ {
 			responseType := "multiple_choice"
 			aiInstruction, fallback := "", ""
-			if level == 3 && stepNumber <= 2 {
-				responseType, aiInstruction, fallback = "mixed", "Оцени ответ", "Попробуйте ещё раз"
+			if level == 2 {
+				responseType = "similar_choice"
+			}
+			if level == 3 && stepNumber >= 2 {
+				responseType, aiInstruction, fallback = "free_text", "Оцени ответ", "Попробуйте ещё раз"
 			}
 			if level == 4 {
 				responseType, aiInstruction, fallback = "free_text", "Оцени ответ", "Попробуйте ещё раз"
 			}
 			step := call(admin, http.MethodPost, fmt.Sprintf("/api/v1/admin/scenarios/%d/steps", scenarioID), fmt.Sprintf(`{"number":%d,"response_type":%q,"goal":"Цель","counterparty_message":"Сообщение","max_points":100,"ai_instruction":%q,"fallback_message":%q}`, stepNumber, responseType, aiInstruction, fallback))
 			assertHTTPStatus(t, step, http.StatusCreated, fmt.Sprintf("create scenario step %d/%d (%s)", level, stepNumber, responseType))
-			if level <= 3 {
+			if level <= 2 || (level == 3 && stepNumber == 1) {
 				stepID := responseID(t, step)
-				for optionOrder, points := range []int{0, 25, 50, 100} {
+				for optionOrder, points := range []int{0, 50, 100} {
 					option := call(admin, http.MethodPost, fmt.Sprintf("/api/v1/admin/steps/%d/options", stepID), fmt.Sprintf(`{"text":"Вариант %d","explanation":"Разбор","points":%d,"sort_order":%d}`, optionOrder+1, points, optionOrder+1))
 					assertHTTPStatus(t, option, http.StatusCreated, "create scenario option")
 				}

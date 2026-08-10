@@ -5,7 +5,7 @@
 - [x] Чистая временная БД проходит миграции `000001`–`000007` и roundtrip `up → down → up` (проверено 2026-08-09: 12 опубликованных Тем после повторного up).
 - [x] `cd backend && go test ./...` проходит полностью (2026-08-09; дополнительно `-race` для HTTP concurrency и limiter tests).
 - [ ] `make build-ollama && make up-ollama && make ollama-init` запускает PostgreSQL, API, gateway и qwen3:8b.
-- [ ] Production-сборка веб-клиента находится в `frontend/dist` и открывается на `http://localhost:3000`.
+- [ ] Production-сборка веб-клиента включена в образ gateway и открывается на `http://localhost:3000`.
 - [ ] `ngrok http 3000` открывает тот же интерфейс по HTTPS; запросы идут на same-origin `/api`.
 - [ ] Сделана локальная запись экрана как резерв на случай сбоя сети.
 

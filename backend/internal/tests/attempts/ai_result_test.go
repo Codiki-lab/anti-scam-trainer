@@ -5,40 +5,36 @@ import (
 	"testing"
 )
 
-func TestDecodeAIResultAcceptsStrictTrainingEvaluation(t *testing.T) {
-	result, err := service.DecodeAIResult(`{"awarded_points":75,"explanation":"Ответ снижает риск","reply":"Оплатите по ссылке","risk_signals":["внешняя ссылка"]}`)
+func TestDecodeEvaluatorResultAcceptsStrictTrainingEvaluation(t *testing.T) {
+	result, err := service.DecodeEvaluatorResult(`{"score":3,"is_safe":true,"risk_type":"phishing","detected_signals":["внешняя ссылка"],"evaluation":"Ответ снижает риск","safe_action":"Проверить заказ в приложении"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.AwardedPoints != 75 || result.Explanation == "" || result.Reply == "" || len(result.RiskSignals) != 1 {
-		t.Fatalf("DecodeAIResult() = %#v, want complete validated result", result)
+	if result.Score != 3 || len(result.DetectedSignals) != 1 || service.PointsForEvaluatorScore(result.Score) != 75 {
+		t.Fatalf("result = %#v", result)
 	}
 }
 
-func TestDecodeAIResultRejectsUnknownFieldsAndInvalidPoints(t *testing.T) {
+func TestDecodeEvaluatorResultRejectsUnsafeOrExpandedContract(t *testing.T) {
 	for _, raw := range []string{
-		`{"awarded_points":10,"explanation":"x","reply":"y","risk_signals":[]}`,
-		`{"awarded_points":75,"explanation":"x","reply":"y","risk_signals":[],"finish":true}`,
-		`{"awarded_points":75,"explanation":"","reply":"y","risk_signals":[]}`,
-		`{"awarded_points":75,"explanation":"x","reply":"y","risk_signals":[]} trailing`,
+		`{"score":4,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"y"}`,
+		`{"score":5,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"y"}`,
+		`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"y","next_step":2}`,
+		`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"Откройте https://example.com"}`,
 	} {
-		if _, err := service.DecodeAIResult(raw); err == nil {
-			t.Fatalf("DecodeAIResult(%q) succeeded, want strict validation error", raw)
+		if _, err := service.DecodeEvaluatorResult(raw); err == nil {
+			t.Fatalf("DecodeEvaluatorResult(%q) succeeded", raw)
 		}
 	}
 }
 
-func TestFreeTextCompletionRules(t *testing.T) {
-	if service.CanFinishFreeText(2, true) {
-		t.Fatal("finish=true before the third free-text answer must be rejected")
-	}
-	if !service.CanFinishFreeText(3, true) {
-		t.Fatal("finish=true on the third free-text answer must complete")
-	}
-	if !service.CanFinishFreeText(5, false) {
-		t.Fatal("the fifth free-text answer must complete automatically")
-	}
-	if service.CanFinishFreeText(4, false) {
-		t.Fatal("the fourth free-text answer without finish must continue")
+func TestDecodeGeneratorResultRejectsUnsafeOrWrongPhaseOutput(t *testing.T) {
+	for _, raw := range []string{
+		`{"message":"Откройте https://example.com","tactic":"urgency","phase":"escalation"}`,
+		`{"message":"Поторопитесь","tactic":"urgency","phase":"hook"}`,
+	} {
+		if _, err := service.DecodeGeneratorResult(raw, "escalation", []string{"urgency"}); err == nil {
+			t.Fatalf("DecodeGeneratorResult(%q) succeeded", raw)
+		}
 	}
 }

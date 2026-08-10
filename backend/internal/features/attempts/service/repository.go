@@ -35,7 +35,7 @@ type GameCompletionStore interface {
 	SaveAnswer(domain.UserAnswer) error
 	SaveMessage(domain.DialogueMessage) error
 	AdvanceAttempt(attemptID, nextStepNumber int) error
-	UpdateFreeTextCount(attemptID, count int) error
+	UpdateDialogueState(attemptID, count int, phase, summary string) error
 	CompleteAttempt(domain.Attempt) error
 	SaveProgress(domain.Progress) error
 	FinalizeLearning(*domain.AttemptResult) error

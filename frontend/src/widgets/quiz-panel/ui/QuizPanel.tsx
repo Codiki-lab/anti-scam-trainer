@@ -84,6 +84,7 @@ export function QuizPanel({ quiz, isSubmitting, onSubmit, onPassed }: QuizPanelP
           <button
             key={choice.id}
             className={selectedChoice === choice.id ? styles.selected : undefined}
+            aria-pressed={selectedChoice === choice.id}
             type="button"
             onClick={() => setSelectedChoice(choice.id)}
           >

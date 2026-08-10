@@ -71,6 +71,26 @@ func TestHTTPDashboardUsesServerContinuePriorityAndRoleIsolation(t *testing.T) {
 	}
 }
 
+func TestHTTPDashboardRecommendationIsStableForMoscowDateAndRole(t *testing.T) {
+	now := time.Date(2026, 8, 9, 9, 0, 0, 0, time.UTC)
+	store := &stableLearningStore{learningStore: &learningStore{}, recommendations: map[string]domain.ContinueAction{}}
+	service := learningservice.NewWithClock(store, func() time.Time { return now })
+	first, _, _, action, _, err := service.Dashboard(7, domain.UserRoleBuyer)
+	if err != nil || first.ID != 7 || action == nil || action.Type != "read_theory" {
+		t.Fatalf("first recommendation=(%+v,%+v,%v)", first, action, err)
+	}
+	store.theoryRead = true
+	_, _, _, refresh, _, err := service.Dashboard(7, domain.UserRoleBuyer)
+	if err != nil || refresh == nil || refresh.Type != "read_theory" {
+		t.Fatalf("same-day recommendation changed: %+v %v", refresh, err)
+	}
+	now = now.Add(24 * time.Hour)
+	_, _, _, nextDay, _, err := service.Dashboard(7, domain.UserRoleBuyer)
+	if err != nil || nextDay == nil || nextDay.Type != "take_quiz" {
+		t.Fatalf("next-day recommendation=(%+v,%v), want quiz", nextDay, err)
+	}
+}
+
 func TestHTTPDailyTaskIsStableByMoscowDateAndRole(t *testing.T) {
 	now := time.Date(2026, 8, 9, 20, 59, 0, 0, time.UTC)
 	store := &learningStore{daily: map[string]domain.DailyTask{}}
@@ -158,6 +178,21 @@ type learningStore struct {
 	lastRole      domain.UserRole
 	daily         map[string]domain.DailyTask
 	topics        []domain.Topic
+}
+
+type stableLearningStore struct {
+	*learningStore
+	recommendations map[string]domain.ContinueAction
+}
+
+func (s *stableLearningStore) FindRecommendation(_ int, date time.Time, role domain.UserRole) (domain.ContinueAction, bool, error) {
+	action, ok := s.recommendations[date.Format("2006-01-02")+":"+string(role)]
+	return action, ok, nil
+}
+
+func (s *stableLearningStore) SaveRecommendation(_ int, date time.Time, role domain.UserRole, action domain.ContinueAction) error {
+	s.recommendations[date.Format("2006-01-02")+":"+string(role)] = action
+	return nil
 }
 
 func (s *learningStore) FindDailyTask(_ int, date time.Time) (domain.DailyTask, bool, error) {
