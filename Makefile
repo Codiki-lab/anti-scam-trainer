@@ -81,7 +81,7 @@ logs-ollama:
 	@$(COMPOSE_OLLAMA) logs -f anti-scam-trainer-ollama
 
 lint:
-	@cd backend && golangci-lint run ./...
+	@cd backend && golangci-lint run --config .golangci.yaml ./...
 	@if [ -f frontend/package.json ]; then cd frontend && npm run lint; else echo "frontend/package.json not found; frontend lint skipped"; fi
 
 test:
