@@ -210,21 +210,36 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request) {
 func gameStateDTO(state service.GameState) map[string]interface{} {
 	history := make([]map[string]interface{}, len(state.Answers))
 	for i, answer := range state.Answers {
-		optionID := 0
-		if answer.OptionID != nil {
-			optionID = *answer.OptionID
-		}
 		stepID := answer.StepID
 		if state.Attempt.Mode == domain.AttemptModeFreePlay {
 			stepID = answer.TurnNumber
 		}
-		history[i] = map[string]interface{}{"step_id": stepID, "option_id": optionID}
+		history[i] = map[string]interface{}{"step_id": stepID, "points": answer.AwardedPoints}
+		if answer.OptionID != nil {
+			history[i]["answer_type"] = "option"
+			history[i]["option_id"] = *answer.OptionID
+			history[i]["option_text"] = answer.OptionText
+		} else {
+			history[i]["answer_type"] = "free_text"
+			history[i]["free_text"] = answer.FreeText
+		}
 	}
 	messages := make([]map[string]interface{}, len(state.Messages))
 	for i, message := range state.Messages {
 		messages[i] = map[string]interface{}{"role": message.Role, "text": message.Text}
 	}
-	return map[string]interface{}{"attempt_id": state.Attempt.ID, "status": state.Attempt.Status, "scenario_id": state.Attempt.ScenarioID, "topic_id": state.Scenario.TopicID, "product_context": state.Scenario.ProductContext, "mode": state.Step.ResponseType, "step_progress": map[string]int{"current": state.Step.Number, "answered": len(state.Answers)}, "step": stepDTO(state.Step), "answers": history, "messages": messages, "can_finish_early": state.CanFinishEarly}
+	scenarioTitle := state.Scenario.Title
+	scenarioDescription := state.Scenario.Description
+	level, _ := strconv.Atoi(state.Scenario.Level)
+	topicTitle := state.Scenario.TopicTitle
+	if state.Attempt.Mode == domain.AttemptModeFreePlay {
+		scenarioTitle, scenarioDescription, level, topicTitle = "Свободная игра", "Непредсказуемая тренировка безопасной сделки", 0, "Все изученные Темы"
+	}
+	counterpartyRole := "seller"
+	if state.Attempt.UserRole == "seller" {
+		counterpartyRole = "buyer"
+	}
+	return map[string]interface{}{"attempt_id": state.Attempt.ID, "status": state.Attempt.Status, "scenario_id": state.Attempt.ScenarioID, "scenario_title": scenarioTitle, "scenario_description": scenarioDescription, "topic_id": state.Scenario.TopicID, "topic_title": topicTitle, "level": level, "user_role": state.Attempt.UserRole, "counterparty_role": counterpartyRole, "product_context": state.Scenario.ProductContext, "mode": state.Step.ResponseType, "step_progress": map[string]int{"current": state.Step.Number, "answered": len(state.Answers), "total": state.TotalSteps}, "step": stepDTO(state.Step), "answers": history, "messages": messages, "can_finish_early": state.CanFinishEarly}
 }
 func stepDTO(step domain.ScenarioStep) map[string]interface{} {
 	options := make([]map[string]interface{}, len(step.Options))

@@ -106,14 +106,14 @@ func TestLevelThreeUsesEvaluatorForExactlyTwoFreeAnswers(t *testing.T) {
 	}
 }
 
-func TestLevelFourUsesServerPhasesRollingHistoryAndSixTurnLimit(t *testing.T) {
+func TestLevelFourUsesServerPhasesRollingHistoryAndFiveTurnLimit(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}, {LevelID: 3, Stars: 1}}}
 	repo.steps = map[int]domain.ScenarioStep{}
 	for number := 1; number <= 4; number++ {
 		repo.steps[number] = domain.ScenarioStep{ID: 40 + number, ScenarioID: 4, Number: number, ResponseType: domain.ResponseTypeFreeText, CounterpartyMessage: "Реплика", AIInstruction: "Оценить безопасность", FallbackMessage: "Продолжим"}
 	}
-	results := make([]service.EvaluatorResult, 6)
+	results := make([]service.EvaluatorResult, 5)
 	for index := range results {
 		results[index] = service.EvaluatorResult{Score: 3, RiskType: "phishing", Evaluation: "Осторожный ответ", SafeAction: "Остаться в сервисе"}
 	}
@@ -123,21 +123,21 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndSixTurnLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPhases := []string{"hook", "hook", "escalation", "escalation", "critical_request", "resolution"}
-	for turn := 1; turn <= 6; turn++ {
+	wantPhases := []string{"hook", "hook", "escalation", "escalation", "critical_request"}
+	for turn := 1; turn <= 5; turn++ {
 		text := "Проверяю сделку только внутри приложения"
 		next, completed, submitErr := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text})
 		if submitErr != nil {
 			t.Fatalf("turn %d: %v", turn, submitErr)
 		}
-		if (turn < 6) != (completed == nil) {
+		if (turn < 5) != (completed == nil) {
 			t.Fatalf("turn %d completion=%#v", turn, completed)
 		}
-		if turn < 6 {
+		if turn < 5 {
 			state = next
 		}
 	}
-	if len(ai.evaluations) != 6 || len(ai.generations) != 6 {
+	if len(ai.evaluations) != 5 || len(ai.generations) != 5 {
 		t.Fatalf("AI calls=(evaluations=%d generations=%d)", len(ai.evaluations), len(ai.generations))
 	}
 	for index, generation := range ai.generations {
@@ -145,7 +145,7 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndSixTurnLimit(t *testing.T) {
 			t.Fatalf("generation %d=%#v", index+1, generation)
 		}
 	}
-	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "resolution" {
+	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "critical_request" {
 		t.Fatalf("persisted dialogue state=%#v, fifth request=%#v", repo.attempts[state.Attempt.ID], ai.generations[4])
 	}
 }
@@ -233,7 +233,7 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
-func TestFreePlayCompletesAutomaticallyOnSixthAnswer(t *testing.T) {
+func TestFreePlayCompletesAutomaticallyOnFifthAnswer(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 4, Stars: 1}}}
 	ai := fakeAI{evaluation: service.EvaluatorResult{Score: 3, RiskType: "social_engineering", Evaluation: "Безопасно", SafeAction: "Остаться в сервисе"}}
@@ -242,13 +242,13 @@ func TestFreePlayCompletesAutomaticallyOnSixthAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for turn := 1; turn <= 6; turn++ {
+	for turn := 1; turn <= 5; turn++ {
 		text := "Проверяю условия сделки в сервисе"
 		_, completed, submitErr := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text})
 		if submitErr != nil {
 			t.Fatalf("turn %d: %v", turn, submitErr)
 		}
-		if (turn < 6) != (completed == nil) {
+		if (turn < 5) != (completed == nil) {
 			t.Fatalf("turn %d completion = %#v", turn, completed)
 		}
 	}
@@ -471,7 +471,7 @@ func (r *gameRepository) PublishedScenario(level int, role string) (domain.Scena
 	return domain.Scenario{}, errors.New("missing")
 }
 func (r *gameRepository) FreePlayConfig(role string) (domain.FreePlayConfig, error) {
-	return domain.FreePlayConfig{UserRole: role, ProductContext: domain.JSONObject{"item": "товар"}, SystemPrompt: "Веди диалог", FinalRubric: domain.JSONObject{"safe": 100}}, nil
+	return domain.FreePlayConfig{UserRole: role, ProductContext: domain.ProductContext{ItemTitle: "Товар", Category: "Другое", DealMethod: "delivery"}, SystemPrompt: "Веди диалог", FinalRubric: domain.JSONObject{"safe": 100}}, nil
 }
 func (r *gameRepository) Scenario(id int) (domain.Scenario, error) {
 	return domain.Scenario{ID: id, Level: strconv.Itoa(id), LevelID: id, UserRole: "buyer", ScamScheme: "phishing", AISystemPrompt: "Верни JSON"}, nil

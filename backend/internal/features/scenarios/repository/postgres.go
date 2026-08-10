@@ -12,7 +12,7 @@ type PostgresRepository struct{ db *pg.DB }
 
 func (r *PostgresRepository) CreateContent(s domain.Scenario) (domain.Scenario, error) {
 	var id int
-	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chats (title, description, difficulty, role, is_active, level_id, topic_id, user_role, content_status, scam_scheme, product_context, ai_system_prompt, final_rubric) VALUES (?, ?, ?, ?, false, ?, ?, ?, 'draft', ?, ?::jsonb, ?, ?::jsonb) RETURNING id`, s.Title, s.Description, s.Level, s.UserRole, s.LevelID, s.TopicID, s.UserRole, s.ScamScheme, encodeJSONObject(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric))
+	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chats (title, description, difficulty, role, is_active, level_id, topic_id, user_role, content_status, scam_scheme, risk_type, product_context, ai_system_prompt, final_rubric) VALUES (?, ?, ?, ?, false, ?, ?, ?, 'draft', ?, ?, ?::jsonb, ?, ?::jsonb) RETURNING id`, s.Title, s.Description, s.Level, s.UserRole, s.LevelID, s.TopicID, s.UserRole, s.ScamScheme, s.RiskType, encodeProductContext(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric))
 	s.ID = id
 	s.Status = domain.ScenarioStatusDraft
 	return s, err
@@ -27,15 +27,16 @@ func (r *PostgresRepository) ListContent() ([]domain.Scenario, error) {
 		UserRole       string `pg:"user_role"`
 		Status         string `pg:"status"`
 		ScamScheme     string `pg:"scam_scheme"`
+		RiskType       string `pg:"risk_type"`
 		ProductContext string `pg:"product_context"`
 		AISystemPrompt string `pg:"ai_system_prompt"`
 		FinalRubric    string `pg:"final_rubric"`
 	}
 	var rows []row
-	_, err := r.db.Query(&rows, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats ORDER BY id`)
+	_, err := r.db.Query(&rows, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,COALESCE(risk_type,'') AS risk_type,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats ORDER BY id`)
 	result := make([]domain.Scenario, len(rows))
 	for i, x := range rows {
-		result[i] = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
+		result[i] = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, RiskType: domain.RiskType(x.RiskType), ProductContext: decodeProductContext(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
 	}
 	return result, err
 }
@@ -50,13 +51,14 @@ func (r *PostgresRepository) ContentScenario(id int) (domain.Scenario, error) {
 		UserRole       string `pg:"user_role"`
 		Status         string `pg:"status"`
 		ScamScheme     string `pg:"scam_scheme"`
+		RiskType       string `pg:"risk_type"`
 		ProductContext string `pg:"product_context"`
 		AISystemPrompt string `pg:"ai_system_prompt"`
 		FinalRubric    string `pg:"final_rubric"`
 	}
 	var x row
-	_, err := r.db.QueryOne(&x, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats WHERE id=?`, id)
-	s = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, ProductContext: decodeJSONObject(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
+	_, err := r.db.QueryOne(&x, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,COALESCE(risk_type,'') AS risk_type,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats WHERE id=?`, id)
+	s = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, RiskType: domain.RiskType(x.RiskType), ProductContext: decodeProductContext(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
 	return s, err
 }
 
@@ -64,7 +66,7 @@ func (r *PostgresRepository) ValidContent(id int) (bool, error) {
 	var valid bool
 	_, err := r.db.QueryOne(pg.Scan(&valid), `
 		WITH target AS (
-			SELECT c.id,l.level_number,c.title,c.description FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.id=?
+			SELECT c.id,l.level_number,c.title,c.description,c.risk_type,c.product_context FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.id=?
 		), shape AS (
 			SELECT COUNT(*) steps,MIN(step_number) first_step,MAX(step_number) last_step,
 				COUNT(*) FILTER(WHERE response_type='multiple_choice') multiple_choice_steps,
@@ -73,11 +75,16 @@ func (r *PostgresRepository) ValidContent(id int) (bool, error) {
 			FROM chat_steps WHERE chat_id=?
 		)
 		SELECT EXISTS(SELECT 1 FROM target)
-			AND COALESCE((SELECT steps=CASE level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END
-				AND first_step=1 AND last_step=CASE level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END
+			AND NOT EXISTS(SELECT 1 FROM target WHERE risk_type NOT IN ('phishing','prepayment','fake_payment','delivery','external_messenger','account_takeover','sms_code','social_engineering')
+				OR NULLIF(product_context->>'item_title','') IS NULL OR NULLIF(product_context->>'category','') IS NULL
+				OR product_context->>'deal_method' NOT IN ('delivery','meetup','pickup')
+				OR COALESCE(product_context->>'image_key','') !~ '^(|smartphone|electronics|appliance|camera|bicycle|laptop|headphones|console)$'
+				OR (product_context ? 'price' AND ((product_context->>'price')::integer < 0 OR product_context->>'currency'<>'RUB')))
+			AND COALESCE((SELECT steps=CASE level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 5 END
+				AND first_step=1 AND last_step=CASE level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 5 END
 				AND multiple_choice_steps=CASE level_number WHEN 1 THEN 3 WHEN 3 THEN 1 ELSE 0 END
 				AND similar_choice_steps=CASE WHEN level_number=2 THEN 2 ELSE 0 END
-				AND free_text_steps=CASE level_number WHEN 3 THEN 2 WHEN 4 THEN 6 ELSE 0 END
+				AND free_text_steps=CASE level_number WHEN 3 THEN 2 WHEN 4 THEN 5 ELSE 0 END
 				FROM shape,target),FALSE)
 			AND NOT EXISTS (
 				SELECT 1 FROM chat_steps s CROSS JOIN target t
@@ -95,7 +102,7 @@ func (r *PostgresRepository) ValidContent(id int) (bool, error) {
 	return valid, err
 }
 func (r *PostgresRepository) UpdateContent(s domain.Scenario) error {
-	_, err := r.db.Exec(`UPDATE chats SET title=?, description=?, level_id=?,topic_id=?,user_role=?,role=?,scam_scheme=?, product_context=?::jsonb, ai_system_prompt=?, final_rubric=?::jsonb WHERE id=?`, s.Title, s.Description, s.LevelID, s.TopicID, s.UserRole, s.UserRole, s.ScamScheme, encodeJSONObject(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric), s.ID)
+	_, err := r.db.Exec(`UPDATE chats SET title=?, description=?, level_id=?,topic_id=?,user_role=?,role=?,scam_scheme=?,risk_type=?, product_context=?::jsonb, ai_system_prompt=?, final_rubric=?::jsonb WHERE id=?`, s.Title, s.Description, s.LevelID, s.TopicID, s.UserRole, s.UserRole, s.ScamScheme, s.RiskType, encodeProductContext(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric), s.ID)
 	return err
 }
 func (r *PostgresRepository) SetContentStatus(id int, status string, archived bool) error {
@@ -163,6 +170,20 @@ func encodeJSONObject(value domain.JSONObject) string {
 
 func decodeJSONObject(value string) domain.JSONObject {
 	result := domain.JSONObject{}
+	_ = json.Unmarshal([]byte(value), &result)
+	return result
+}
+
+func encodeProductContext(value domain.ProductContext) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
+}
+
+func decodeProductContext(value string) domain.ProductContext {
+	var result domain.ProductContext
 	_ = json.Unmarshal([]byte(value), &result)
 	return result
 }

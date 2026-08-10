@@ -14,7 +14,8 @@
 - Прохождения всегда принадлежат текущему Пользователю из JWT: `user_id` не передаётся в теле и не возвращается в ответах.
 - `POST /attempts/{id}/answers` требует актуальный `step_id` и ровно одно из `option_id` и `free_text`; устаревший Шаг возвращает `STALE_STEP`.
 - Закрытая прогрессией Теория, Quiz или Уровень возвращает `CONTENT_UNAVAILABLE`; недостаточная роль доступа возвращает `FORBIDDEN`.
-- В административных DTO `product_context` и `final_rubric` передаются JSON-объектами, а не строками с вложенным JSON.
+- В административных DTO `product_context` является типизированным объектом товара: обязательны `item_title`, `category`, `deal_method`; необязательны `price`, `currency`, `location`, `image_key`. `image_key` выбирается только из серверного набора, удалённые URL не принимаются. `final_rubric` передаётся JSON-объектом.
+- `risk_type` Сценария — один из `phishing`, `prepayment`, `fake_payment`, `delivery`, `external_messenger`, `account_takeover`, `sms_code`, `social_engineering`; публикация другого значения запрещена.
 - Административный вариант ответа принимает необязательное `counterparty_reaction` до 280 символов. После выбора GameState показывает Сообщения в порядке «Ответ пользователя → реакция → следующая общая реплика»; пустая реакция пропускается.
 - Публичные GameState и Result не возвращают policy, контекст evaluator-а, rubric, compact summary или фазу generator-а.
 - Ошибка AI возвращается как `502` или `503` и гарантирует отсутствие изменений Прохождения.
@@ -34,6 +35,7 @@
 - `POST /api/v1/training/levels/{level}/start?role=...&topic_id=...` — начать или продолжить тематическое Прохождение.
 - `POST /api/v1/training/free-play/start?role=...` — Свободная игра после Уровня 4 во всех шести Темах роли.
 - `GET /api/v1/attempts/{id}` — полный GameState для восстановления.
+- GameState содержит название и описание Сценария, Тему, Уровень, роли Пользователя и собеседника, типизированный товар, `step_progress.total` и сохранённые option/free-text Ответы пользователя.
 - `POST /api/v1/attempts/{id}/answers` — вариант или свободный Ответ пользователя и переход/итог.
 - `GET /api/v1/attempts/{id}/result` — неизменный Result завершённого Прохождения.
 - `POST /api/v1/attempts/{id}/abandon` — бросить своё незавершённое Прохождение.

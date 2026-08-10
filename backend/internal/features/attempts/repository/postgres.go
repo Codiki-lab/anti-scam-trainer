@@ -40,9 +40,11 @@ type gameScenarioRecord struct {
 	LevelID        int    `pg:"level_id"`
 	LevelNumber    int    `pg:"level_number"`
 	TopicID        int    `pg:"topic_id"`
+	TopicTitle     string `pg:"topic_title"`
 	UserRole       string `pg:"user_role"`
 	ContentStatus  string `pg:"content_status"`
 	ScamScheme     string `pg:"scam_scheme"`
+	RiskType       string `pg:"risk_type"`
 	ProductContext string `pg:"product_context"`
 	AISystemPrompt string `pg:"ai_system_prompt"`
 	FinalRubric    string `pg:"final_rubric"`
@@ -112,7 +114,7 @@ func (r *PostgresRepository) Levels(userID int, userRole string) ([]domain.Level
 
 func (r *PostgresRepository) PublishedScenario(levelNumber int, userRole string) (domain.Scenario, error) {
 	var record gameScenarioRecord
-	query := `SELECT c.id, c.title, c.description, c.level_id, c.topic_id, l.level_number, c.user_role, c.content_status, COALESCE(c.scam_scheme,'') AS scam_scheme, c.product_context::text AS product_context, COALESCE(c.ai_system_prompt,'') AS ai_system_prompt, c.final_rubric::text AS final_rubric FROM chats c JOIN levels l ON l.id = c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status = 'published' AND c.archived_at IS NULL AND t.content_status='published'`
+	query := `SELECT c.id, c.title, c.description, c.level_id, c.topic_id, t.title AS topic_title, l.level_number, c.user_role, c.content_status, COALESCE(c.scam_scheme,'') AS scam_scheme, COALESCE(c.risk_type,'') AS risk_type, c.product_context::text AS product_context, COALESCE(c.ai_system_prompt,'') AS ai_system_prompt, c.final_rubric::text AS final_rubric FROM chats c JOIN levels l ON l.id = c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status = 'published' AND c.archived_at IS NULL AND t.content_status='published'`
 	args := []interface{}{}
 	if levelNumber > 0 {
 		query += ` AND l.level_number = ?`
@@ -130,7 +132,7 @@ func (r *PostgresRepository) PublishedScenario(levelNumber int, userRole string)
 
 func (r *PostgresRepository) PublishedTopicScenario(levelNumber int, userRole string, topicID int) (domain.Scenario, error) {
 	var record gameScenarioRecord
-	_, err := r.db.QueryOne(&record, `SELECT c.id,c.title,c.description,c.level_id,c.topic_id,l.level_number,c.user_role,c.content_status,COALESCE(c.scam_scheme,'') scam_scheme,c.product_context::text product_context,COALESCE(c.ai_system_prompt,'') ai_system_prompt,c.final_rubric::text final_rubric FROM chats c JOIN levels l ON l.id=c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status='published' AND c.archived_at IS NULL AND t.content_status='published' AND l.level_number=? AND c.user_role=? AND c.topic_id=? AND t.user_role=?`, levelNumber, userRole, topicID, userRole)
+	_, err := r.db.QueryOne(&record, `SELECT c.id,c.title,c.description,c.level_id,c.topic_id,t.title AS topic_title,l.level_number,c.user_role,c.content_status,COALESCE(c.scam_scheme,'') scam_scheme,COALESCE(c.risk_type,'') risk_type,c.product_context::text product_context,COALESCE(c.ai_system_prompt,'') ai_system_prompt,c.final_rubric::text final_rubric FROM chats c JOIN levels l ON l.id=c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status='published' AND c.archived_at IS NULL AND t.content_status='published' AND l.level_number=? AND c.user_role=? AND c.topic_id=? AND t.user_role=?`, levelNumber, userRole, topicID, userRole)
 	if err != nil {
 		return domain.Scenario{}, err
 	}
@@ -185,12 +187,12 @@ func (r *PostgresRepository) FreePlayConfig(userRole string) (domain.FreePlayCon
 	if err != nil {
 		return domain.FreePlayConfig{}, err
 	}
-	return domain.FreePlayConfig{UserRole: item.UserRole, ProductContext: decodeJSONObject(item.ProductContext), SystemPrompt: item.SystemPrompt, FinalRubric: decodeJSONObject(item.FinalRubric)}, nil
+	return domain.FreePlayConfig{UserRole: item.UserRole, ProductContext: decodeProductContext(item.ProductContext), SystemPrompt: item.SystemPrompt, FinalRubric: decodeJSONObject(item.FinalRubric)}, nil
 }
 
 func (r *PostgresRepository) Scenario(id int) (domain.Scenario, error) {
 	var record gameScenarioRecord
-	_, err := r.db.QueryOne(&record, `SELECT c.id, c.title, c.description, c.level_id, c.topic_id, l.level_number, c.user_role, c.content_status, COALESCE(c.scam_scheme,'') AS scam_scheme, c.product_context::text AS product_context, COALESCE(c.ai_system_prompt,'') AS ai_system_prompt, c.final_rubric::text AS final_rubric FROM chats c JOIN levels l ON l.id = c.level_id WHERE c.id = ?`, id)
+	_, err := r.db.QueryOne(&record, `SELECT c.id, c.title, c.description, c.level_id, c.topic_id, t.title AS topic_title, l.level_number, c.user_role, c.content_status, COALESCE(c.scam_scheme,'') AS scam_scheme, COALESCE(c.risk_type,'') AS risk_type, c.product_context::text AS product_context, COALESCE(c.ai_system_prompt,'') AS ai_system_prompt, c.final_rubric::text AS final_rubric FROM chats c JOIN levels l ON l.id = c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.id = ?`, id)
 	if err != nil {
 		return domain.Scenario{}, err
 	}
@@ -516,11 +518,17 @@ func (s gameTransactionStore) saveResult(result *domain.AttemptResult) error {
 }
 
 func scenarioFromGameRecord(record gameScenarioRecord) domain.Scenario {
-	return domain.Scenario{ID: record.ID, Title: record.Title, Description: record.Description, Level: strconv.Itoa(record.LevelNumber), LevelID: record.LevelID, TopicID: record.TopicID, UserRole: record.UserRole, Status: record.ContentStatus, ScamScheme: record.ScamScheme, ProductContext: decodeJSONObject(record.ProductContext), AISystemPrompt: record.AISystemPrompt, FinalRubric: decodeJSONObject(record.FinalRubric)}
+	return domain.Scenario{ID: record.ID, Title: record.Title, Description: record.Description, Level: strconv.Itoa(record.LevelNumber), LevelID: record.LevelID, TopicID: record.TopicID, TopicTitle: record.TopicTitle, UserRole: record.UserRole, Status: record.ContentStatus, ScamScheme: record.ScamScheme, RiskType: domain.RiskType(record.RiskType), ProductContext: decodeProductContext(record.ProductContext), AISystemPrompt: record.AISystemPrompt, FinalRubric: decodeJSONObject(record.FinalRubric)}
 }
 
 func decodeJSONObject(value string) domain.JSONObject {
 	result := domain.JSONObject{}
+	_ = json.Unmarshal([]byte(value), &result)
+	return result
+}
+
+func decodeProductContext(value string) domain.ProductContext {
+	var result domain.ProductContext
 	_ = json.Unmarshal([]byte(value), &result)
 	return result
 }

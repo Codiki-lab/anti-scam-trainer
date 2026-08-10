@@ -33,6 +33,9 @@ func (s *Service) Publish(id int) error {
 	if current.Status != domain.ScenarioStatusDraft {
 		return apperrors.ErrInvalidScenarioState
 	}
+	if !domain.ValidRiskType(current.RiskType) || !domain.ValidProductContext(current.ProductContext) {
+		return apperrors.ErrInvalidScenarioState
+	}
 	valid, err := s.repository.ValidContent(id)
 	if err != nil {
 		return err

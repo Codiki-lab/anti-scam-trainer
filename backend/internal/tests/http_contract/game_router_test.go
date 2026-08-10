@@ -264,7 +264,7 @@ func TestHTTPFreePlayAIFailureHasNoSideEffects(t *testing.T) {
 	}
 }
 
-func TestHTTPFreePlayCompletesAtSixAnswersWithoutLeakingAIState(t *testing.T) {
+func TestHTTPFreePlayCompletesAtFiveAnswersWithoutLeakingAIState(t *testing.T) {
 	store := newHTTPGameStore()
 	game := attemptsservice.NewGameWithDependencies(store, contractAI{}, contractAI{}, func() bool { return true })
 	handler := router.New()
@@ -272,7 +272,7 @@ func TestHTTPFreePlayCompletesAtSixAnswersWithoutLeakingAIState(t *testing.T) {
 	start := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role=buyer", nil)
 	start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
 	handler.ServeHTTP(httptest.NewRecorder(), start)
-	for turn := 1; turn <= 6; turn++ {
+	for turn := 1; turn <= 5; turn++ {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":`+strconv.Itoa(turn)+`,"free_text":"Проверю сделку внутри приложения"}`))
 		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
 		recorder := httptest.NewRecorder()
@@ -281,16 +281,16 @@ func TestHTTPFreePlayCompletesAtSixAnswersWithoutLeakingAIState(t *testing.T) {
 		if recorder.Code != http.StatusOK || strings.Contains(body, "policy") || strings.Contains(body, "compact_summary") || strings.Contains(body, "dialogue_phase") {
 			t.Fatalf("turn %d=(%d,%s)", turn, recorder.Code, body)
 		}
-		if turn == 6 && !strings.Contains(body, `"decision_review"`) {
-			t.Fatalf("sixth turn did not return Result: %s", body)
+		if turn == 5 && !strings.Contains(body, `"decision_review"`) {
+			t.Fatalf("fifth turn did not return Result: %s", body)
 		}
 	}
-	seventh := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":7,"free_text":"Ещё ответ"}`))
-	seventh = seventh.WithContext(authservice.WithIdentity(seventh.Context(), authservice.Identity{UserID: 1}))
-	seventhRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(seventhRecorder, seventh)
-	if seventhRecorder.Code != http.StatusConflict || len(store.answers) != 6 {
-		t.Fatalf("seventh=(%d,%s), answers=%d", seventhRecorder.Code, seventhRecorder.Body.String(), len(store.answers))
+	sixth := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":6,"free_text":"Ещё ответ"}`))
+	sixth = sixth.WithContext(authservice.WithIdentity(sixth.Context(), authservice.Identity{UserID: 1}))
+	sixthRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(sixthRecorder, sixth)
+	if sixthRecorder.Code != http.StatusConflict || len(store.answers) != 5 {
+		t.Fatalf("sixth=(%d,%s), answers=%d", sixthRecorder.Code, sixthRecorder.Body.String(), len(store.answers))
 	}
 }
 

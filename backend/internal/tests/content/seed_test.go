@@ -38,12 +38,12 @@ func TestPublishedContentMatrix(t *testing.T) {
 			COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='free_text') free_text_steps
 		FROM chats c JOIN levels l ON l.id=c.level_id JOIN chat_steps s ON s.chat_id=c.id LEFT JOIN chat_options o ON o.step_id=s.id
 		WHERE c.content_status='published' AND c.archived_at IS NULL GROUP BY c.id,l.level_number
-		HAVING COUNT(DISTINCT s.id)<>CASE l.level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END OR MIN(s.step_number)<>1
-			OR MAX(s.step_number)<>CASE l.level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END
+		HAVING COUNT(DISTINCT s.id)<>CASE l.level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 5 END OR MIN(s.step_number)<>1
+			OR MAX(s.step_number)<>CASE l.level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 5 END
 			OR COUNT(DISTINCT o.id)<>CASE l.level_number WHEN 1 THEN 9 WHEN 2 THEN 6 WHEN 3 THEN 3 ELSE 0 END
 			OR COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='multiple_choice')<>CASE l.level_number WHEN 1 THEN 3 WHEN 3 THEN 1 ELSE 0 END
 			OR COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='similar_choice')<>CASE WHEN l.level_number=2 THEN 2 ELSE 0 END
-			OR COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='free_text')<>CASE l.level_number WHEN 3 THEN 2 WHEN 4 THEN 6 ELSE 0 END
+			OR COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='free_text')<>CASE l.level_number WHEN 3 THEN 2 WHEN 4 THEN 5 ELSE 0 END
 	) bad`)
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ func TestAvitoScenariosReplaceTenTemplatesAndPreserveArchivedReferences(t *testi
 		SELECT concat_ws('|','option',c.product_context->>'content_key',s.step_number,o.sort_order,o.option_text,coalesce(o.counterparty_reaction,''),o.explanation,o.points)
 		FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id WHERE c.product_context?'content_key'
 	) prepared_content`)
-	if err != nil || contentDigest != "c536fd47f6747d85e96e3643d5e866a6" {
+	if err != nil || contentDigest != "c09ec77fc4205c931ca810c19d9b6877" {
 		t.Fatalf("prepared content digest=%q err=%v; every scenario, step, option, reaction, and explanation must match the approved fixture", contentDigest, err)
 	}
 	var userID, archivedID, attemptID int
@@ -204,7 +204,7 @@ func TestCompleteAvitoCurriculumReplacesEveryPublishedScenario(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if topics != 12 || theoryBlocks != 60 || questions != 60 || quizOptions != 240 || scenarios != 48 || steps != 168 || options != 216 || reactions != 144 || archived != 48 {
+	if topics != 12 || theoryBlocks != 60 || questions != 60 || quizOptions != 240 || scenarios != 48 || steps != 156 || options != 216 || reactions != 144 || archived != 48 {
 		t.Fatalf("complete curriculum=(topics=%d theory=%d questions=%d quiz_options=%d scenarios=%d steps=%d options=%d reactions=%d archived=%d)", topics, theoryBlocks, questions, quizOptions, scenarios, steps, options, reactions, archived)
 	}
 
@@ -238,7 +238,7 @@ func TestCompleteAvitoCurriculumReplacesEveryPublishedScenario(t *testing.T) {
 		UNION ALL SELECT concat_ws('|','scenario_option',t.slug,l.level_number,s.step_number,o.sort_order,o.option_text,coalesce(o.counterparty_reaction,''),o.explanation,o.points) FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id WHERE c.content_status='published' AND c.archived_at IS NULL
 		UNION ALL SELECT concat_ws('|','free_play',user_role,product_context::text,system_prompt,final_rubric::text) FROM free_play_configs
 	) curriculum`)
-	if err != nil || digest != "3305b33296a424660c3d92d487e46577" {
+	if err != nil || digest != "22582df6f8fbd4722b970fb1465a5808" {
 		t.Fatalf("complete curriculum digest=%q err=%v", digest, err)
 	}
 

@@ -22,19 +22,50 @@ export interface GameStateDto {
   attempt_id: number
   status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED'
   scenario_id: number
+  scenario_title: string
+  scenario_description: string
   topic_id: number
-  product_context: Record<string, unknown>
+  topic_title: string
+  level: number
+  user_role: 'buyer' | 'seller'
+  counterparty_role: 'buyer' | 'seller'
+  product_context: ProductContextDto
   mode: ResponseModeDto
-  step_progress: { current: number; answered: number }
+  step_progress: { current: number; answered: number; total: number }
   step: {
     id: number
     number: number
     counterparty_message: string
     options: Array<{ id: number; text: string }>
   }
-  answers: Array<{ step_id: number; option_id: number }>
+  answers: Array<{
+    step_id: number
+    answer_type: 'option' | 'free_text'
+    option_id?: number
+    option_text?: string
+    free_text?: string
+    points: number
+  }>
   messages: Array<{ role: 'user' | 'assistant'; text: string }>
   can_finish_early: boolean
+}
+
+export interface ProductContextDto {
+  item_title: string
+  category: string
+  deal_method: 'delivery' | 'meetup' | 'pickup'
+  price?: number
+  currency?: 'RUB'
+  location?: string
+  image_key?:
+    | 'smartphone'
+    | 'electronics'
+    | 'appliance'
+    | 'camera'
+    | 'bicycle'
+    | 'laptop'
+    | 'headphones'
+    | 'console'
 }
 
 export interface AnswerCommandDto {
@@ -99,18 +130,48 @@ export const gameStateDtoSchema = z.object({
   attempt_id: z.number().int(),
   status: z.enum(['IN_PROGRESS', 'COMPLETED', 'ABANDONED']),
   scenario_id: z.number().int().nonnegative(),
+  scenario_title: z.string(),
+  scenario_description: z.string(),
   topic_id: z.number().int().nonnegative(),
-  product_context: z.record(z.unknown()),
+  topic_title: z.string(),
+  level: z.number().int().min(0).max(4),
+  user_role: z.enum(['buyer', 'seller']),
+  counterparty_role: z.enum(['buyer', 'seller']),
+  product_context: z.object({
+    item_title: z.string().min(1),
+    category: z.string().min(1),
+    deal_method: z.enum(['delivery', 'meetup', 'pickup']),
+    price: z.number().int().nonnegative().optional(),
+    currency: z.literal('RUB').optional(),
+    location: z.string().optional(),
+    image_key: z
+      .enum([
+        'smartphone',
+        'electronics',
+        'appliance',
+        'camera',
+        'bicycle',
+        'laptop',
+        'headphones',
+        'console',
+      ])
+      .optional(),
+  }),
   mode: z.enum(['multiple_choice', 'similar_choice', 'mixed', 'free_text']),
   step_progress: z.object({
     current: z.number().int().nonnegative(),
     answered: z.number().int().nonnegative(),
+    total: z.number().int().positive(),
   }),
   step: gameStepSchema,
   answers: z.array(
     z.object({
       step_id: z.number().int().nonnegative(),
-      option_id: z.number().int().nonnegative(),
+      answer_type: z.enum(['option', 'free_text']),
+      option_id: z.number().int().nonnegative().optional(),
+      option_text: z.string().optional(),
+      free_text: z.string().optional(),
+      points: z.number().int().min(0).max(100),
     }),
   ),
   messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(400) })),

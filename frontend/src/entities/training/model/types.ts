@@ -24,17 +24,38 @@ export interface TrainingSession {
   attemptId: number
   status: AttemptStatus
   scenarioId: number
+  scenarioTitle: string
+  scenarioDescription: string
   topicId: number
-  productContext: Record<string, unknown>
+  topicTitle: string
+  level: number
+  userRole: 'buyer' | 'seller'
+  counterpartyRole: 'buyer' | 'seller'
+  productContext: {
+    itemTitle: string
+    category: string
+    dealMethod: 'delivery' | 'meetup' | 'pickup'
+    price?: number
+    currency?: 'RUB'
+    location?: string
+    imageKey?: string
+  }
   mode: ResponseMode
-  progress: { currentStep: number; answeredSteps: number }
+  progress: { currentStep: number; answeredSteps: number; totalSteps: number }
   step: {
     id: number
     number: number
     counterpartyMessage: string
     options: TrainingOption[]
   }
-  answers: Array<{ stepId: number; optionId: number }>
+  answers: Array<{
+    stepId: number
+    answerType: 'option' | 'free_text'
+    optionId?: number
+    optionText?: string
+    freeText?: string
+    points: number
+  }>
   messages: TrainingMessage[]
   canFinishEarly: boolean
 }

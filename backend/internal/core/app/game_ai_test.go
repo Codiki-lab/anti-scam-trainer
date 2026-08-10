@@ -2,6 +2,7 @@ package app
 
 import (
 	"anti-scam-trainer/backend/internal/core/aiprovider"
+	"anti-scam-trainer/backend/internal/core/domain"
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	"context"
 	"testing"
@@ -52,7 +53,7 @@ func TestGeneratorFallsBackAfterOneRepair(t *testing.T) {
 func TestGeneratorRejectsNewScenarioAmount(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"message":"Переведите 99 999 рублей","tactic":"urgency","phase":"hook"}`, `{"message":"Нужно ещё 88 888 рублей","tactic":"urgency","phase":"hook"}`}}
 	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
-	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: map[string]any{"price": 57000}, Fallback: "Проверим сделку внутри приложения"})
+	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: domain.ProductContext{Price: 57000}, Fallback: "Проверим сделку внутри приложения"})
 	if err != nil || result.Message != "Проверим сделку внутри приложения" {
 		t.Fatalf("GenerateReply() = (%#v,%v)", result, err)
 	}
@@ -61,7 +62,7 @@ func TestGeneratorRejectsNewScenarioAmount(t *testing.T) {
 func TestGeneratorRejectsInventedTextualScenarioFact(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"message":"Товар находится в Москве","tactic":"urgency","phase":"hook"}`, `{"message":"Камера исправна и уже отправлена","tactic":"urgency","phase":"hook"}`}}
 	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
-	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: map[string]any{"item": "Sony Alpha A7 III", "counterparty": "Кирилл"}, Fallback: "Проверим сделку внутри приложения"})
+	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: domain.ProductContext{ItemTitle: "Sony Alpha A7 III"}, Fallback: "Проверим сделку внутри приложения"})
 	if err != nil || result.Message != "Проверим сделку внутри приложения" {
 		t.Fatalf("GenerateReply() = (%#v,%v)", result, err)
 	}
@@ -70,7 +71,7 @@ func TestGeneratorRejectsInventedTextualScenarioFact(t *testing.T) {
 func TestGeneratorAcceptsOnlyControlledWordsAndExactScenarioFacts(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"message":"Добрый день. Хочу оформить сделку сегодня.","tactic":"urgency","phase":"hook"}`}}
 	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
-	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: map[string]any{"item": "Sony Alpha A7 III", "counterparty": "Кирилл"}})
+	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: domain.ProductContext{ItemTitle: "Sony Alpha A7 III"}})
 	if err != nil || result.Message != "Добрый день. Хочу оформить сделку сегодня." {
 		t.Fatalf("GenerateReply() = (%#v,%v)", result, err)
 	}

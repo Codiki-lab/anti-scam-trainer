@@ -142,6 +142,7 @@ erDiagram
         varchar user_role
         varchar mode
         varchar scam_scheme
+        varchar risk_type
         jsonb product_context
         boolean is_active
     }
