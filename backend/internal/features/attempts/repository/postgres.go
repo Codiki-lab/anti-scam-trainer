@@ -228,7 +228,7 @@ func (r *PostgresRepository) StartFreePlay(attempt domain.Attempt, message domai
 	var created domain.Attempt
 	err := r.db.RunInTransaction(func(tx *pg.Tx) error {
 		var record attemptRecord
-		_, err := tx.QueryOne(&record, `INSERT INTO chat_sessions (user_id, chat_id, mode, user_role, is_scam, status, started_at, current_step_number, free_text_count, dialogue_phase, compact_summary) VALUES (?, NULL, 'free_play', ?, ?, ?, ?, 0, 0, 'hook', '') RETURNING *`, attempt.UserID, attempt.UserRole, attempt.IsScam, attempt.Status, attempt.StartedAt)
+		_, err := tx.QueryOne(&record, `INSERT INTO chat_sessions (user_id, chat_id, mode, user_role, is_scam, status, started_at, current_step_number, free_text_count, dialogue_phase, compact_summary) VALUES (?, NULL, 'free_play', ?, ?, ?, ?, 0, 0, 'hook', ?) RETURNING *`, attempt.UserID, attempt.UserRole, attempt.IsScam, attempt.Status, attempt.StartedAt, attempt.CompactSummary)
 		if err != nil {
 			return err
 		}

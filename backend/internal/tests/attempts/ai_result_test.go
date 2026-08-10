@@ -21,6 +21,8 @@ func TestDecodeEvaluatorResultRejectsUnsafeOrExpandedContract(t *testing.T) {
 		`{"score":5,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"y"}`,
 		`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"y","next_step":2}`,
 		`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"Откройте https://example.com"}`,
+		`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"Safe JSON: безопасно","safe_action":"Проверить заказ в приложении"}`,
+		`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"score=4, хорошо","safe_action":"Проверить заказ в приложении"}`,
 	} {
 		if _, err := service.DecodeEvaluatorResult(raw); err == nil {
 			t.Fatalf("DecodeEvaluatorResult(%q) succeeded", raw)

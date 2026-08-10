@@ -53,6 +53,16 @@ func TestEvaluatorFallsBackWhenOllamaReturnsInvalidJSONTwice(t *testing.T) {
 	}
 }
 
+func TestEvaluatorFallbackRecognizesExplicitSafeAnswer(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`not-json`, `still-not-json`}}
+	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
+
+	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Проверю заказ только внутри приложения"})
+	if err != nil || result.Score != 3 || !result.IsSafe || !strings.Contains(result.Evaluation, "внутри сервиса") {
+		t.Fatalf("Evaluate() = (%#v, %v); want Russian safe fallback", result, err)
+	}
+}
+
 func TestGeneratorFallsBackAfterOneRepair(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"message":"https://unsafe.example","tactic":"urgency","phase":"hook"}`, `{"message":"Позвоните +79990000000","tactic":"urgency","phase":"hook"}`}}
 	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
@@ -90,8 +100,39 @@ func TestGeneratorRejectsInventedTextualScenarioFact(t *testing.T) {
 func TestGeneratorAcceptsOnlyControlledWordsAndExactScenarioFacts(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"message":"Добрый день. Хочу оформить сделку сегодня.","tactic":"urgency","phase":"hook"}`}}
 	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
-	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: domain.ProductContext{ItemTitle: "Sony Alpha A7 III"}})
+	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{UserRole: "seller", RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}, ScenarioFacts: domain.ProductContext{ItemTitle: "Sony Alpha A7 III"}})
 	if err != nil || result.Message != "Добрый день. Хочу оформить сделку сегодня." {
 		t.Fatalf("GenerateReply() = (%#v,%v)", result, err)
+	}
+}
+
+func TestGeneratorAllowedMessagesMatchCounterpartRole(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`{"message":"Здравствуйте. Да, предложение ещё актуально.","tactic":"urgency","phase":"hook"}`}}
+	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
+	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{UserRole: "buyer", CounterpartKind: "обычный участник сделки", RiskType: "prepayment", Phase: "hook", AllowedTactics: []string{"urgency"}})
+	if err != nil || result.Message != "Здравствуйте. Да, предложение ещё актуально." {
+		t.Fatalf("GenerateReply() = (%#v,%v); want seller-side reply", result, err)
+	}
+	schema := provider.requests[0].Schema["properties"].(map[string]any)["message"].(map[string]any)["enum"].([]string)
+	for _, message := range schema {
+		if strings.Contains(message, "Хочу оформить") || strings.Contains(message, "Готов забрать") {
+			t.Fatalf("seller schema contains buyer-side reply %q", message)
+		}
+	}
+}
+
+func TestGeneratorDoesNotRepeatMessageFromHistory(t *testing.T) {
+	repeated := "Добрый день. Хочу оформить сделку сегодня."
+	provider := &sequenceProvider{contents: []string{
+		`{"message":"Добрый день. Хочу оформить сделку сегодня.","tactic":"urgency","phase":"hook"}`,
+		`{"message":"Здравствуйте! Готов забрать товар, если быстро договоримся.","tactic":"urgency","phase":"hook"}`,
+	}}
+	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
+	result, err := modelAI.GenerateReply(context.Background(), attemptsservice.GenerationRequest{
+		UserRole: "seller", Phase: "hook", AllowedTactics: []string{"urgency"},
+		History: []domain.DialogueMessage{{Role: domain.MessageRoleAssistant, Text: repeated}},
+	})
+	if err != nil || result.Message == repeated || len(provider.requests) != 2 {
+		t.Fatalf("GenerateReply() = (%#v, %v), requests=%d; want repaired unique reply", result, err, len(provider.requests))
 	}
 }

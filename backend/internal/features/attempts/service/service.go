@@ -200,7 +200,7 @@ func (s *GameService) GetState(userID, attemptID int) (GameState, error) {
 		if configErr != nil {
 			return GameState{}, configErr
 		}
-		return s.state(attempt, domain.Scenario{ProductContext: config.ProductContext}, freePlayStep(attempt.FreeTextCount), answers, messages), nil
+		return s.state(attempt, freePlayScenario(config, attempt.CompactSummary), freePlayStep(attempt.FreeTextCount), answers, messages), nil
 	}
 	scenario, err := s.repository.Scenario(attempt.ScenarioID)
 	if err != nil {
@@ -310,7 +310,7 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 		if answersErr != nil {
 			return GameState{}, answersErr
 		}
-		return s.state(attempt, domain.Scenario{ProductContext: config.ProductContext}, freePlayStep(attempt.FreeTextCount), answers, messages), nil
+		return s.state(attempt, freePlayScenario(config, attempt.CompactSummary), freePlayStep(attempt.FreeTextCount), answers, messages), nil
 	}
 	if s.generator == nil {
 		return GameState{}, ErrAIUnavailable
@@ -323,8 +323,9 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 	if s.selectScam != nil {
 		isScam = s.selectScam()
 	}
-	attempt := domain.Attempt{UserID: userID, Mode: domain.AttemptModeFreePlay, UserRole: role, IsScam: &isScam, Status: domain.AttemptStatusInProgress, StartedAt: time.Now().UTC()}
-	freePlayScenario := domain.Scenario{ProductContext: freePlayConfig.ProductContext, AISystemPrompt: freePlayConfig.SystemPrompt, FinalRubric: freePlayConfig.FinalRubric}
+	contextKey, productContext := randomFreePlayContext(role)
+	attempt := domain.Attempt{UserID: userID, Mode: domain.AttemptModeFreePlay, UserRole: role, IsScam: &isScam, Status: domain.AttemptStatusInProgress, StartedAt: time.Now().UTC(), CompactSummary: contextMarker(contextKey)}
+	freePlayScenario := domain.Scenario{ProductContext: productContext, AISystemPrompt: freePlayConfig.SystemPrompt, FinalRubric: freePlayConfig.FinalRubric}
 	release, limitErr := s.beforeAI(userID, true)
 	if limitErr != nil {
 		return GameState{}, limitErr
@@ -412,7 +413,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		if configErr != nil {
 			return GameState{}, nil, configErr
 		}
-		scenario = domain.Scenario{ProductContext: config.ProductContext, AISystemPrompt: config.SystemPrompt, FinalRubric: config.FinalRubric}
+		scenario = freePlayScenario(config, attempt.CompactSummary)
 	}
 	if finish && (attempt.FreeTextCount+1 < 3 || (attempt.Mode != domain.AttemptModeFreePlay && scenario.Level != "4")) {
 		return GameState{}, nil, apperrors.ErrInvalidAnswer
@@ -468,7 +469,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	if usesGeneratedDialogue(attempt, scenario) {
 		phase = phaseForTurn(count)
 		if count >= 4 {
-			summary = compactDialogueSummary(append(append(append([]domain.DialogueMessage{}, messages...), userMessage), replyMessage))
+			summary = contextPrefix(attempt.CompactSummary) + compactDialogueSummary(append(append(append([]domain.DialogueMessage{}, messages...), userMessage), replyMessage))
 		}
 	}
 
@@ -557,7 +558,7 @@ func (s *GameService) generateReply(ctx context.Context, attempt domain.Attempt,
 		tactics = honestTacticsForPhase(phase)
 		riskType = "ordinary_transaction"
 	}
-	return s.generator.GenerateReply(ctx, GenerationRequest{Policy: PolicyFor(attempt.UserRole, riskType), RiskType: riskType, ScenarioInstruction: scenario.AISystemPrompt, Rubric: scenario.FinalRubric, Phase: phase, AllowedTactics: tactics, ScenarioFacts: scenario.ProductContext, Summary: summary, History: tailMessages(history, 6), Answer: text, Fallback: step.FallbackMessage, CounterpartKind: kind})
+	return s.generator.GenerateReply(ctx, GenerationRequest{UserRole: attempt.UserRole, Policy: PolicyFor(attempt.UserRole, riskType), RiskType: riskType, ScenarioInstruction: scenario.AISystemPrompt, Rubric: scenario.FinalRubric, Phase: phase, AllowedTactics: tactics, ScenarioFacts: scenario.ProductContext, Summary: summary, History: tailMessages(history, 6), Answer: text, Fallback: step.FallbackMessage, CounterpartKind: kind})
 }
 
 func primaryRisk(value string) string {
@@ -577,13 +578,60 @@ func tailMessages(history []domain.DialogueMessage, limit int) []domain.Dialogue
 func phaseForTurn(turn int) string {
 	switch {
 	case turn <= 2:
-		return "hook"
-	case turn <= 4:
 		return "escalation"
-	case turn == 5:
+	case turn <= 4:
 		return "critical_request"
 	default:
 		return "resolution"
+	}
+}
+
+func contextMarker(key string) string { return "[free-play-context:" + key + "]\n" }
+
+func contextPrefix(summary string) string {
+	if strings.HasPrefix(summary, "[free-play-context:") {
+		if end := strings.Index(summary, "]\n"); end >= 0 {
+			return summary[:end+2]
+		}
+	}
+	return ""
+}
+
+func freePlayScenario(config domain.FreePlayConfig, summary string) domain.Scenario {
+	context := config.ProductContext
+	for key, candidate := range freePlayContexts(config.UserRole) {
+		if strings.HasPrefix(summary, contextMarker(key)) {
+			context = candidate
+			break
+		}
+	}
+	return domain.Scenario{ProductContext: context, AISystemPrompt: config.SystemPrompt, FinalRubric: config.FinalRubric}
+}
+
+func randomFreePlayContext(role string) (string, domain.ProductContext) {
+	contexts := freePlayContexts(role)
+	keys := make([]string, 0, len(contexts))
+	for key := range contexts {
+		keys = append(keys, key)
+	}
+	var value [1]byte
+	_, _ = cryptorand.Read(value[:])
+	key := keys[int(value[0])%len(keys)]
+	return key, contexts[key]
+}
+
+func freePlayContexts(role string) map[string]domain.ProductContext {
+	if role == "seller" {
+		return map[string]domain.ProductContext{
+			"phone":  {ItemTitle: "Смартфон Samsung Galaxy S24", Category: "Смартфоны", DealMethod: "delivery", Price: 59000, Currency: "RUB", Location: "Москва", ImageKey: "smartphone"},
+			"camera": {ItemTitle: "Фотоаппарат Sony Alpha", Category: "Фототехника", DealMethod: "delivery", Price: 48000, Currency: "RUB", Location: "Казань", ImageKey: "camera"},
+			"bike":   {ItemTitle: "Городской велосипед", Category: "Велосипеды", DealMethod: "meetup", Price: 23000, Currency: "RUB", Location: "Санкт-Петербург", ImageKey: "bicycle"},
+		}
+	}
+	return map[string]domain.ProductContext{
+		"console": {ItemTitle: "Nintendo Switch OLED", Category: "Игровые приставки", DealMethod: "delivery", Price: 28000, Currency: "RUB", Location: "Москва", ImageKey: "console"},
+		"laptop":  {ItemTitle: "Ноутбук ASUS Vivobook", Category: "Ноутбуки", DealMethod: "delivery", Price: 52000, Currency: "RUB", Location: "Тула", ImageKey: "laptop"},
+		"phones":  {ItemTitle: "Наушники Sony WH-1000XM5", Category: "Аудио", DealMethod: "pickup", Price: 24000, Currency: "RUB", Location: "Москва", ImageKey: "headphones"},
 	}
 }
 

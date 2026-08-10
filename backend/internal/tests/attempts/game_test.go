@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -123,7 +124,7 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndFiveTurnLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPhases := []string{"hook", "hook", "escalation", "escalation", "critical_request"}
+	wantPhases := []string{"escalation", "escalation", "critical_request", "critical_request", "resolution"}
 	for turn := 1; turn <= 5; turn++ {
 		text := "Проверяю сделку только внутри приложения"
 		next, completed, submitErr := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text})
@@ -145,7 +146,7 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndFiveTurnLimit(t *testing.T) {
 			t.Fatalf("generation %d=%#v", index+1, generation)
 		}
 	}
-	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "critical_request" {
+	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "resolution" {
 		t.Fatalf("persisted dialogue state=%#v, fifth request=%#v", repo.attempts[state.Attempt.ID], ai.generations[4])
 	}
 }
@@ -193,6 +194,9 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 	state, err := game.StartFreePlay(context.Background(), 1, "seller")
 	if err != nil || state.Attempt.IsScam == nil || *state.Attempt.IsScam || len(state.Messages) != 1 {
 		t.Fatalf("StartFreePlay() = (%#v, %v), want hidden honest counterpart and first message", state, err)
+	}
+	if state.Scenario.ProductContext.ItemTitle == "" || !strings.HasPrefix(state.Attempt.CompactSummary, "[free-play-context:") {
+		t.Fatalf("free-play context was not selected and pinned: %#v", state)
 	}
 	for n := 1; n <= 2; n++ {
 		text := "Продолжим безопасно в чате сервиса"
