@@ -115,7 +115,18 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 		}
 		request.Messages = append(request.Messages, ModelMessage{Role: "assistant", Content: raw}, ModelMessage{Role: "user", Content: "Исправь ответ: верни ровно schema, тот же risk_type, без URL, телефонов и реквизитов."})
 	}
-	return EvaluatorResult{}, ErrAIInvalidResponse
+	return evaluatorFallback(input.RiskType), nil
+}
+
+func evaluatorFallback(riskType string) EvaluatorResult {
+	return EvaluatorResult{
+		Score:           1,
+		IsSafe:          false,
+		RiskType:        riskType,
+		DetectedSignals: []string{},
+		Evaluation:      "Ответ нельзя надёжно оценить автоматически; нужна дополнительная проверка условий сделки.",
+		SafeAction:      "Не сообщайте данные и продолжайте сделку только штатными способами внутри сервиса.",
+	}
 }
 
 func (a *ModelAI) GenerateReply(ctx context.Context, input GenerationRequest) (GeneratorResult, error) {

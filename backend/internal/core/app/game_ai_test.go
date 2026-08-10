@@ -43,6 +43,16 @@ func TestEvaluatorRepairsOnceAndKeepsItsOwnProfile(t *testing.T) {
 	}
 }
 
+func TestEvaluatorFallsBackWhenOllamaReturnsInvalidJSONTwice(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`{"score":9}`, `{"score":9}`}}
+	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
+
+	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Перейду по ссылке"})
+	if err != nil || result.Score != 1 || result.IsSafe || result.RiskType != "phishing" || result.Evaluation == "" || result.SafeAction == "" || len(provider.requests) != 2 {
+		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want safe fallback", result, err, len(provider.requests))
+	}
+}
+
 func TestGeneratorFallsBackAfterOneRepair(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"message":"https://unsafe.example","tactic":"urgency","phase":"hook"}`, `{"message":"Позвоните +79990000000","tactic":"urgency","phase":"hook"}`}}
 	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})

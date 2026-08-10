@@ -224,6 +224,17 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 	}
 }
 
+func TestFreePlayStartsBeforeTrainingIsCompleted(t *testing.T) {
+	repo := newGameRepository()
+	ai := fakeAI{generated: service.GeneratorResult{Message: "Первая реплика", Tactic: "rapport", Phase: "hook"}}
+	game := service.NewGameWithDependencies(repo, ai, ai, func() bool { return true })
+
+	state, err := game.StartFreePlay(context.Background(), 1, "buyer")
+	if err != nil || state.Attempt.Mode != domain.AttemptModeFreePlay || len(state.Messages) != 1 {
+		t.Fatalf("StartFreePlay() = (%#v, %v), want a free-play attempt with opening message", state, err)
+	}
+}
+
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

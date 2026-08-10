@@ -18,7 +18,7 @@
 - `risk_type` Сценария — один из `phishing`, `prepayment`, `fake_payment`, `delivery`, `external_messenger`, `account_takeover`, `sms_code`, `social_engineering`; публикация другого значения запрещена.
 - Административный вариант ответа принимает необязательное `counterparty_reaction` до 280 символов. После выбора GameState показывает Сообщения в порядке «Ответ пользователя → реакция → следующая общая реплика»; пустая реакция пропускается.
 - Публичные GameState и Result не возвращают policy, контекст evaluator-а, rubric, compact summary или фазу generator-а.
-- Ошибка AI возвращается как `502` или `503` и гарантирует отсутствие изменений Прохождения.
+- Транспортная или непоправимая ошибка AI возвращается как `502` или `503` и гарантирует отсутствие изменений Прохождения. Если evaluator дважды вернул невалидный structured JSON, сервер продолжает Прохождение с консервативной fallback-оценкой без Баллов.
 - Ограничение частоты возвращает `429`, `RATE_LIMITED`, целочисленный `Retry-After` и общий error envelope; отклонённая AI-операция не меняет GameState.
 - Credentialed CORS разрешён только origin из `FRONTEND_ORIGINS`; для демо предпочтителен same-origin `/api` через Nginx.
 
@@ -33,7 +33,7 @@
 - `GET /topics/{id}/quiz`, `POST /topics/{id}/quiz/attempts` — Quiz без утечки ответов и его результат.
 - `GET /api/v1/training/levels?role=...&topic_id=...` — четыре Уровня Темы, их открытость, описание механики и идентификатор незавершённого Прохождения.
 - `POST /api/v1/training/levels/{level}/start?role=...&topic_id=...` — начать или продолжить тематическое Прохождение.
-- `POST /api/v1/training/free-play/start?role=...` — Свободная игра после Уровня 4 во всех шести Темах роли.
+- `POST /api/v1/training/free-play/start?role=...` — начать или продолжить Свободную игру для выбранной роли; она доступна до завершения основной последовательности Уровней.
 - `GET /api/v1/attempts/{id}` — полный GameState для восстановления.
 - GameState содержит название и описание Сценария, Тему, Уровень, роли Пользователя и собеседника, типизированный товар, `step_progress.total` и сохранённые option/free-text Ответы пользователя.
 - `POST /api/v1/attempts/{id}/answers` — вариант или свободный Ответ пользователя и переход/итог.

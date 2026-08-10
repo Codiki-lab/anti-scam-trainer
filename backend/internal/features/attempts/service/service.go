@@ -297,33 +297,6 @@ func (s *GameService) Start(userID, levelNumber int, role string, topicID ...int
 }
 
 func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string) (GameState, error) {
-	opened := false
-	if topical, ok := s.repository.(TopicGameRepository); ok {
-		var err error
-		opened, err = topical.FreePlayUnlocked(userID, role)
-		if err != nil {
-			return GameState{}, err
-		}
-	} else {
-		levels, progress, err := s.repository.Levels(userID, role)
-		if err != nil {
-			return GameState{}, err
-		}
-		level4ID := 0
-		for _, level := range levels {
-			if level.Number == 4 {
-				level4ID = level.ID
-			}
-		}
-		for _, item := range progress {
-			if item.LevelID == level4ID && item.Stars > 0 {
-				opened = true
-			}
-		}
-	}
-	if !opened {
-		return GameState{}, apperrors.ErrForbidden
-	}
 	if attempt, findErr := s.repository.FindInProgressFreePlay(userID, role); findErr == nil {
 		config, configErr := s.repository.FreePlayConfig(role)
 		if configErr != nil {
