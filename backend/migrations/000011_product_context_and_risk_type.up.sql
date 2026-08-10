@@ -1,5 +1,9 @@
 ALTER TABLE chats ADD COLUMN risk_type VARCHAR;
 
+CREATE TABLE migration_000011_free_play_contexts AS
+SELECT user_role, product_context FROM free_play_configs;
+ALTER TABLE migration_000011_free_play_contexts ADD PRIMARY KEY(user_role);
+
 CREATE TABLE migration_000011_removed_steps AS
 SELECT s.* FROM chat_steps s
 JOIN chats c ON c.id=s.chat_id
