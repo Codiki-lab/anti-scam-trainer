@@ -90,8 +90,18 @@ describe('TrainingChat', () => {
           ...session,
           productContext: { ...session.productContext, imageKey: 'smartphone' },
           answers: [
-            { stepId: 8, answerType: 'option', optionText: 'Проверю оплату в приложении', points: 100 },
-            { stepId: 9, answerType: 'free_text', freeText: 'Не буду открывать ссылку', points: 100 },
+            {
+              stepId: 8,
+              answerType: 'option',
+              optionText: 'Проверю оплату в приложении',
+              points: 100,
+            },
+            {
+              stepId: 9,
+              answerType: 'free_text',
+              freeText: 'Не буду открывать ссылку',
+              points: 100,
+            },
           ],
           messages: [
             { role: 'assistant', text: 'Я уже оплатил заказ.' },
@@ -110,5 +120,47 @@ describe('TrainingChat', () => {
     expect(screen.getByText('Проверю оплату в приложении')).toBeVisible()
     expect(screen.getByText('Не буду открывать ссылку')).toBeVisible()
     expect(screen.queryByText('legacy text that must not be parsed')).not.toBeInTheDocument()
+  })
+
+  it('blocks free-text submission during cooldown', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <TrainingChat
+        session={{ ...session, mode: 'free_text', step: { ...session.step, options: [] } }}
+        isSubmitting={false}
+        error="Слишком много запросов"
+        cooldown={7}
+        onSubmit={onSubmit}
+        onAbandon={vi.fn()}
+      />,
+    )
+
+    await user.type(screen.getByPlaceholderText('Напишите безопасный ответ…'), 'Безопасный ответ')
+    expect(screen.getByRole('button', { name: 'Через 7 сек.' })).toBeDisabled()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('requires confirmation before abandoning an attempt', async () => {
+    const user = userEvent.setup()
+    const onAbandon = vi.fn().mockResolvedValue(undefined)
+    HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+      this.setAttribute('open', '')
+    })
+    render(
+      <TrainingChat
+        session={session}
+        isSubmitting={false}
+        error=""
+        cooldown={0}
+        onSubmit={vi.fn()}
+        onAbandon={onAbandon}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Выйти' }))
+    expect(onAbandon).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Отказаться' }))
+    expect(onAbandon).toHaveBeenCalledOnce()
   })
 })
