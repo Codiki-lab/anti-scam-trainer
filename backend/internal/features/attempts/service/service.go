@@ -439,7 +439,11 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	}
 	count := attempt.FreeTextCount + 1
 	storedEvaluation := domain.AIEvaluation{Score: evaluation.Score, IsSafe: evaluation.IsSafe, RiskType: evaluation.RiskType, DetectedSignals: evaluation.DetectedSignals, Evaluation: evaluation.Evaluation, SafeAction: evaluation.SafeAction}
-	answer := domain.UserAnswer{AttemptID: attemptID, StepID: step.ID, FreeText: text, AwardedPoints: PointsForEvaluatorScore(evaluation.Score), Explanation: evaluation.Evaluation, Evaluation: &storedEvaluation, TurnNumber: len(existingAnswers) + 1}
+	stepID := step.ID
+	if attempt.Mode == domain.AttemptModeFreePlay {
+		stepID = 0
+	}
+	answer := domain.UserAnswer{AttemptID: attemptID, StepID: stepID, FreeText: text, AwardedPoints: PointsForEvaluatorScore(evaluation.Score), Explanation: evaluation.Evaluation, Evaluation: &storedEvaluation, TurnNumber: len(existingAnswers) + 1}
 	userMessage := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleUser, Text: text, CreatedAt: time.Now().UTC()}
 	replyText := step.FallbackMessage
 	if usesGeneratedDialogue(attempt, scenario) {
@@ -488,7 +492,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	}
 
 	nextNumber := attempt.CurrentStepNumber
-	if step.ResponseType == domain.ResponseTypeMixed || step.ResponseType == domain.ResponseTypeFreeText {
+	if attempt.Mode != domain.AttemptModeFreePlay && (step.ResponseType == domain.ResponseTypeMixed || step.ResponseType == domain.ResponseTypeFreeText) {
 		if _, nextErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber+1); nextErr == nil {
 			nextNumber++
 		}
@@ -518,7 +522,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	if attempt.Mode == domain.AttemptModeFreePlay {
 		nextStep = freePlayStep(count)
 	}
-	if nextNumber != step.Number {
+	if attempt.Mode != domain.AttemptModeFreePlay && nextNumber != step.Number {
 		nextStep, err = s.repository.Step(attempt.ScenarioID, nextNumber)
 		if err != nil {
 			return GameState{}, nil, err
@@ -629,6 +633,9 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 	breakdown := make([]AnswerBreakdown, 0, len(allAnswers))
 	for _, item := range allAnswers {
 		entry := breakdownEntry(item, scenario)
+		if attempt.Mode == domain.AttemptModeFreePlay {
+			entry.StepID = item.TurnNumber
+		}
 		if item.OptionID != nil {
 			entry.OptionID = *item.OptionID
 		}

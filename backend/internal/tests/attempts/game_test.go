@@ -200,6 +200,9 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 		if submitErr != nil || completed != nil || next.Attempt.FreeTextCount != n {
 			t.Fatalf("turn %d = (%#v, %#v, %v), want continuation", n, next, completed, submitErr)
 		}
+		if len(repo.answers) != n || repo.answers[n-1].StepID != 0 {
+			t.Fatalf("turn %d stored answer = %#v, want no scenario step", n, repo.answers)
+		}
 	}
 	text := "Завершаю сделку только штатным способом"
 	_, completed, err := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text, Finish: true})
@@ -528,7 +531,10 @@ func (r *gameRepository) GetGameAttempt(id int) (domain.Attempt, error) {
 	}
 	return a, nil
 }
-func (r *gameRepository) Step(_ int, n int) (domain.ScenarioStep, error) {
+func (r *gameRepository) Step(scenarioID, n int) (domain.ScenarioStep, error) {
+	if scenarioID == 0 {
+		return domain.ScenarioStep{}, errors.New("free play has no scenario steps")
+	}
 	v, ok := r.steps[n]
 	if !ok {
 		return domain.ScenarioStep{}, errors.New("missing")
