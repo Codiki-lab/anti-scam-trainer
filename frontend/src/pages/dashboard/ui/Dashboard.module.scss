@@ -297,6 +297,24 @@
   text-align: right;
 }
 
+.levelDots {
+  display: flex;
+  gap: 10px;
+}
+
+.levelDot,
+.completedLevelDot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #0aa8f5;
+  border-radius: 50%;
+}
+
+.completedLevelDot {
+  background: #0aa8f5;
+}
+
 @media (max-width: 840px) {
   .dashboardOverview {
     grid-template-columns: 1fr;
