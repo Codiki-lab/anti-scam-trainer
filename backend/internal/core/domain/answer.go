@@ -14,10 +14,12 @@ type UserAnswer struct {
 }
 
 type AIEvaluation struct {
-	AwardedPoints int      `json:"awarded_points"`
-	Explanation   string   `json:"explanation"`
-	Reply         string   `json:"reply"`
-	RiskSignals   []string `json:"risk_signals"`
+	Score           int      `json:"score"`
+	IsSafe          bool     `json:"is_safe"`
+	RiskType        string   `json:"risk_type"`
+	DetectedSignals []string `json:"detected_signals"`
+	Evaluation      string   `json:"evaluation"`
+	SafeAction      string   `json:"safe_action"`
 }
 
 type AnswerBreakdown struct {

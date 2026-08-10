@@ -76,6 +76,12 @@ func assertOnlyADR0012Anchors(t *testing.T, root, feature string) {
 		"service/service.go":        true,
 		"transport/http/handler.go": true,
 	}
+	// ADR-0014 gives the attempts feature two independently changing AI seams:
+	// the typed external port/validation and the compact policy catalogue.
+	if feature == "attempts" {
+		want["service/ai.go"] = true
+		want["service/ai_policy.go"] = true
+	}
 	featureRoot := filepath.Join(root, "internal/features", feature)
 	err := filepath.WalkDir(featureRoot, func(file string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {

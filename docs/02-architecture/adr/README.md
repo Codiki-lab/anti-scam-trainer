@@ -28,3 +28,4 @@ ADR фиксирует архитектурное решение вместе с
 | [0011 — Разовая несовместимая замена API v1](0011-one-time-v1-replacement.md) | Принято |
 | [0012 — Единый шаблон продуктовой возможности](0012-uniform-feature-layout.md) | Принято |
 | [0013 — Frontend slices, state ownership и API boundary](0013-frontend-slices-state-and-api-boundaries.md) | Принято |
+| [0014 — Раздельные AI-порты evaluator и generator](0014-separate-ai-evaluator-generator.md) | Принято |

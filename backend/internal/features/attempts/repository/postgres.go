@@ -28,6 +28,8 @@ type attemptRecord struct {
 	UserRole          string    `pg:"user_role"`
 	IsScam            *bool     `pg:"is_scam"`
 	FreeTextCount     int       `pg:"free_text_count"`
+	DialoguePhase     string    `pg:"dialogue_phase"`
+	CompactSummary    string    `pg:"compact_summary"`
 	FinalBreakdown    string    `pg:"final_breakdown"`
 }
 
@@ -62,6 +64,7 @@ type gameOptionRecord struct {
 	ID          int    `pg:"id"`
 	StepID      int    `pg:"step_id"`
 	OptionText  string `pg:"option_text"`
+	Reaction    string `pg:"reaction"`
 	Explanation string `pg:"explanation"`
 	Points      int    `pg:"points"`
 	SortOrder   int    `pg:"sort_order"`
@@ -223,7 +226,7 @@ func (r *PostgresRepository) StartFreePlay(attempt domain.Attempt, message domai
 	var created domain.Attempt
 	err := r.db.RunInTransaction(func(tx *pg.Tx) error {
 		var record attemptRecord
-		_, err := tx.QueryOne(&record, `INSERT INTO chat_sessions (user_id, chat_id, mode, user_role, is_scam, status, started_at, current_step_number, free_text_count) VALUES (?, NULL, 'free_play', ?, ?, ?, ?, 0, 0) RETURNING *`, attempt.UserID, attempt.UserRole, attempt.IsScam, attempt.Status, attempt.StartedAt)
+		_, err := tx.QueryOne(&record, `INSERT INTO chat_sessions (user_id, chat_id, mode, user_role, is_scam, status, started_at, current_step_number, free_text_count, dialogue_phase, compact_summary) VALUES (?, NULL, 'free_play', ?, ?, ?, ?, 0, 0, 'hook', '') RETURNING *`, attempt.UserID, attempt.UserRole, attempt.IsScam, attempt.Status, attempt.StartedAt)
 		if err != nil {
 			return err
 		}
@@ -249,12 +252,12 @@ func (r *PostgresRepository) Step(scenarioID, number int) (domain.ScenarioStep, 
 		return domain.ScenarioStep{}, err
 	}
 	var options []gameOptionRecord
-	if _, err := r.db.Query(&options, `SELECT id, step_id, option_text, explanation, points, sort_order FROM chat_options WHERE step_id = ? ORDER BY sort_order`, step.ID); err != nil {
+	if _, err := r.db.Query(&options, `SELECT id, step_id, option_text, COALESCE(counterparty_reaction,'') AS reaction, explanation, points, sort_order FROM chat_options WHERE step_id = ? ORDER BY sort_order`, step.ID); err != nil {
 		return domain.ScenarioStep{}, err
 	}
 	result := domain.ScenarioStep{ID: step.ID, ScenarioID: step.ChatID, Number: step.StepNumber, ResponseType: domain.ResponseType(step.ResponseType), Goal: step.StepGoal, CounterpartyMessage: step.CounterpartyMessage, MaxPoints: step.MaxPoints, AIInstruction: step.AIInstruction, FallbackMessage: step.FallbackMessage, Options: make([]domain.ScenarioOption, len(options))}
 	for i, option := range options {
-		result.Options[i] = domain.ScenarioOption{ID: option.ID, StepID: option.StepID, Text: option.OptionText, Explanation: option.Explanation, Points: option.Points, SortOrder: option.SortOrder}
+		result.Options[i] = domain.ScenarioOption{ID: option.ID, StepID: option.StepID, Text: option.OptionText, Reaction: option.Reaction, Explanation: option.Explanation, Points: option.Points, SortOrder: option.SortOrder}
 	}
 	return result, nil
 }
@@ -355,11 +358,11 @@ func (s gameTransactionStore) CompleteAttempt(attempt domain.Attempt) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Model(&attemptRecord{}).Set("status = ?", attempt.Status).Set("finished_at = ?", attempt.FinishedAt).Set("score = ?", attempt.Score).Set("free_text_count = ?", attempt.FreeTextCount).Set("final_breakdown = ?::jsonb", string(encodedBreakdown)).Where("id = ?", attempt.ID).Update()
+	_, err = s.db.Model(&attemptRecord{}).Set("status = ?", attempt.Status).Set("finished_at = ?", attempt.FinishedAt).Set("score = ?", attempt.Score).Set("free_text_count = ?", attempt.FreeTextCount).Set("dialogue_phase = ?", attempt.DialoguePhase).Set("compact_summary = ?", attempt.CompactSummary).Set("final_breakdown = ?::jsonb", string(encodedBreakdown)).Where("id = ?", attempt.ID).Update()
 	return err
 }
-func (s gameTransactionStore) UpdateFreeTextCount(id, count int) error {
-	_, err := s.db.Model(&attemptRecord{}).Set("free_text_count = ?", count).Where("id = ?", id).Update()
+func (s gameTransactionStore) UpdateDialogueState(id, count int, phase, summary string) error {
+	_, err := s.db.Model(&attemptRecord{}).Set("free_text_count = ?", count).Set("dialogue_phase = ?", phase).Set("compact_summary = ?", summary).Where("id = ?", id).Update()
 	return err
 }
 func (s gameTransactionStore) SaveProgress(progress domain.Progress) error {
@@ -524,7 +527,7 @@ func decodeJSONObject(value string) domain.JSONObject {
 
 func toAttemptRecord(attempt domain.Attempt) attemptRecord {
 	encodedBreakdown, _ := json.Marshal(attempt.FinalBreakdown)
-	return attemptRecord{ID: attempt.ID, UserID: attempt.UserID, ChatID: attempt.ScenarioID, Mode: string(attempt.Mode), UserRole: attempt.UserRole, IsScam: attempt.IsScam, Status: attempt.Status, StartedAt: attempt.StartedAt, FinishedAt: attempt.FinishedAt, Score: attempt.Score, MaxScore: attempt.MaxScore, CurrentStepNumber: attempt.CurrentStepNumber, FreeTextCount: attempt.FreeTextCount, FinalBreakdown: string(encodedBreakdown)}
+	return attemptRecord{ID: attempt.ID, UserID: attempt.UserID, ChatID: attempt.ScenarioID, Mode: string(attempt.Mode), UserRole: attempt.UserRole, IsScam: attempt.IsScam, Status: attempt.Status, StartedAt: attempt.StartedAt, FinishedAt: attempt.FinishedAt, Score: attempt.Score, MaxScore: attempt.MaxScore, CurrentStepNumber: attempt.CurrentStepNumber, FreeTextCount: attempt.FreeTextCount, DialoguePhase: attempt.DialoguePhase, CompactSummary: attempt.CompactSummary, FinalBreakdown: string(encodedBreakdown)}
 }
 
 func attemptFromRecord(record attemptRecord) domain.Attempt {
@@ -532,7 +535,7 @@ func attemptFromRecord(record attemptRecord) domain.Attempt {
 	if record.FinalBreakdown != "" {
 		_ = json.Unmarshal([]byte(record.FinalBreakdown), &breakdown)
 	}
-	return domain.Attempt{ID: record.ID, UserID: record.UserID, ScenarioID: record.ChatID, Mode: domain.AttemptMode(record.Mode), UserRole: record.UserRole, IsScam: record.IsScam, Status: record.Status, StartedAt: record.StartedAt, FinishedAt: record.FinishedAt, Score: record.Score, MaxScore: record.MaxScore, CurrentStepNumber: record.CurrentStepNumber, FreeTextCount: record.FreeTextCount, FinalBreakdown: breakdown}
+	return domain.Attempt{ID: record.ID, UserID: record.UserID, ScenarioID: record.ChatID, Mode: domain.AttemptMode(record.Mode), UserRole: record.UserRole, IsScam: record.IsScam, Status: record.Status, StartedAt: record.StartedAt, FinishedAt: record.FinishedAt, Score: record.Score, MaxScore: record.MaxScore, CurrentStepNumber: record.CurrentStepNumber, FreeTextCount: record.FreeTextCount, DialoguePhase: record.DialoguePhase, CompactSummary: record.CompactSummary, FinalBreakdown: breakdown}
 }
 
 func toProgressRecord(progress domain.Progress) progressRecord {

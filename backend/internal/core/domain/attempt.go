@@ -22,6 +22,8 @@ type Attempt struct {
 	MaxScore          int
 	CurrentStepNumber int
 	FreeTextCount     int
+	DialoguePhase     string
+	CompactSummary    string
 	FinalBreakdown    []AnswerBreakdown
 }
 
