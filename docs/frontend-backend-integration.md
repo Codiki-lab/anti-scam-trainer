@@ -105,10 +105,12 @@ Dashboard возвращает один сохранённый на москов
 
 Старт и `GET /attempts/{id}` возвращают одно состояние с:
 
-- `attempt_id`, `status`, `scenario_id`, `topic_id`;
-- `product_context` и `mode` (`prepared|mixed|free_text`);
-- `step_progress`, текущим `step` и допустимыми `options`;
-- упорядоченными `messages` и `answers`;
+- `attempt_id`, `status`, `scenario_id`, название и описание Сценария;
+- `topic_id`, название Темы, Уровень, Ролевую ветку Пользователя и роль собеседника;
+- типизированный `product_context`: обязательные название товара, категория и способ сделки, а также опциональные цена в RUB, локация и контролируемый `image_key`;
+- `mode` (`multiple_choice|similar_choice|mixed|free_text`);
+- `step_progress.current|answered|total`, текущий `step` и допустимые `options`;
+- упорядоченные `messages` и структурированные `answers` с `step_id`, типом, option/free-text значением и начисленными очками;
 - `can_finish_early`.
 
 `step.counterparty_message` — видимая реплика. Внутренние `step_goal`, AI-инструкция, баллы и правильность вариантов клиенту не передаются.
