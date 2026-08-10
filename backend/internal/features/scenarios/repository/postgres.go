@@ -64,24 +64,26 @@ func (r *PostgresRepository) ValidContent(id int) (bool, error) {
 	var valid bool
 	_, err := r.db.QueryOne(pg.Scan(&valid), `
 		WITH target AS (
-			SELECT c.id,l.level_number,c.title,c.description,COALESCE(c.product_context->>'content_key','') content_key FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.id=?
+			SELECT c.id,l.level_number,c.title,c.description FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.id=?
 		), shape AS (
 			SELECT COUNT(*) steps,MIN(step_number) first_step,MAX(step_number) last_step,
-				COUNT(*) FILTER(WHERE response_type='mixed') mixed_steps,
+				COUNT(*) FILTER(WHERE response_type='multiple_choice') multiple_choice_steps,
+				COUNT(*) FILTER(WHERE response_type='similar_choice') similar_choice_steps,
 				COUNT(*) FILTER(WHERE response_type='free_text') free_text_steps
 			FROM chat_steps WHERE chat_id=?
 		)
 		SELECT EXISTS(SELECT 1 FROM target)
-			AND COALESCE((SELECT steps=CASE WHEN content_key<>'' AND level_number=2 THEN 2 WHEN level_number=4 THEN 4 ELSE 3 END
-				AND first_step=1 AND last_step=CASE WHEN content_key<>'' AND level_number=2 THEN 2 WHEN level_number=4 THEN 4 ELSE 3 END
-				AND (level_number<>3 OR (content_key<>'' AND free_text_steps=2) OR (content_key='' AND mixed_steps=2))
-				AND (level_number<>4 OR free_text_steps=4)
+			AND COALESCE((SELECT steps=CASE level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END
+				AND first_step=1 AND last_step=CASE level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END
+				AND multiple_choice_steps=CASE level_number WHEN 1 THEN 3 WHEN 3 THEN 1 ELSE 0 END
+				AND similar_choice_steps=CASE WHEN level_number=2 THEN 2 ELSE 0 END
+				AND free_text_steps=CASE level_number WHEN 3 THEN 2 WHEN 4 THEN 6 ELSE 0 END
 				FROM shape,target),FALSE)
 			AND NOT EXISTS (
 				SELECT 1 FROM chat_steps s CROSS JOIN target t
 				WHERE s.chat_id=t.id AND (
 					NULLIF(s.counterparty_message,'') IS NULL OR char_length(s.counterparty_message)>280
-					OR (SELECT COUNT(*) FROM chat_options o WHERE o.step_id=s.id)<>CASE WHEN s.response_type='free_text' THEN 0 WHEN t.content_key<>'' THEN 3 WHEN t.level_number<=3 THEN 4 ELSE 0 END
+					OR (SELECT COUNT(*) FROM chat_options o WHERE o.step_id=s.id)<>CASE WHEN s.response_type='free_text' THEN 0 WHEN t.level_number<=3 THEN 3 ELSE 0 END
 					OR EXISTS (SELECT 1 FROM chat_options o WHERE o.step_id=s.id AND (char_length(o.option_text)>140 OR o.points NOT IN(0,25,50,75,100)))
 					OR (s.response_type<>'free_text' AND s.max_points<>(SELECT MAX(o.points) FROM chat_options o WHERE o.step_id=s.id))
 					OR (s.response_type IN ('mixed','free_text') AND (NULLIF(s.ai_instruction,'') IS NULL OR NULLIF(s.fallback_message,'') IS NULL))

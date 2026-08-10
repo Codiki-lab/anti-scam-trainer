@@ -32,15 +32,18 @@ func TestPublishedContentMatrix(t *testing.T) {
 	var invalid int
 	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM (
 		SELECT c.id,l.level_number,COUNT(DISTINCT s.id) steps,MIN(s.step_number) first_step,MAX(s.step_number) last_step,
-			COUNT(DISTINCT o.id) options,COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='mixed') mixed_steps,
+			COUNT(DISTINCT o.id) options,
+			COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='multiple_choice') multiple_choice_steps,
+			COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='similar_choice') similar_choice_steps,
 			COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='free_text') free_text_steps
 		FROM chats c JOIN levels l ON l.id=c.level_id JOIN chat_steps s ON s.chat_id=c.id LEFT JOIN chat_options o ON o.step_id=s.id
 		WHERE c.content_status='published' AND c.archived_at IS NULL GROUP BY c.id,l.level_number
-		HAVING COUNT(DISTINCT s.id)<>CASE WHEN c.product_context?'content_key' AND l.level_number=2 THEN 2 WHEN l.level_number=4 THEN 4 ELSE 3 END OR MIN(s.step_number)<>1
-			OR MAX(s.step_number)<>CASE WHEN c.product_context?'content_key' AND l.level_number=2 THEN 2 WHEN l.level_number=4 THEN 4 ELSE 3 END
-			OR (l.level_number<=2 AND COUNT(DISTINCT o.id)<>CASE WHEN c.product_context?'content_key' THEN COUNT(DISTINCT s.id)*3 ELSE 12 END)
-			OR (l.level_number=3 AND ((c.product_context?'content_key' AND COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='free_text')<>2) OR (NOT (c.product_context?'content_key') AND COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='mixed')<>2) OR COUNT(DISTINCT o.id)<>CASE WHEN c.product_context?'content_key' THEN 3 ELSE 12 END))
-			OR (l.level_number=4 AND COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='free_text')<>4)
+		HAVING COUNT(DISTINCT s.id)<>CASE l.level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END OR MIN(s.step_number)<>1
+			OR MAX(s.step_number)<>CASE l.level_number WHEN 1 THEN 3 WHEN 2 THEN 2 WHEN 3 THEN 3 ELSE 6 END
+			OR COUNT(DISTINCT o.id)<>CASE l.level_number WHEN 1 THEN 9 WHEN 2 THEN 6 WHEN 3 THEN 3 ELSE 0 END
+			OR COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='multiple_choice')<>CASE l.level_number WHEN 1 THEN 3 WHEN 3 THEN 1 ELSE 0 END
+			OR COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='similar_choice')<>CASE WHEN l.level_number=2 THEN 2 ELSE 0 END
+			OR COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='free_text')<>CASE l.level_number WHEN 3 THEN 2 WHEN 4 THEN 6 ELSE 0 END
 	) bad`)
 	if err != nil {
 		t.Fatal(err)
@@ -50,13 +53,13 @@ func TestPublishedContentMatrix(t *testing.T) {
 	}
 	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM (
 		SELECT s.id FROM chat_steps s JOIN chats c ON c.id=s.chat_id JOIN levels l ON l.id=c.level_id LEFT JOIN chat_options o ON o.step_id=s.id
-		WHERE c.content_status='published' AND l.level_number<=3 AND NOT (c.product_context?'content_key') GROUP BY s.id HAVING COUNT(o.id)<>4
+		WHERE c.content_status='published' GROUP BY s.id,l.level_number,s.step_number HAVING COUNT(o.id)<>CASE WHEN l.level_number IN(1,2) OR (l.level_number=3 AND s.step_number=1) THEN 3 ELSE 0 END
 	) bad`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if invalid != 0 {
-		t.Fatalf("steps without four options=%d", invalid)
+		t.Fatalf("steps with an invalid option count=%d", invalid)
 	}
 	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id WHERE c.content_status='published' AND (o.points NOT IN(0,25,50,75,100) OR char_length(o.option_text)>140)`)
 	if err != nil {
@@ -137,7 +140,7 @@ func TestAvitoScenariosReplaceTenTemplatesAndPreserveArchivedReferences(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if publishedReplacements != 10 || archivedTemplates != 10 || preservedPublished != 38 || steps != 24 || options != 60 || reactions != 36 {
+	if publishedReplacements != 0 || archivedTemplates != 10 || preservedPublished != 48 || steps != 24 || options != 60 || reactions != 36 {
 		t.Fatalf("replacement counts=(published=%d archived=%d preserved=%d steps=%d options=%d reactions=%d)", publishedReplacements, archivedTemplates, preservedPublished, steps, options, reactions)
 	}
 	var exact int
@@ -176,6 +179,83 @@ func TestAvitoScenariosReplaceTenTemplatesAndPreserveArchivedReferences(t *testi
 	_, err = db.QueryOne(pg.Scan(&attemptID), `INSERT INTO chat_sessions(user_id,chat_id,status,started_at,current_step_number,mode,user_role,free_text_count) SELECT ?,c.id,'ABANDONED',NOW(),1,'scenario',c.user_role,0 FROM chats c WHERE c.id=? RETURNING id`, userID, archivedID)
 	if err != nil || attemptID == 0 {
 		t.Fatalf("historical attempt reference=(%d,%v)", attemptID, err)
+	}
+}
+
+func TestCompleteAvitoCurriculumReplacesEveryPublishedScenario(t *testing.T) {
+	database := os.Getenv("POSTGRES_TEST_NAME")
+	if database == "" {
+		t.Skip("POSTGRES_TEST_NAME is not set")
+	}
+	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
+	defer db.Close()
+
+	var topics, theoryBlocks, questions, quizOptions, scenarios, steps, options, reactions, archived int
+	_, err := db.QueryOne(pg.Scan(&topics, &theoryBlocks, &questions, &quizOptions, &scenarios, &steps, &options, &reactions, &archived), `SELECT
+		(SELECT COUNT(*) FROM topics WHERE content_status='published'),
+		(SELECT COUNT(*) FROM theory_blocks b JOIN topics t ON t.id=b.topic_id WHERE t.content_status='published'),
+		(SELECT COUNT(*) FROM quiz_questions q JOIN topics t ON t.id=q.topic_id WHERE t.content_status='published'),
+		(SELECT COUNT(*) FROM quiz_options o JOIN quiz_questions q ON q.id=o.question_id JOIN topics t ON t.id=q.topic_id WHERE t.content_status='published'),
+		(SELECT COUNT(*) FROM chats WHERE content_status='published' AND archived_at IS NULL AND product_context->>'content_version'='issue-103-complete'),
+		(SELECT COUNT(*) FROM chat_steps s JOIN chats c ON c.id=s.chat_id WHERE c.content_status='published' AND c.product_context->>'content_version'='issue-103-complete'),
+		(SELECT COUNT(*) FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id WHERE c.content_status='published' AND c.product_context->>'content_version'='issue-103-complete'),
+		(SELECT COUNT(*) FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id WHERE c.content_status='published' AND c.product_context->>'content_version'='issue-103-complete' AND o.counterparty_reaction IS NOT NULL),
+		(SELECT COUNT(*) FROM migration_000010_archived_chats)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if topics != 12 || theoryBlocks != 60 || questions != 60 || quizOptions != 240 || scenarios != 48 || steps != 168 || options != 216 || reactions != 144 || archived != 48 {
+		t.Fatalf("complete curriculum=(topics=%d theory=%d questions=%d quiz_options=%d scenarios=%d steps=%d options=%d reactions=%d archived=%d)", topics, theoryBlocks, questions, quizOptions, scenarios, steps, options, reactions, archived)
+	}
+
+	var invalidQuiz, invalidLevels, legacyPublished int
+	_, err = db.QueryOne(pg.Scan(&invalidQuiz, &invalidLevels, &legacyPublished), `SELECT
+		(SELECT COUNT(*) FROM (SELECT q.id FROM quiz_questions q JOIN quiz_options o ON o.question_id=q.id GROUP BY q.id HAVING COUNT(*)<>4 OR COUNT(*) FILTER (WHERE o.is_correct)<>1) invalid),
+		(SELECT COUNT(*) FROM (SELECT c.topic_id,l.level_number,COUNT(*) amount FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.content_status='published' AND c.archived_at IS NULL GROUP BY c.topic_id,l.level_number HAVING COUNT(*)<>1) invalid),
+		(SELECT COUNT(*) FROM chats WHERE content_status='published' AND archived_at IS NULL AND product_context->>'content_version' IS DISTINCT FROM 'issue-103-complete')`)
+	if err != nil || invalidQuiz != 0 || invalidLevels != 0 || legacyPublished != 0 {
+		t.Fatalf("curriculum invariants=(quiz=%d levels=%d legacy=%d err=%v)", invalidQuiz, invalidLevels, legacyPublished, err)
+	}
+	var thinTheory, duplicateQuizOptions, repeatedReaction, distinctQuestions, distinctQuizSets int
+	_, err = db.QueryOne(pg.Scan(&thinTheory, &duplicateQuizOptions, &repeatedReaction, &distinctQuestions, &distinctQuizSets), `SELECT
+		(SELECT COUNT(*) FROM theory_blocks b JOIN topics t ON t.id=b.topic_id WHERE t.content_status='published' AND char_length(b.body)<110),
+		(SELECT COUNT(*) FROM (SELECT q.id FROM quiz_questions q JOIN quiz_options o ON o.question_id=q.id GROUP BY q.id HAVING COUNT(DISTINCT o.text)<>4) invalid),
+		(SELECT COUNT(*) FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id JOIN chat_steps next ON next.chat_id=s.chat_id AND next.step_number=s.step_number+1 WHERE c.content_status='published' AND o.counterparty_reaction IS NOT NULL AND o.counterparty_reaction=next.counterparty_message),
+		(SELECT COUNT(DISTINCT q.text) FROM quiz_questions q JOIN topics t ON t.id=q.topic_id WHERE t.content_status='published'),
+		(SELECT COUNT(DISTINCT signature) FROM (SELECT q.id,string_agg(o.text,'|' ORDER BY o.sort_order) signature FROM quiz_questions q JOIN quiz_options o ON o.question_id=q.id GROUP BY q.id) sets)`)
+	if err != nil || thinTheory != 0 || duplicateQuizOptions != 0 || repeatedReaction != 0 || distinctQuestions != 60 || distinctQuizSets != 60 {
+		t.Fatalf("curriculum quality=(thin_theory=%d duplicate_options=%d repeated_reaction=%d questions=%d option_sets=%d err=%v)", thinTheory, duplicateQuizOptions, repeatedReaction, distinctQuestions, distinctQuizSets, err)
+	}
+
+	var digest string
+	_, err = db.QueryOne(pg.Scan(&digest), `SELECT md5(string_agg(row_data,E'\n' ORDER BY row_data)) FROM (
+		SELECT concat_ws('|','topic',t.slug,t.user_role,t.title,t.description,t.sort_order) row_data FROM topics t WHERE t.content_status='published'
+		UNION ALL SELECT concat_ws('|','theory',t.slug,b.sort_order,b.kind,b.title,b.body) FROM theory_blocks b JOIN topics t ON t.id=b.topic_id WHERE t.content_status='published'
+		UNION ALL SELECT concat_ws('|','question',t.slug,q.sort_order,q.text,q.explanation) FROM quiz_questions q JOIN topics t ON t.id=q.topic_id WHERE t.content_status='published'
+		UNION ALL SELECT concat_ws('|','quiz_option',t.slug,q.sort_order,o.sort_order,o.text,o.is_correct) FROM quiz_options o JOIN quiz_questions q ON q.id=o.question_id JOIN topics t ON t.id=q.topic_id WHERE t.content_status='published'
+		UNION ALL SELECT concat_ws('|','scenario',t.slug,l.level_number,c.title,c.description,c.scam_scheme,c.product_context::text,c.ai_system_prompt,c.final_rubric::text) FROM chats c JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id WHERE c.content_status='published' AND c.archived_at IS NULL
+		UNION ALL SELECT concat_ws('|','step',t.slug,l.level_number,s.step_number,s.response_type,s.step_goal,s.counterparty_message,coalesce(s.ai_instruction,''),s.fallback_message,s.max_points) FROM chat_steps s JOIN chats c ON c.id=s.chat_id JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id WHERE c.content_status='published' AND c.archived_at IS NULL
+		UNION ALL SELECT concat_ws('|','scenario_option',t.slug,l.level_number,s.step_number,o.sort_order,o.option_text,coalesce(o.counterparty_reaction,''),o.explanation,o.points) FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id WHERE c.content_status='published' AND c.archived_at IS NULL
+		UNION ALL SELECT concat_ws('|','free_play',user_role,product_context::text,system_prompt,final_rubric::text) FROM free_play_configs
+	) curriculum`)
+	if err != nil || digest != "3305b33296a424660c3d92d487e46577" {
+		t.Fatalf("complete curriculum digest=%q err=%v", digest, err)
+	}
+
+	var userID, archivedScenarioID, historicalAttemptID int
+	username := fmt.Sprintf("complete-curriculum-history-%d", time.Now().UnixNano())
+	_, err = db.QueryOne(pg.Scan(&userID), `INSERT INTO users(username,password_hash,access_role,training_role) VALUES(?,'hash','user','buyer') RETURNING id`, username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = db.Exec(`DELETE FROM users WHERE id=?`, userID) }()
+	_, err = db.QueryOne(pg.Scan(&archivedScenarioID), `SELECT id FROM migration_000010_archived_chats ORDER BY id LIMIT 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.QueryOne(pg.Scan(&historicalAttemptID), `INSERT INTO chat_sessions(user_id,chat_id,status,started_at,current_step_number,mode,user_role,free_text_count) SELECT ?,c.id,'ABANDONED',NOW(),1,'scenario',c.user_role,0 FROM chats c WHERE c.id=? RETURNING id`, userID, archivedScenarioID)
+	if err != nil || historicalAttemptID == 0 {
+		t.Fatalf("complete curriculum historical reference=(%d,%v)", historicalAttemptID, err)
 	}
 }
 
