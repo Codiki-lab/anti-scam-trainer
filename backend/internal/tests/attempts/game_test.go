@@ -229,6 +229,10 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 			t.Fatalf("honest counterpart received scam policy: %#v", request)
 		}
 	}
+	nextState, nextErr := game.StartFreePlay(context.Background(), 1, "seller")
+	if nextErr != nil || nextState.Scenario.ProductContext.ItemTitle == state.Scenario.ProductContext.ItemTitle {
+		t.Fatalf("next free play repeated product context: first=%q next=%q err=%v", state.Scenario.ProductContext.ItemTitle, nextState.Scenario.ProductContext.ItemTitle, nextErr)
+	}
 }
 
 func TestFreePlayStartsBeforeTrainingIsCompleted(t *testing.T) {

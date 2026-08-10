@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,8 @@ type GameService struct {
 	freeTextLimiter *ratelimit.Limiter
 	freePlayLimiter *ratelimit.Limiter
 	aiGate          *ratelimit.Gate
+	contextMu       sync.Mutex
+	lastContext     map[string]string
 }
 
 func NewGameWithRateLimits(repository GameRepository, evaluator Evaluator, generator ScammerGenerator, freeText, freePlay *ratelimit.Limiter, gate *ratelimit.Gate) *GameService {
@@ -323,7 +326,7 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 	if s.selectScam != nil {
 		isScam = s.selectScam()
 	}
-	contextKey, productContext := randomFreePlayContext(role)
+	contextKey, productContext := s.randomFreePlayContext(userID, role)
 	attempt := domain.Attempt{UserID: userID, Mode: domain.AttemptModeFreePlay, UserRole: role, IsScam: &isScam, Status: domain.AttemptStatusInProgress, StartedAt: time.Now().UTC(), CompactSummary: contextMarker(contextKey)}
 	freePlayScenario := domain.Scenario{ProductContext: productContext, AISystemPrompt: freePlayConfig.SystemPrompt, FinalRubric: freePlayConfig.FinalRubric}
 	release, limitErr := s.beforeAI(userID, true)
@@ -608,7 +611,7 @@ func freePlayScenario(config domain.FreePlayConfig, summary string) domain.Scena
 	return domain.Scenario{ProductContext: context, AISystemPrompt: config.SystemPrompt, FinalRubric: config.FinalRubric}
 }
 
-func randomFreePlayContext(role string) (string, domain.ProductContext) {
+func (s *GameService) randomFreePlayContext(userID int, role string) (string, domain.ProductContext) {
 	contexts := freePlayContexts(role)
 	keys := make([]string, 0, len(contexts))
 	for key := range contexts {
@@ -617,6 +620,21 @@ func randomFreePlayContext(role string) (string, domain.ProductContext) {
 	var value [1]byte
 	_, _ = cryptorand.Read(value[:])
 	key := keys[int(value[0])%len(keys)]
+	s.contextMu.Lock()
+	defer s.contextMu.Unlock()
+	if s.lastContext == nil {
+		s.lastContext = make(map[string]string)
+	}
+	playerKey := strconv.Itoa(userID) + ":" + role
+	if len(keys) > 1 && key == s.lastContext[playerKey] {
+		for _, candidate := range keys {
+			if candidate != key {
+				key = candidate
+				break
+			}
+		}
+	}
+	s.lastContext[playerKey] = key
 	return key, contexts[key]
 }
 
