@@ -15,17 +15,18 @@ import (
 type Handler struct{ service *service.Service }
 
 type adminScenarioDTO struct {
-	ID             int            `json:"id"`
-	Title          string         `json:"title"`
-	Description    string         `json:"description"`
-	LevelID        int            `json:"level_id"`
-	TopicID        int            `json:"topic_id"`
-	Role           string         `json:"role"`
-	Status         string         `json:"status"`
-	ScamScheme     string         `json:"scam_scheme"`
-	ProductContext map[string]any `json:"product_context"`
-	AISystemPrompt string         `json:"ai_system_prompt"`
-	FinalRubric    map[string]any `json:"final_rubric"`
+	ID             int                   `json:"id"`
+	Title          string                `json:"title"`
+	Description    string                `json:"description"`
+	LevelID        int                   `json:"level_id"`
+	TopicID        int                   `json:"topic_id"`
+	Role           string                `json:"role"`
+	Status         string                `json:"status"`
+	ScamScheme     string                `json:"scam_scheme"`
+	RiskType       string                `json:"risk_type"`
+	ProductContext domain.ProductContext `json:"product_context"`
+	AISystemPrompt string                `json:"ai_system_prompt"`
+	FinalRubric    map[string]any        `json:"final_rubric"`
 }
 type adminStepDTO struct {
 	ID                  int    `json:"id"`
@@ -47,10 +48,10 @@ type adminOptionDTO struct {
 }
 
 func scenarioFromDTO(v adminScenarioDTO) domain.Scenario {
-	return domain.Scenario{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, UserRole: v.Role, Status: v.Status, ScamScheme: v.ScamScheme, ProductContext: domain.JSONObject(v.ProductContext), AISystemPrompt: v.AISystemPrompt, FinalRubric: domain.JSONObject(v.FinalRubric)}
+	return domain.Scenario{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, UserRole: v.Role, Status: v.Status, ScamScheme: v.ScamScheme, RiskType: domain.RiskType(v.RiskType), ProductContext: v.ProductContext, AISystemPrompt: v.AISystemPrompt, FinalRubric: domain.JSONObject(v.FinalRubric)}
 }
 func scenarioToDTO(v domain.Scenario) adminScenarioDTO {
-	return adminScenarioDTO{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, Role: v.UserRole, Status: v.Status, ScamScheme: v.ScamScheme, ProductContext: map[string]any(v.ProductContext), AISystemPrompt: v.AISystemPrompt, FinalRubric: map[string]any(v.FinalRubric)}
+	return adminScenarioDTO{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, Role: v.UserRole, Status: v.Status, ScamScheme: v.ScamScheme, RiskType: string(v.RiskType), ProductContext: v.ProductContext, AISystemPrompt: v.AISystemPrompt, FinalRubric: map[string]any(v.FinalRubric)}
 }
 func stepFromDTO(v adminStepDTO) domain.ScenarioStep {
 	return domain.ScenarioStep{ID: v.ID, Number: v.Number, ResponseType: domain.ResponseType(v.ResponseType), Goal: v.Goal, CounterpartyMessage: v.CounterpartyMessage, MaxPoints: v.MaxPoints, AIInstruction: v.AIInstruction, FallbackMessage: v.FallbackMessage}

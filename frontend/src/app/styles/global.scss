@@ -11,10 +11,10 @@
   background: #fff;
   font-synthesis: none;
 
-  --color-accent: #00aaff;
-  --color-accent-hover: #0099e6;
+  --color-accent: #006f9f;
+  --color-accent-hover: #005f89;
   --color-text: #0b0b0c;
-  --color-text-muted: #777780;
+  --color-text-muted: #5b5b64;
   --color-border: #e8e8eb;
   --color-surface: #f6f6f7;
   --page-width: 1240px;
@@ -36,6 +36,10 @@ body {
 }
 
 a {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
   color: inherit;
   text-decoration: none;
 }
@@ -44,6 +48,7 @@ button,
 input,
 select,
 textarea {
+  min-height: 44px;
   font: inherit;
 }
 
@@ -53,6 +58,22 @@ button {
   &:disabled {
     cursor: not-allowed;
     opacity: 0.55;
+  }
+}
+
+:focus-visible {
+  outline: 3px solid #7d2cff;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 

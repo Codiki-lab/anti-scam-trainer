@@ -4,7 +4,7 @@ import { useFinishTheory, useTheory } from '@/features/learning-content'
 import { ErrorState, InvalidRouteState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
 import { parsePositiveInteger } from '@/shared/url'
-import { uiStyles } from '@/shared/ui-kit'
+import { LoadingState, uiStyles } from '@/shared/ui-kit'
 import { TheoryContent } from '@/widgets/theory-content'
 
 export function TheoryPage({ previewTheory }: { previewTheory?: Theory }) {
@@ -20,7 +20,7 @@ export function TheoryPage({ previewTheory }: { previewTheory?: Theory }) {
   if (!isPreview && !parsedTopicId) {
     return <InvalidRouteState backTo={basePath} backLabel="К темам" />
   }
-  if (isLoading) return <p className={uiStyles.muted}>Загружаем Теорию…</p>
+  if (isLoading) return <LoadingState label="Загружаем Теорию…" />
   if (error) return <ErrorState message={error} onRetry={() => void retry()} />
   if (!theory) return <p className={uiStyles.formError}>Теория недоступна.</p>
 

@@ -80,14 +80,14 @@ func TestPostgresHTTPPublishesAndServesCompleteTopicAggregate(t *testing.T) {
 	}
 
 	for level := 1; level <= 4; level++ {
-		scenario := call(admin, http.MethodPost, "/api/v1/admin/scenarios", fmt.Sprintf(`{"title":"Сценарий %d","description":"Описание","level_id":%d,"topic_id":%d,"role":"buyer","scam_scheme":"scheme","product_context":{},"ai_system_prompt":"prompt","final_rubric":{}}`, level, level, topicID))
+		scenario := call(admin, http.MethodPost, "/api/v1/admin/scenarios", fmt.Sprintf(`{"title":"Сценарий %d","description":"Описание","level_id":%d,"topic_id":%d,"role":"buyer","scam_scheme":"phishing","risk_type":"phishing","product_context":{"item_title":"Смартфон","category":"Электроника","deal_method":"delivery","price":42000,"currency":"RUB","image_key":"smartphone"},"ai_system_prompt":"prompt","final_rubric":{}}`, level, level, topicID))
 		assertHTTPStatus(t, scenario, http.StatusCreated, "create scenario")
 		scenarioID := responseID(t, scenario)
 		storedScenario, err := scenarioRepo.ContentScenario(scenarioID)
 		if err != nil || storedScenario.Status != domain.ScenarioStatusDraft {
 			t.Fatalf("stored scenario %d = (%+v,%v)", scenarioID, storedScenario, err)
 		}
-		stepCount := map[int]int{1: 3, 2: 2, 3: 3, 4: 6}[level]
+		stepCount := map[int]int{1: 3, 2: 2, 3: 3, 4: 5}[level]
 		for stepNumber := 1; stepNumber <= stepCount; stepNumber++ {
 			responseType := "multiple_choice"
 			aiInstruction, fallback := "", ""

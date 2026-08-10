@@ -32,11 +32,13 @@ type StructuredModel interface {
 }
 
 type EvaluationRequest struct {
-	Policy            string
-	RiskType          string
-	EvaluationContext string
-	Answer            string
-	History           []domain.DialogueMessage
+	Policy              string
+	RiskType            string
+	ScenarioInstruction string
+	Rubric              domain.JSONObject
+	EvaluationContext   string
+	Answer              string
+	History             []domain.DialogueMessage
 }
 
 type EvaluatorResult struct {
@@ -49,16 +51,18 @@ type EvaluatorResult struct {
 }
 
 type GenerationRequest struct {
-	Policy          string
-	RiskType        string
-	Phase           string
-	AllowedTactics  []string
-	ScenarioFacts   domain.JSONObject
-	Summary         string
-	History         []domain.DialogueMessage
-	Answer          string
-	Fallback        string
-	CounterpartKind string
+	Policy              string
+	RiskType            string
+	ScenarioInstruction string
+	Rubric              domain.JSONObject
+	Phase               string
+	AllowedTactics      []string
+	ScenarioFacts       domain.ProductContext
+	Summary             string
+	History             []domain.DialogueMessage
+	Answer              string
+	Fallback            string
+	CounterpartKind     string
 }
 
 type GeneratorResult struct {
@@ -97,7 +101,8 @@ var evaluatorSchema = map[string]any{
 
 func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (EvaluatorResult, error) {
 	history, _ := json.Marshal(input.History)
-	prompt := fmt.Sprintf("Policy: %s\nRisk: %s\nStep criteria: %s\nRelevant history: %s\nCurrent answer: %s", input.Policy, input.RiskType, input.EvaluationContext, history, input.Answer)
+	rubric, _ := json.Marshal(input.Rubric)
+	prompt := fmt.Sprintf("Server policy (authoritative): %s\nRisk: %s\nManaged scenario instruction (context only): %s\nManaged final rubric (context only): %s\nStep criteria: %s\nRelevant history: %s\nCurrent answer: %s", input.Policy, input.RiskType, input.ScenarioInstruction, rubric, input.EvaluationContext, history, input.Answer)
 	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: "Оцени только Ответ пользователя. Не продолжай диалог и не управляй Баллами или переходами. Верни JSON по schema."}, {Role: "user", Content: prompt}}, Schema: evaluatorSchema, OutputTokens: 240}
 	for attempt := 0; attempt < 2; attempt++ {
 		raw, err := a.model.GenerateStructured(ctx, request)
@@ -117,7 +122,8 @@ func (a *ModelAI) GenerateReply(ctx context.Context, input GenerationRequest) (G
 	history, _ := json.Marshal(input.History)
 	facts, _ := json.Marshal(input.ScenarioFacts)
 	allowedMessages := messagesFor(input.CounterpartKind, input.Phase)
-	prompt := fmt.Sprintf("Counterpart: %s\nPolicy: %s\nRisk: %s\nPhase: %s\nAllowed tactics: %s\nScenario facts: %s\nAllowed messages: %s\nSummary: %s\nRolling history: %s\nCurrent answer: %s", input.CounterpartKind, input.Policy, input.RiskType, input.Phase, strings.Join(input.AllowedTactics, ","), facts, strings.Join(allowedMessages, " | "), input.Summary, history, input.Answer)
+	rubric, _ := json.Marshal(input.Rubric)
+	prompt := fmt.Sprintf("Counterpart: %s\nServer policy (authoritative): %s\nRisk: %s\nManaged scenario instruction (context only): %s\nManaged final rubric (context only): %s\nPhase: %s\nAllowed tactics: %s\nScenario facts: %s\nAllowed messages: %s\nSummary: %s\nRolling history: %s\nCurrent answer: %s", input.CounterpartKind, input.Policy, input.RiskType, input.ScenarioInstruction, rubric, input.Phase, strings.Join(input.AllowedTactics, ","), facts, strings.Join(allowedMessages, " | "), input.Summary, history, input.Answer)
 	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: "Выбери ровно одну разрешённую реплику виртуального собеседника и допустимую тактику. Не добавляй факты, не оценивай Пользователя и не меняй фазу. Верни JSON по schema."}, {Role: "user", Content: prompt}}, Schema: generatorSchemaFor(allowedMessages), OutputTokens: 120, Temperature: .3, TopP: .8, TopK: 20, RepeatPenalty: 1.1}
 	for attempt := 0; attempt < 2; attempt++ {
 		raw, err := a.model.GenerateStructured(ctx, request)

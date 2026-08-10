@@ -27,6 +27,30 @@
   small {
     color: #888892;
   }
+
+  p {
+    max-width: 560px;
+    margin: 8px 0 0;
+    color: var(--color-text-muted);
+    font-size: 14px;
+  }
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.abandonButton {
+  min-height: 44px;
+  border: 0;
+  color: #a23325;
+  background: transparent;
+}
+
+.compactProduct {
+  display: none;
 }
 
 .messages {
@@ -76,6 +100,12 @@
       border-color: var(--color-accent);
       background: #f0fbff;
     }
+
+    &.selectedOption {
+      border-color: var(--color-accent);
+      background: #e6f7ff;
+      box-shadow: 0 0 0 2px rgb(0 170 255 / 18%);
+    }
   }
 
   textarea {
@@ -86,6 +116,15 @@
     border-radius: 10px;
     outline-color: var(--color-accent);
   }
+}
+
+.confirmButton {
+  justify-self: end;
+}
+
+.typing {
+  color: #006c9f;
+  font-size: 13px;
 }
 
 .sendButton {
@@ -108,6 +147,48 @@
   }
 }
 
+.productImage {
+  display: grid;
+  min-height: 118px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+  place-items: center;
+  background: #fff;
+
+  svg {
+    width: 100%;
+    max-width: 160px;
+    height: 118px;
+  }
+}
+
+.price {
+  display: block;
+  margin: -8px 0 18px;
+  font-size: 22px;
+}
+
+.side dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+
+  div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  dt {
+    color: var(--color-text-muted);
+  }
+
+  dd {
+    margin: 0;
+    text-align: right;
+  }
+}
+
 .riskNote {
   margin-top: 23px;
   padding: 14px;
@@ -125,5 +206,39 @@
 
   .side {
     display: none;
+  }
+
+  .compactProduct {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 3px 14px;
+    margin: 16px 0 0;
+    padding: 13px;
+    border-radius: 12px;
+    background: var(--color-surface);
+
+    small {
+      grid-column: 1 / -1;
+      color: var(--color-text-muted);
+    }
+  }
+
+  .header {
+    gap: 12px;
+  }
+
+  .headerActions {
+    align-items: end;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .main {
+    padding: 16px;
+  }
+
+  .bubble {
+    max-width: 88%;
   }
 }

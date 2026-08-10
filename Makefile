@@ -10,7 +10,7 @@ COMPOSE_OLLAMA := docker compose \
 	-f deploy/docker-compose.yml \
 	-f deploy/docker-compose.ollama.yml
 
-.PHONY: help env setup build up down logs lint test gateway-regression \
+.PHONY: help env setup build up down logs lint test gateway-regression demo-reset \
 	build-ollama up-ollama down-ollama logs-ollama ollama-init ollama-reset \
 	migrate-create migrate-up migrate-down clean
 
@@ -29,6 +29,7 @@ help:
 	@echo "  make lint                   Run linters"
 	@echo "  make test                   Run tests"
 	@echo "  make gateway-regression     Verify Register → Login → Dashboard through the gateway"
+	@echo "  make demo-reset             Recreate the deterministic seller demo account"
 	@echo "  make migrate-create seq=xx  Create migration"
 	@echo "  make migrate-up             Apply migrations"
 	@echo "  make migrate-down           Rollback migrations"
@@ -89,6 +90,9 @@ test:
 
 gateway-regression:
 	@./scripts/gateway-regression.sh
+
+demo-reset:
+	@cd backend && go run ./cmd/demo-reset
 
 migrate-create:
 	@if [ -z "$(seq)" ]; then \

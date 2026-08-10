@@ -32,7 +32,7 @@ type AttemptResult struct {
 	Score           int                `json:"score"`
 	Stars           int                `json:"stars"`
 	DecisionReview  []AnswerBreakdown  `json:"decision_review"`
-	RiskSignals     []string           `json:"risk_signals"`
+	RiskSignals     []RiskSignal       `json:"risk_signals"`
 	SafeActions     []string           `json:"safe_actions"`
 	LevelProgress   TopicLevelProgress `json:"level_progress"`
 	TopicID         int                `json:"topic_id"`

@@ -3,6 +3,14 @@
   gap: 13px;
 }
 
+.mechanic {
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #075f8e !important;
+  background: #edf9ff;
+  font-size: 13px;
+}
+
 .row {
   display: flex;
   align-items: center;
@@ -13,7 +21,7 @@
   border-radius: 15px;
 
   small {
-    color: #9797a0;
+    color: #606069;
     font-size: 12px;
   }
 
@@ -51,6 +59,12 @@
   gap: 15px;
   justify-items: end;
   text-align: right;
+
+  > a {
+    color: #006f9f;
+    font-size: 13px;
+    font-weight: 700;
+  }
 }
 
 .lockedButton {
@@ -74,5 +88,6 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
   }
 }

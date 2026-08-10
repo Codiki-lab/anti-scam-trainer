@@ -51,11 +51,39 @@
     color: #54545b;
   }
 
+  em,
+  small,
+  .signals {
+    display: block;
+    margin-top: 7px;
+    font-style: normal;
+  }
+
+  em {
+    color: #26262c;
+  }
+
+  small {
+    color: #075f53;
+  }
+
+  .signals {
+    color: #a24138;
+    font-size: 12px;
+  }
+
   b {
     display: block;
     margin-bottom: 3px;
     color: #29292e;
   }
+}
+
+.reveal {
+  margin-top: 28px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff5df;
 }
 
 .risk {

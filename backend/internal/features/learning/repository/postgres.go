@@ -14,6 +14,31 @@ type PostgresRepository struct{ db *pg.DB }
 
 func NewPostgres(db *pg.DB) *PostgresRepository { return &PostgresRepository{db: db} }
 
+func (r *PostgresRepository) FindRecommendation(userID int, date time.Time, role domain.UserRole) (domain.ContinueAction, bool, error) {
+	var encoded string
+	_, err := r.db.QueryOne(pg.Scan(&encoded), `SELECT action::text FROM dashboard_recommendations WHERE user_id=? AND activity_date=?::date AND user_role=?`, userID, date.Format("2006-01-02"), role)
+	if err == pg.ErrNoRows {
+		return domain.ContinueAction{}, false, nil
+	}
+	if err != nil {
+		return domain.ContinueAction{}, false, err
+	}
+	var action domain.ContinueAction
+	if err := json.Unmarshal([]byte(encoded), &action); err != nil {
+		return domain.ContinueAction{}, false, err
+	}
+	return action, true, nil
+}
+
+func (r *PostgresRepository) SaveRecommendation(userID int, date time.Time, role domain.UserRole, action domain.ContinueAction) error {
+	encoded, err := json.Marshal(action)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(`INSERT INTO dashboard_recommendations(user_id,activity_date,user_role,action) VALUES(?,?::date,?,?::jsonb) ON CONFLICT DO NOTHING`, userID, date.Format("2006-01-02"), role, string(encoded))
+	return err
+}
+
 type topicRow struct {
 	ID            int    `pg:"id"`
 	Slug          string `pg:"slug"`

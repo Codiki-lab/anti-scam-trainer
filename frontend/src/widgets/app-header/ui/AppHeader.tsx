@@ -43,40 +43,67 @@ export function AppHeader({ account, basePath = '' }: AppHeaderProps) {
     (path.endsWith('/lessons') && location.pathname.startsWith(`${path}/`))
 
   return (
-    <header className={styles.topbar}>
-      <Brand />
-      <nav className={styles.nav}>
-        {navItems.map(([to, label]) => {
-          const href = `${basePath}${to}`
+    <>
+      <header className={styles.topbar}>
+        <Brand />
+        <nav className={styles.nav} aria-label="Основная навигация">
+          {navItems.map(([to, label]) => {
+            const href = `${basePath}${to}`
 
+            return (
+              <Link
+                key={to}
+                aria-current={isActive(href) ? 'page' : undefined}
+                className={isActive(href) ? styles.active : undefined}
+                to={href}
+              >
+                {label}
+              </Link>
+            )
+          })}
+        </nav>
+        <div className={styles.actions}>
+          <span className={styles.streak} aria-label={`Серия ${account.streak.current} дня`}>
+            🔥 <b>{account.streak.current}</b>
+          </span>
+          <button
+            className={styles.avatar}
+            type="button"
+            aria-label="Меню профиля"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {account.username.slice(0, 1).toUpperCase()}
+          </button>
+          {menuOpen && (
+            <div className={styles.profileMenu}>
+              <b>{account.username}</b>
+              <span>{account.trainingRole === 'buyer' ? 'Покупатель' : 'Продавец'}</span>
+              <button type="button" onClick={signOut}>
+                Выйти
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+      <nav className={styles.mobileNav} aria-label="Мобильная навигация">
+        {navItems.slice(0, 4).map(([to, label]) => {
+          const href = `${basePath}${to}`
           return (
-            <Link key={to} className={isActive(href) ? styles.active : undefined} to={href}>
+            <Link
+              key={to}
+              aria-current={isActive(href) ? 'page' : undefined}
+              className={isActive(href) ? styles.active : undefined}
+              to={href}
+            >
+              <span aria-hidden="true">
+                {to === '/dashboard' ? '⌂' : to === '/lessons' ? '▤' : to === '/chats' ? '◫' : '◒'}
+              </span>
               {label}
             </Link>
           )
         })}
       </nav>
-      <div className={styles.actions}>
-        <span className={styles.streak} aria-label={`Серия ${account.streak.current} дня`}>
-          🔥 <b>{account.streak.current}</b>
-        </span>
-        <button
-          className={styles.avatar}
-          type="button"
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          {account.username.slice(0, 1).toUpperCase()}
-        </button>
-        {menuOpen && (
-          <div className={styles.profileMenu}>
-            <b>{account.username}</b>
-            <span>{account.trainingRole === 'buyer' ? 'Покупатель' : 'Продавец'}</span>
-            <button type="button" onClick={signOut}>
-              Выйти
-            </button>
-          </div>
-        )}
-      </div>
-    </header>
+    </>
   )
 }

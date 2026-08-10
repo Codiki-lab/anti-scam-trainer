@@ -26,7 +26,7 @@ export interface Topic {
 export interface TheorySection {
   id: number
   order: number
-  kind: string
+  kind: 'intro' | 'risk' | 'example' | 'safe_action' | 'summary'
   title: string
   body: string
 }

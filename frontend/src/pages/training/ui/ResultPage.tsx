@@ -3,7 +3,7 @@ import { useGetAttemptResultQuery, type AttemptResult } from '@/entities/trainin
 import { ErrorState, InvalidRouteState } from '@/shared/error-state'
 import { getApiErrorMessage } from '@/shared/http-error'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { uiStyles } from '@/shared/ui-kit'
+import { LoadingState, uiStyles } from '@/shared/ui-kit'
 import { parsePositiveInteger } from '@/shared/url'
 import { ResultSummary } from '@/widgets/result-summary'
 import { getNextActionPath } from '../lib/getNextActionPath'
@@ -19,7 +19,7 @@ export function ResultPage({ previewResult }: { previewResult?: AttemptResult })
   if (!isPreview && !parsedAttemptId) {
     return <InvalidRouteState backTo="/chats" backLabel="К тренировкам" />
   }
-  if (query.isLoading) return <p className={uiStyles.muted}>Загружаем Result…</p>
+  if (query.isLoading) return <LoadingState label="Загружаем Result…" />
   if (query.error) {
     return (
       <ErrorState message={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} />
