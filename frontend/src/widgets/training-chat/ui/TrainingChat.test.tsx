@@ -39,7 +39,7 @@ const session: TrainingSession = {
 }
 
 describe('TrainingChat', () => {
-  it('sends a prepared user reply immediately', async () => {
+  it('lets the user review a prepared reply before sending it', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn().mockResolvedValue(true)
     render(
@@ -54,8 +54,13 @@ describe('TrainingChat', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Проверю поступление самостоятельно' }))
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: 'Проверю поступление самостоятельно' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Отправить реплику' }))
     expect(onSubmit).toHaveBeenCalledWith({ type: 'option', stepId: 10, optionId: 1 })
-    expect(screen.queryByRole('button', { name: 'Подтвердить ответ' })).not.toBeInTheDocument()
   })
 
   it('shows only the response method accepted by the current step', () => {

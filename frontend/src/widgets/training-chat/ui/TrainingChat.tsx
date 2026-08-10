@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { TrainingAnswer, TrainingSession } from '@/entities/training'
 import { ConfirmDialog, uiStyles } from '@/shared/ui-kit'
 import styles from './TrainingChat.module.scss'
@@ -38,9 +38,15 @@ export function TrainingChat({
   onAbandon,
 }: TrainingChatProps) {
   const [freeText, setFreeText] = useState('')
+  const [selectedOptionId, setSelectedOptionId] = useState<number>()
   const [finishOpen, setFinishOpen] = useState(false)
   const [abandonOpen, setAbandonOpen] = useState(false)
   const acceptsText = session.step.options.length === 0
+
+  useEffect(() => {
+    setSelectedOptionId(undefined)
+    setFreeText('')
+  }, [session.step.id])
 
   const submitText = async (finish = false) => {
     const text = freeText.trim()
@@ -49,6 +55,8 @@ export function TrainingChat({
     if (succeeded) setFreeText('')
     setFinishOpen(false)
   }
+
+  const selectedOption = session.step.options.find((option) => option.id === selectedOptionId)
 
   let answerIndex = 0
   const dialogueHistory = session.messages.map((message) => {
@@ -105,24 +113,35 @@ export function TrainingChat({
           ))}
         </div>
         {session.step.options.length > 0 && (
-          <div className={styles.preparedReplies} aria-label="Готовые ответы пользователя">
+          <div className={styles.replyOptions} aria-label="Готовые ответы пользователя">
             <p>Выберите, что ответить</p>
             {session.step.options.map((option) => (
               <button
                 key={option.id}
                 disabled={isSubmitting}
                 type="button"
-                onClick={() =>
-                  void onSubmit({
-                    type: 'option',
-                    stepId: session.step.id,
-                    optionId: option.id,
-                  })
-                }
+                className={selectedOptionId === option.id ? styles.selectedOption : undefined}
+                aria-pressed={selectedOptionId === option.id}
+                onClick={() => setSelectedOptionId(option.id)}
               >
                 {option.text}
               </button>
             ))}
+            <button
+              className={`${uiStyles.primaryButton} ${styles.confirmReplyButton}`}
+              disabled={!selectedOption || isSubmitting}
+              type="button"
+              onClick={() => {
+                if (!selectedOption) return
+                void onSubmit({
+                  type: 'option',
+                  stepId: session.step.id,
+                  optionId: selectedOption.id,
+                })
+              }}
+            >
+              {isSubmitting ? 'Отправляем…' : 'Отправить реплику'}
+            </button>
           </div>
         )}
         {acceptsText && (
