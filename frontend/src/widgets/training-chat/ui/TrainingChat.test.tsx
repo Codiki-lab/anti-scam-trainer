@@ -39,7 +39,7 @@ const session: TrainingSession = {
 }
 
 describe('TrainingChat', () => {
-  it('separates option selection from confirmation', async () => {
+  it('sends a prepared reply as the user message immediately', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn().mockResolvedValue(true)
     render(
@@ -54,13 +54,24 @@ describe('TrainingChat', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Проверю поступление самостоятельно' }))
-    expect(onSubmit).not.toHaveBeenCalled()
-    expect(
-      screen.getByRole('button', { name: 'Проверю поступление самостоятельно' }),
-    ).toHaveAttribute('aria-pressed', 'true')
-
-    await user.click(screen.getByRole('button', { name: 'Подтвердить ответ' }))
     expect(onSubmit).toHaveBeenCalledWith({ type: 'option', stepId: 10, optionId: 1 })
+    expect(screen.queryByRole('button', { name: 'Подтвердить ответ' })).not.toBeInTheDocument()
+  })
+
+  it('shows only the response method accepted by the current step', () => {
+    render(
+      <TrainingChat
+        session={{ ...session, mode: 'mixed' }}
+        isSubmitting={false}
+        error=""
+        cooldown={0}
+        onSubmit={vi.fn()}
+        onAbandon={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Выберите, что ответить')).toBeVisible()
+    expect(screen.queryByPlaceholderText('Напишите ответ собеседнику…')).not.toBeInTheDocument()
   })
 
   it('keeps free text after a failed request', async () => {
@@ -77,7 +88,7 @@ describe('TrainingChat', () => {
       />,
     )
 
-    const input = screen.getByPlaceholderText('Напишите безопасный ответ…')
+    const input = screen.getByPlaceholderText('Напишите ответ собеседнику…')
     await user.type(input, 'Продолжим только внутри приложения')
     await user.click(screen.getByRole('button', { name: 'Отправить' }))
     expect(input).toHaveValue('Продолжим только внутри приложения')
@@ -143,7 +154,7 @@ describe('TrainingChat', () => {
       />,
     )
 
-    await user.type(screen.getByPlaceholderText('Напишите безопасный ответ…'), 'Безопасный ответ')
+    await user.type(screen.getByPlaceholderText('Напишите ответ собеседнику…'), 'Безопасный ответ')
     expect(screen.getByRole('button', { name: 'Через 7 сек.' })).toBeDisabled()
     expect(onSubmit).not.toHaveBeenCalled()
   })

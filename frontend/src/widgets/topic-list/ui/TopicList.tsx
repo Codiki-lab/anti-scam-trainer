@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import type { Topic } from '@/entities/learning'
+import { TopicCompletionRing, type Topic } from '@/entities/learning'
 import { uiStyles } from '@/shared/ui-kit'
 import styles from './TopicList.module.scss'
 
@@ -23,7 +23,10 @@ export function TopicList({
 
         return (
           <Link key={topic.id} className={styles.card} to={`${basePath}/${topic.id}`}>
-            <span className={styles.number}>{String(topic.order).padStart(2, '0')}</span>
+            <div className={styles.topicProgress}>
+              <TopicCompletionRing topic={topic} />
+              <small>Тема {String(topic.order).padStart(2, '0')}</small>
+            </div>
             <div>
               <h2>{topic.title}</h2>
               <p>{topic.description}</p>

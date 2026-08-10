@@ -18,3 +18,4 @@ export type {
   TheorySection,
   Topic,
 } from './model/types'
+export { TopicCompletionRing } from './ui/TopicCompletionRing'
