@@ -64,7 +64,7 @@ func (r *PostgresRepository) ValidContent(id int) (bool, error) {
 	var valid bool
 	_, err := r.db.QueryOne(pg.Scan(&valid), `
 		WITH target AS (
-			SELECT c.id,l.level_number,c.title,c.description FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.id=?
+			SELECT c.id,l.level_number,c.title,c.description,COALESCE(c.product_context->>'content_key','') content_key FROM chats c JOIN levels l ON l.id=c.level_id WHERE c.id=?
 		), shape AS (
 			SELECT COUNT(*) steps,MIN(step_number) first_step,MAX(step_number) last_step,
 				COUNT(*) FILTER(WHERE response_type='mixed') mixed_steps,
@@ -72,18 +72,18 @@ func (r *PostgresRepository) ValidContent(id int) (bool, error) {
 			FROM chat_steps WHERE chat_id=?
 		)
 		SELECT EXISTS(SELECT 1 FROM target)
-			AND COALESCE((SELECT steps=CASE WHEN level_number=4 THEN 4 ELSE 3 END
-				AND first_step=1 AND last_step=CASE WHEN level_number=4 THEN 4 ELSE 3 END
-				AND (level_number<>3 OR mixed_steps=2)
+			AND COALESCE((SELECT steps=CASE WHEN content_key<>'' AND level_number=2 THEN 2 WHEN level_number=4 THEN 4 ELSE 3 END
+				AND first_step=1 AND last_step=CASE WHEN content_key<>'' AND level_number=2 THEN 2 WHEN level_number=4 THEN 4 ELSE 3 END
+				AND (level_number<>3 OR (content_key<>'' AND free_text_steps=2) OR (content_key='' AND mixed_steps=2))
 				AND (level_number<>4 OR free_text_steps=4)
 				FROM shape,target),FALSE)
 			AND NOT EXISTS (
 				SELECT 1 FROM chat_steps s CROSS JOIN target t
 				WHERE s.chat_id=t.id AND (
 					NULLIF(s.counterparty_message,'') IS NULL OR char_length(s.counterparty_message)>280
-					OR (SELECT COUNT(*) FROM chat_options o WHERE o.step_id=s.id)<>CASE WHEN t.level_number<=3 THEN 4 ELSE 0 END
+					OR (SELECT COUNT(*) FROM chat_options o WHERE o.step_id=s.id)<>CASE WHEN s.response_type='free_text' THEN 0 WHEN t.content_key<>'' THEN 3 WHEN t.level_number<=3 THEN 4 ELSE 0 END
 					OR EXISTS (SELECT 1 FROM chat_options o WHERE o.step_id=s.id AND (char_length(o.option_text)>140 OR o.points NOT IN(0,25,50,75,100)))
-					OR (t.level_number<=3 AND s.max_points<>(SELECT MAX(o.points) FROM chat_options o WHERE o.step_id=s.id))
+					OR (s.response_type<>'free_text' AND s.max_points<>(SELECT MAX(o.points) FROM chat_options o WHERE o.step_id=s.id))
 					OR (s.response_type IN ('mixed','free_text') AND (NULLIF(s.ai_instruction,'') IS NULL OR NULLIF(s.fallback_message,'') IS NULL))
 					OR s.counterparty_message ~* '(https?://|www\.|[0-9]{10,})'
 					OR EXISTS(SELECT 1 FROM chat_options o WHERE o.step_id=s.id AND o.option_text ~* '(https?://|www\.|[0-9]{10,})')
@@ -112,7 +112,7 @@ func (r *PostgresRepository) CreateStep(s domain.ScenarioStep) (domain.ScenarioS
 }
 func (r *PostgresRepository) CreateOption(o domain.ScenarioOption) (domain.ScenarioOption, error) {
 	var id int
-	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chat_options (step_id,option_text,explanation,points,sort_order) VALUES (?,?,?,?,?) RETURNING id`, o.StepID, o.Text, o.Explanation, o.Points, o.SortOrder)
+	_, err := r.db.QueryOne(pg.Scan(&id), `INSERT INTO chat_options (step_id,option_text,counterparty_reaction,explanation,points,sort_order) VALUES (?,?,?,?,?,?) RETURNING id`, o.StepID, o.Text, nullableText(o.Reaction), o.Explanation, o.Points, o.SortOrder)
 	o.ID = id
 	return o, err
 }
@@ -140,7 +140,7 @@ func (r *PostgresRepository) DeleteStep(id int) error {
 }
 
 func (r *PostgresRepository) UpdateOption(o domain.ScenarioOption) error {
-	_, err := r.db.Exec(`UPDATE chat_options SET option_text=?, explanation=?, points=?, sort_order=? WHERE id=?`, o.Text, o.Explanation, o.Points, o.SortOrder, o.ID)
+	_, err := r.db.Exec(`UPDATE chat_options SET option_text=?, counterparty_reaction=?, explanation=?, points=?, sort_order=? WHERE id=?`, o.Text, nullableText(o.Reaction), o.Explanation, o.Points, o.SortOrder, o.ID)
 	return err
 }
 
@@ -163,4 +163,11 @@ func decodeJSONObject(value string) domain.JSONObject {
 	result := domain.JSONObject{}
 	_ = json.Unmarshal([]byte(value), &result)
 	return result
+}
+
+func nullableText(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }

@@ -19,9 +19,14 @@ import (
 	"time"
 )
 
+type contractAIProvider interface {
+	attemptsservice.Evaluator
+	attemptsservice.ScammerGenerator
+}
+
 func TestHTTPGameContractExposesMixedStateAndRejectsAmbiguousAnswer(t *testing.T) {
 	store := newHTTPGameStore()
-	game := attemptsservice.NewGameWithAI(store, contractAI{})
+	game := attemptsservice.NewGameWithAI(store, contractAI{}, contractAI{})
 	handler := router.New()
 	handler.Register(router.V1, attemptshttp.New(game).Routes())
 
@@ -93,7 +98,7 @@ func TestHTTPGameContractExposesMixedStateAndRejectsAmbiguousAnswer(t *testing.T
 func TestHTTPAIFailureIsRetryableAndHasNoSideEffects(t *testing.T) {
 	cases := []struct {
 		name   string
-		ai     attemptsservice.AIProvider
+		ai     contractAIProvider
 		status int
 	}{
 		{name: "timeout", ai: failingContractAI{}, status: http.StatusServiceUnavailable},
@@ -102,7 +107,7 @@ func TestHTTPAIFailureIsRetryableAndHasNoSideEffects(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			store := newHTTPGameStore()
-			game := attemptsservice.NewGameWithAI(store, test.ai)
+			game := attemptsservice.NewGameWithAI(store, test.ai, test.ai)
 			handler := router.New()
 			handler.Register(router.V1, attemptshttp.New(game).Routes())
 			start := httptest.NewRequest(http.MethodPost, "/api/v1/training/levels/3/start?role=buyer&topic_id=1", nil)
@@ -126,7 +131,7 @@ func TestHTTPAIRateLimitRejectsBeforeProviderAndStateMutation(t *testing.T) {
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	limit := ratelimit.New(ratelimit.Config{Limit: 1, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, func() time.Time { return now })
 	freePlayLimit := ratelimit.New(ratelimit.Config{Limit: 10, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, func() time.Time { return now })
-	game := attemptsservice.NewGameWithRateLimits(store, provider, limit, freePlayLimit, ratelimit.NewGate())
+	game := attemptsservice.NewGameWithRateLimits(store, provider, provider, limit, freePlayLimit, ratelimit.NewGate())
 	r := router.New()
 	r.Register(router.V1, attemptshttp.New(game).Routes())
 	handler := middleware.RequestID()(r)
@@ -146,7 +151,7 @@ func TestHTTPAIRateLimitRejectsBeforeProviderAndStateMutation(t *testing.T) {
 	answersBefore := len(store.answers)
 	messagesBefore := len(store.messages)
 	second := answer(2)
-	if second.Code != http.StatusTooManyRequests || !strings.Contains(second.Body.String(), `"code":"RATE_LIMITED"`) || second.Header().Get("Retry-After") == "" || provider.calls != 2 || len(store.answers) != answersBefore || len(store.messages) != messagesBefore {
+	if second.Code != http.StatusTooManyRequests || !strings.Contains(second.Body.String(), `"code":"RATE_LIMITED"`) || second.Header().Get("Retry-After") == "" || provider.calls != 3 || len(store.answers) != answersBefore || len(store.messages) != messagesBefore {
 		t.Fatalf("limited=(%d,%s,calls=%d,answers=%d)", second.Code, second.Body.String(), provider.calls, len(store.answers))
 	}
 }
@@ -155,7 +160,7 @@ func TestHTTPAllowsOnlyOneAIRequestInFlightPerUser(t *testing.T) {
 	store := newHTTPGameStore()
 	provider := &blockingContractAI{started: make(chan struct{}), release: make(chan struct{})}
 	limit := ratelimit.New(ratelimit.Config{Limit: 10, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, time.Now)
-	game := attemptsservice.NewGameWithRateLimits(store, provider, limit, limit, ratelimit.NewGate())
+	game := attemptsservice.NewGameWithRateLimits(store, provider, provider, limit, limit, ratelimit.NewGate())
 	r := router.New()
 	r.Register(router.V1, attemptshttp.New(game).Routes())
 	handler := middleware.RequestID()(r)
@@ -184,7 +189,7 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 	for _, role := range []string{"buyer", "seller"} {
 		t.Run(role, func(t *testing.T) {
 			store := newHTTPGameStore()
-			game := attemptsservice.NewGameWithDependencies(store, contractAI{}, func() bool { return role == "buyer" })
+			game := attemptsservice.NewGameWithDependencies(store, contractAI{}, contractAI{}, func() bool { return role == "buyer" })
 			handler := router.New()
 			handler.Register(router.V1, attemptshttp.New(game).Routes())
 			start := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role="+role, nil)
@@ -243,7 +248,7 @@ func TestHTTPFreePlayCoversBothRolesAndHidesCounterpartUntilCompletion(t *testin
 func TestHTTPFreePlayAIFailureHasNoSideEffects(t *testing.T) {
 	store := newHTTPGameStore()
 	ai := &sequenceContractAI{}
-	game := attemptsservice.NewGameWithDependencies(store, ai, func() bool { return true })
+	game := attemptsservice.NewGameWithDependencies(store, ai, ai, func() bool { return true })
 	handler := router.New()
 	handler.Register(router.V1, attemptshttp.New(game).Routes())
 	start := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role=buyer", nil)
@@ -259,17 +264,54 @@ func TestHTTPFreePlayAIFailureHasNoSideEffects(t *testing.T) {
 	}
 }
 
+func TestHTTPFreePlayCompletesAtSixAnswersWithoutLeakingAIState(t *testing.T) {
+	store := newHTTPGameStore()
+	game := attemptsservice.NewGameWithDependencies(store, contractAI{}, contractAI{}, func() bool { return true })
+	handler := router.New()
+	handler.Register(router.V1, attemptshttp.New(game).Routes())
+	start := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role=buyer", nil)
+	start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
+	handler.ServeHTTP(httptest.NewRecorder(), start)
+	for turn := 1; turn <= 6; turn++ {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":`+strconv.Itoa(turn)+`,"free_text":"Проверю сделку внутри приложения"}`))
+		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		body := recorder.Body.String()
+		if recorder.Code != http.StatusOK || strings.Contains(body, "policy") || strings.Contains(body, "compact_summary") || strings.Contains(body, "dialogue_phase") {
+			t.Fatalf("turn %d=(%d,%s)", turn, recorder.Code, body)
+		}
+		if turn == 6 && !strings.Contains(body, `"decision_review"`) {
+			t.Fatalf("sixth turn did not return Result: %s", body)
+		}
+	}
+	seventh := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":7,"free_text":"Ещё ответ"}`))
+	seventh = seventh.WithContext(authservice.WithIdentity(seventh.Context(), authservice.Identity{UserID: 1}))
+	seventhRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(seventhRecorder, seventh)
+	if seventhRecorder.Code != http.StatusConflict || len(store.answers) != 6 {
+		t.Fatalf("seventh=(%d,%s), answers=%d", seventhRecorder.Code, seventhRecorder.Body.String(), len(store.answers))
+	}
+}
+
 type contractAI struct{}
 
-func (contractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
-	return `{"awarded_points":100,"explanation":"безопасно","reply":"продолжим","risk_signals":[]}`, nil
+func (contractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
+	return contractEvaluation(), nil
+}
+func (contractAI) GenerateReply(_ context.Context, input attemptsservice.GenerationRequest) (attemptsservice.GeneratorResult, error) {
+	return contractGeneration(input), nil
 }
 
 type countingContractAI struct{ calls int }
 
-func (a *countingContractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
+func (a *countingContractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
 	a.calls++
-	return `{"awarded_points":100,"explanation":"безопасно","reply":"продолжим","risk_signals":[]}`, nil
+	return contractEvaluation(), nil
+}
+func (a *countingContractAI) GenerateReply(_ context.Context, input attemptsservice.GenerationRequest) (attemptsservice.GeneratorResult, error) {
+	a.calls++
+	return contractGeneration(input), nil
 }
 
 type blockingContractAI struct {
@@ -278,34 +320,62 @@ type blockingContractAI struct {
 	calls   atomic.Int32
 }
 
-func (a *blockingContractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
+func (a *blockingContractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
 	if a.calls.Add(1) == 1 {
 		close(a.started)
 	}
 	<-a.release
-	return `{"awarded_points":100,"explanation":"безопасно","reply":"продолжим","risk_signals":[]}`, nil
+	return contractEvaluation(), nil
+}
+func (a *blockingContractAI) GenerateReply(_ context.Context, input attemptsservice.GenerationRequest) (attemptsservice.GeneratorResult, error) {
+	if a.calls.Add(1) == 1 {
+		close(a.started)
+	}
+	<-a.release
+	return contractGeneration(input), nil
 }
 
 type failingContractAI struct{}
 
-func (failingContractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
-	return "", attemptsservice.ErrAIUnavailable
+func (failingContractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
+	return attemptsservice.EvaluatorResult{}, attemptsservice.ErrAIUnavailable
+}
+func (failingContractAI) GenerateReply(context.Context, attemptsservice.GenerationRequest) (attemptsservice.GeneratorResult, error) {
+	return attemptsservice.GeneratorResult{}, attemptsservice.ErrAIUnavailable
 }
 
 type invalidContractAI struct{}
 
-func (invalidContractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
-	return `{"awarded_points":100`, nil
+func (invalidContractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
+	return attemptsservice.EvaluatorResult{}, attemptsservice.ErrAIInvalidResponse
+}
+func (invalidContractAI) GenerateReply(context.Context, attemptsservice.GenerationRequest) (attemptsservice.GeneratorResult, error) {
+	return attemptsservice.GeneratorResult{}, attemptsservice.ErrAIInvalidResponse
 }
 
 type sequenceContractAI struct{ calls int }
 
-func (a *sequenceContractAI) Generate(context.Context, []attemptsservice.AIMessage) (string, error) {
+func (a *sequenceContractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
 	a.calls++
 	if a.calls > 1 {
-		return "", attemptsservice.ErrAIUnavailable
+		return attemptsservice.EvaluatorResult{}, attemptsservice.ErrAIUnavailable
 	}
-	return `{"awarded_points":0,"explanation":"старт","reply":"начнём","risk_signals":[]}`, nil
+	return contractEvaluation(), nil
+}
+func (a *sequenceContractAI) GenerateReply(_ context.Context, input attemptsservice.GenerationRequest) (attemptsservice.GeneratorResult, error) {
+	a.calls++
+	if a.calls > 1 {
+		return attemptsservice.GeneratorResult{}, attemptsservice.ErrAIUnavailable
+	}
+	return contractGeneration(input), nil
+}
+
+func contractEvaluation() attemptsservice.EvaluatorResult {
+	return attemptsservice.EvaluatorResult{Score: 4, RiskType: "social_engineering", Evaluation: "безопасно", SafeAction: "остаться в сервисе"}
+}
+
+func contractGeneration(input attemptsservice.GenerationRequest) attemptsservice.GeneratorResult {
+	return attemptsservice.GeneratorResult{Message: "продолжим", Tactic: input.AllowedTactics[0], Phase: input.Phase}
 }
 
 type httpGameStore struct {
@@ -405,9 +475,11 @@ func (s *httpGameStore) SaveMessage(message domain.DialogueMessage) error {
 	return nil
 }
 func (s *httpGameStore) AdvanceAttempt(id, next int) error { return s.Advance(id, next) }
-func (s *httpGameStore) UpdateFreeTextCount(id, count int) error {
+func (s *httpGameStore) UpdateDialogueState(id, count int, phase, summary string) error {
 	a := s.attempts[id]
 	a.FreeTextCount = count
+	a.DialoguePhase = phase
+	a.CompactSummary = summary
 	s.attempts[id] = a
 	return nil
 }

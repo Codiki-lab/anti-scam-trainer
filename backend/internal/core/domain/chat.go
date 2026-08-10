@@ -72,6 +72,7 @@ type ScenarioOption struct {
 	ID          int
 	StepID      int
 	Text        string
+	Reaction    string
 	Explanation string
 	Points      int
 	SortOrder   int

@@ -55,6 +55,17 @@ type Result struct {
 // Provider is independent of the wire protocol used by an AI runtime.
 type Provider interface {
 	Generate(context.Context, []Message) (Result, error)
+	GenerateStructured(context.Context, StructuredRequest) (Result, error)
+}
+
+type StructuredRequest struct {
+	Messages      []Message
+	Schema        map[string]any
+	OutputTokens  int
+	Temperature   float64
+	TopP          float64
+	TopK          int
+	RepeatPenalty float64
 }
 
 type Config struct {
@@ -159,14 +170,33 @@ func NewOllama(config Config) (Provider, error) {
 }
 
 func (o *Ollama) Generate(ctx context.Context, messages []Message) (Result, error) {
+	return o.generate(ctx, StructuredRequest{Messages: messages, OutputTokens: o.outputReserveTokens})
+}
+
+func (o *Ollama) GenerateStructured(ctx context.Context, input StructuredRequest) (Result, error) {
+	if len(input.Schema) == 0 {
+		return Result{}, errors.New("structured JSON schema is required")
+	}
+	if input.OutputTokens <= 0 || input.OutputTokens >= o.contextWindowTokens {
+		return Result{}, errors.New("structured output token limit is invalid")
+	}
+	return o.generate(ctx, input)
+}
+
+func (o *Ollama) generate(ctx context.Context, input StructuredRequest) (Result, error) {
+	messages := input.Messages
 	if err := validateMessages(messages); err != nil {
 		return Result{}, err
 	}
-	estimatedPromptTokens := EstimatePromptTokens(messages)
-	if estimatedPromptTokens+o.outputReserveTokens > o.contextWindowTokens {
-		return Result{}, &ContextCapacityError{EstimatedPromptTokens: estimatedPromptTokens, ReservedOutputTokens: o.outputReserveTokens, ContextWindowTokens: o.contextWindowTokens}
+	outputTokens := input.OutputTokens
+	if outputTokens == 0 {
+		outputTokens = o.outputReserveTokens
 	}
-	requestBody, err := json.Marshal(ollamaRequest{Model: o.model, Messages: messages, Stream: false, Options: ollamaOptions{ContextWindowTokens: o.contextWindowTokens}})
+	estimatedPromptTokens := EstimatePromptTokens(messages)
+	if estimatedPromptTokens+outputTokens > int(float64(o.contextWindowTokens)*o.highRiskThreshold) {
+		return Result{}, &ContextCapacityError{EstimatedPromptTokens: estimatedPromptTokens, ReservedOutputTokens: outputTokens, ContextWindowTokens: o.contextWindowTokens}
+	}
+	requestBody, err := json.Marshal(ollamaRequest{Model: o.model, Messages: messages, Stream: false, Format: input.Schema, Think: false, Options: ollamaOptions{ContextWindowTokens: o.contextWindowTokens, OutputTokens: outputTokens, Temperature: input.Temperature, TopP: input.TopP, TopK: input.TopK, RepeatPenalty: input.RepeatPenalty}})
 	if err != nil {
 		return Result{}, fmt.Errorf("encode ollama request: %w", err)
 	}
@@ -197,12 +227,12 @@ func (o *Ollama) Generate(ctx context.Context, messages []Message) (Result, erro
 	if err := decoded.validate(); err != nil {
 		return Result{}, &MalformedResponseError{Err: err}
 	}
-	usageFraction := float64(estimatedPromptTokens+o.outputReserveTokens) / float64(o.contextWindowTokens)
+	usageFraction := float64(estimatedPromptTokens+outputTokens) / float64(o.contextWindowTokens)
 	return Result{Content: *decoded.Message.Content, Usage: Usage{
 		PromptTokens:          decoded.PromptEvalCount.Value,
 		CompletionTokens:      decoded.EvalCount.Value,
 		EstimatedPromptTokens: estimatedPromptTokens,
-		ReservedOutputTokens:  o.outputReserveTokens,
+		ReservedOutputTokens:  outputTokens,
 		ContextWindowTokens:   o.contextWindowTokens,
 		ContextUsage:          usageFraction,
 		ContextRisk:           o.contextRisk(usageFraction),
@@ -235,14 +265,21 @@ func validateMessages(messages []Message) error {
 }
 
 type ollamaRequest struct {
-	Model    string        `json:"model"`
-	Messages []Message     `json:"messages"`
-	Stream   bool          `json:"stream"`
-	Options  ollamaOptions `json:"options"`
+	Model    string         `json:"model"`
+	Messages []Message      `json:"messages"`
+	Stream   bool           `json:"stream"`
+	Format   map[string]any `json:"format,omitempty"`
+	Think    bool           `json:"think"`
+	Options  ollamaOptions  `json:"options"`
 }
 
 type ollamaOptions struct {
-	ContextWindowTokens int `json:"num_ctx"`
+	ContextWindowTokens int     `json:"num_ctx"`
+	OutputTokens        int     `json:"num_predict"`
+	Temperature         float64 `json:"temperature"`
+	TopP                float64 `json:"top_p,omitempty"`
+	TopK                int     `json:"top_k,omitempty"`
+	RepeatPenalty       float64 `json:"repeat_penalty,omitempty"`
 }
 
 type optionalInt struct {

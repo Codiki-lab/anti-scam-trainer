@@ -4,28 +4,26 @@ import (
 	"anti-scam-trainer/backend/internal/core/domain"
 	apperrors "anti-scam-trainer/backend/internal/core/errors"
 	"anti-scam-trainer/backend/internal/core/ratelimit"
-	"bytes"
 	"context"
 	cryptorand "crypto/rand"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type GameService struct {
 	repository      GameRepository
-	ai              AIProvider
+	evaluator       Evaluator
+	generator       ScammerGenerator
 	selectScam      func() bool
 	freeTextLimiter *ratelimit.Limiter
 	freePlayLimiter *ratelimit.Limiter
 	aiGate          *ratelimit.Gate
 }
 
-func NewGameWithRateLimits(repository GameRepository, ai AIProvider, freeText, freePlay *ratelimit.Limiter, gate *ratelimit.Gate) *GameService {
-	return &GameService{repository: repository, ai: ai, selectScam: randomScam, freeTextLimiter: freeText, freePlayLimiter: freePlay, aiGate: gate}
+func NewGameWithRateLimits(repository GameRepository, evaluator Evaluator, generator ScammerGenerator, freeText, freePlay *ratelimit.Limiter, gate *ratelimit.Gate) *GameService {
+	return &GameService{repository: repository, evaluator: evaluator, generator: generator, selectScam: randomScam, freeTextLimiter: freeText, freePlayLimiter: freePlay, aiGate: gate}
 }
 
 type RateLimitError struct{ RetryAfter time.Duration }
@@ -55,12 +53,12 @@ func (s *GameService) beforeAI(userID int, freePlay bool) (func(), error) {
 }
 
 func NewGame(repository GameRepository) *GameService { return &GameService{repository: repository} }
-func NewGameWithAI(repository GameRepository, ai AIProvider) *GameService {
-	return &GameService{repository: repository, ai: ai, selectScam: randomScam}
+func NewGameWithAI(repository GameRepository, evaluator Evaluator, generator ScammerGenerator) *GameService {
+	return &GameService{repository: repository, evaluator: evaluator, generator: generator, selectScam: randomScam}
 }
 
-func NewGameWithDependencies(repository GameRepository, ai AIProvider, selectScam func() bool) *GameService {
-	return &GameService{repository: repository, ai: ai, selectScam: selectScam}
+func NewGameWithDependencies(repository GameRepository, evaluator Evaluator, generator ScammerGenerator, selectScam func() bool) *GameService {
+	return &GameService{repository: repository, evaluator: evaluator, generator: generator, selectScam: selectScam}
 }
 
 func randomScam() bool {
@@ -157,59 +155,6 @@ func (s *GameService) Levels(userID int, role string, topicID ...int) ([]OpenLev
 		result = append(result, OpenLevel{Level: level, Opened: opened, ScenarioID: scenario.ID})
 	}
 	return result, nil
-}
-
-var (
-	ErrAIUnavailable      = errors.New("AI service is temporarily unavailable")
-	ErrAIInvalidResponse  = errors.New("AI returned an invalid response")
-	ErrAIContextExhausted = errors.New("AI context capacity exceeded")
-)
-
-type AIMessage struct {
-	Role    string
-	Content string
-}
-
-type AIProvider interface {
-	Generate(context.Context, []AIMessage) (string, error)
-}
-
-type AIResult = domain.AIEvaluation
-
-func DecodeAIResult(raw string) (AIResult, error) {
-	decoder := json.NewDecoder(bytes.NewBufferString(raw))
-	decoder.DisallowUnknownFields()
-	var result AIResult
-	if err := decoder.Decode(&result); err != nil {
-		return AIResult{}, fmt.Errorf("%w: %v", ErrAIInvalidResponse, err)
-	}
-	if err := ensureJSONEOF(decoder); err != nil {
-		return AIResult{}, fmt.Errorf("%w: %v", ErrAIInvalidResponse, err)
-	}
-	if !domain.ValidOptionPoints(result.AwardedPoints) || strings.TrimSpace(result.Explanation) == "" || strings.TrimSpace(result.Reply) == "" || result.RiskSignals == nil {
-		return AIResult{}, ErrAIInvalidResponse
-	}
-	for _, signal := range result.RiskSignals {
-		if strings.TrimSpace(signal) == "" {
-			return AIResult{}, ErrAIInvalidResponse
-		}
-	}
-	return result, nil
-}
-
-func ensureJSONEOF(decoder *json.Decoder) error {
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return errors.New("multiple JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func CanFinishFreeText(answerCount int, finishRequested bool) bool {
-	return answerCount >= 5 || (finishRequested && answerCount >= 3)
 }
 
 func (s *GameService) GetState(userID, attemptID int) (GameState, error) {
@@ -369,7 +314,7 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 		}
 		return GameState{Attempt: attempt, Scenario: domain.Scenario{ProductContext: config.ProductContext}, Step: freePlayStep(attempt.FreeTextCount), Answers: answers, Messages: messages, CanFinishEarly: attempt.FreeTextCount >= 2}, nil
 	}
-	if s.ai == nil {
+	if s.generator == nil {
 		return GameState{}, ErrAIUnavailable
 	}
 	freePlayConfig, err := s.repository.FreePlayConfig(role)
@@ -387,11 +332,11 @@ func (s *GameService) StartFreePlay(ctx context.Context, userID int, role string
 		return GameState{}, limitErr
 	}
 	defer release()
-	initial, err := s.evaluate(ctx, attempt, freePlayScenario, domain.ScenarioStep{}, nil, "Начни разговор о сделке одной короткой репликой")
+	initial, err := s.generateReply(ctx, attempt, freePlayScenario, domain.ScenarioStep{}, nil, "Начни разговор о сделке одной короткой репликой", "hook", "")
 	if err != nil {
 		return GameState{}, err
 	}
-	message := domain.DialogueMessage{Role: domain.MessageRoleAssistant, Text: initial.Reply, CreatedAt: time.Now().UTC()}
+	message := domain.DialogueMessage{Role: domain.MessageRoleAssistant, Text: initial.Message, CreatedAt: time.Now().UTC()}
 	attempt, err = s.repository.StartFreePlay(attempt, message)
 	if err != nil {
 		return GameState{}, err
@@ -446,10 +391,6 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	if finish && attempt.FreeTextCount+1 < 3 {
 		return GameState{}, nil, apperrors.ErrInvalidAnswer
 	}
-	if s.ai == nil {
-		return GameState{}, nil, ErrAIUnavailable
-	}
-
 	var step domain.ScenarioStep
 	var scenario domain.Scenario
 	if attempt.Mode != domain.AttemptModeFreePlay {
@@ -478,6 +419,9 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		}
 		scenario = domain.Scenario{ProductContext: config.ProductContext, AISystemPrompt: config.SystemPrompt, FinalRubric: config.FinalRubric}
 	}
+	if s.evaluator == nil || (usesGeneratedDialogue(attempt, scenario) && s.generator == nil) {
+		return GameState{}, nil, ErrAIUnavailable
+	}
 	messages, err := s.repository.Messages(attemptID)
 	if err != nil {
 		return GameState{}, nil, err
@@ -491,23 +435,53 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		return GameState{}, nil, limitErr
 	}
 	defer release()
-	aiResult, err := s.evaluate(ctx, attempt, scenario, step, messages, text)
+	evaluation, err := s.evaluateAnswer(ctx, attempt, scenario, step, messages, text)
 	if err != nil {
 		return GameState{}, nil, err
 	}
 	count := attempt.FreeTextCount + 1
-	answer := domain.UserAnswer{AttemptID: attemptID, StepID: step.ID, FreeText: text, AwardedPoints: aiResult.AwardedPoints, Explanation: aiResult.Explanation, Evaluation: &aiResult, TurnNumber: len(existingAnswers) + 1}
+	storedEvaluation := domain.AIEvaluation{Score: evaluation.Score, IsSafe: evaluation.IsSafe, RiskType: evaluation.RiskType, DetectedSignals: evaluation.DetectedSignals, Evaluation: evaluation.Evaluation, SafeAction: evaluation.SafeAction}
+	answer := domain.UserAnswer{AttemptID: attemptID, StepID: step.ID, FreeText: text, AwardedPoints: PointsForEvaluatorScore(evaluation.Score), Explanation: evaluation.Evaluation, Evaluation: &storedEvaluation, TurnNumber: len(existingAnswers) + 1}
 	userMessage := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleUser, Text: text, CreatedAt: time.Now().UTC()}
-	replyMessage := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleAssistant, Text: aiResult.Reply, CreatedAt: time.Now().UTC()}
+	replyText := step.FallbackMessage
+	if usesGeneratedDialogue(attempt, scenario) {
+		phase := phaseForTurn(count)
+		generated, generateErr := s.generateReply(ctx, attempt, scenario, step, messages, text, phase, attempt.CompactSummary)
+		if generateErr != nil {
+			return GameState{}, nil, generateErr
+		}
+		replyText = generated.Message
+	} else if next, nextErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber+1); nextErr == nil {
+		replyText = next.CounterpartyMessage
+		if strings.TrimSpace(replyText) == "" {
+			replyText = next.FallbackMessage
+		}
+	}
+	if strings.TrimSpace(replyText) == "" {
+		replyText = "Диалог завершён. Перейдём к разбору ваших решений."
+	}
+	replyMessage := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleAssistant, Text: replyText, CreatedAt: time.Now().UTC()}
+	phase := attempt.DialoguePhase
+	summary := attempt.CompactSummary
+	if usesGeneratedDialogue(attempt, scenario) {
+		phase = phaseForTurn(count)
+		if count >= 4 {
+			summary = compactDialogueSummary(append(append(append([]domain.DialogueMessage{}, messages...), userMessage), replyMessage))
+		}
+	}
 
-	complete := attempt.Mode == domain.AttemptModeFreePlay || step.ResponseType == domain.ResponseTypeFreeText
-	complete = complete && CanFinishFreeText(count, finish)
+	level, _ := strconv.Atoi(scenario.Level)
+	complete := level == 3 && count >= 2
+	if usesGeneratedDialogue(attempt, scenario) {
+		complete = count >= 6 || phase == "resolution" || (finish && count >= 3) || (evaluation.IsSafe && count >= 2) || evaluation.Score == 1
+	}
 	if !complete && attempt.Mode != domain.AttemptModeFreePlay && step.ResponseType == domain.ResponseTypeMixed {
 		if _, nextErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber+1); nextErr != nil {
 			complete = true
 		}
 	}
 	if complete {
+		attempt.DialoguePhase, attempt.CompactSummary = phase, summary
 		return s.completeFreeText(attempt, scenario, answer, userMessage, replyMessage, count)
 	}
 
@@ -527,7 +501,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 		if err := store.SaveMessage(replyMessage); err != nil {
 			return err
 		}
-		if err := store.UpdateFreeTextCount(attemptID, count); err != nil {
+		if err := store.UpdateDialogueState(attemptID, count, phase, summary); err != nil {
 			return err
 		}
 		if nextNumber != attempt.CurrentStepNumber {
@@ -537,7 +511,7 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	}); err != nil {
 		return GameState{}, nil, s.completionError(attempt, err)
 	}
-	attempt.FreeTextCount, attempt.CurrentStepNumber = count, nextNumber
+	attempt.FreeTextCount, attempt.CurrentStepNumber, attempt.DialoguePhase, attempt.CompactSummary = count, nextNumber, phase, summary
 	nextStep := step
 	if attempt.Mode == domain.AttemptModeFreePlay {
 		nextStep = freePlayStep(count)
@@ -552,46 +526,81 @@ func (s *GameService) submitFreeText(ctx context.Context, userID, attemptID int,
 	return GameState{Attempt: attempt, Scenario: scenario, Step: nextStep, Answers: append(existingAnswers, answer), Messages: messages, CanFinishEarly: count >= 2}, nil, nil
 }
 
-func (s *GameService) evaluate(ctx context.Context, attempt domain.Attempt, scenario domain.Scenario, step domain.ScenarioStep, history []domain.DialogueMessage, text string) (AIResult, error) {
-	system := scenario.AISystemPrompt
-	if strings.TrimSpace(system) == "" {
-		system = "Ты виртуальный собеседник тренажёра. Верни только JSON с awarded_points, explanation, reply и risk_signals."
+func (s *GameService) evaluateAnswer(ctx context.Context, attempt domain.Attempt, scenario domain.Scenario, step domain.ScenarioStep, history []domain.DialogueMessage, text string) (EvaluatorResult, error) {
+	riskType := primaryRisk(scenario.ScamScheme)
+	if attempt.Mode == domain.AttemptModeFreePlay && attempt.IsScam != nil && !*attempt.IsScam {
+		riskType = "ordinary_transaction"
 	}
-	if attempt.Mode == domain.AttemptModeFreePlay {
-		kind := "обычный участник сделки"
-		if attempt.IsScam != nil && *attempt.IsScam {
-			kind = "мошенник"
-		}
-		base := scenario.AISystemPrompt
-		if strings.TrimSpace(base) == "" {
-			base = "Веди правдоподобный разговор о сделке."
-		}
-		system = fmt.Sprintf("%s\nТы %s. Не раскрывай свой тип. Данные сделки: %s. Рубрика: %s. Верни только строгий JSON с awarded_points (0,25,50,75,100), explanation, reply и risk_signals.", base, kind, jsonDocument(scenario.ProductContext), jsonDocument(scenario.FinalRubric))
-	} else {
-		system += "\nТы играешь роль мошенника в учебном диалоге. Не раскрывай роль напрямую.\nКонтекст: " + scenario.Description + "\nДанные сделки: " + jsonDocument(scenario.ProductContext) + "\nСхема риска: " + scenario.ScamScheme + "\nРубрика: " + jsonDocument(scenario.FinalRubric) + "\nКритерий шага: " + step.AIInstruction
-	}
-	messages := []AIMessage{{Role: "system", Content: system}}
-	start := 0
-	if len(history) > 8 {
-		start = len(history) - 8
-	}
-	for _, message := range history[start:] {
-		messages = append(messages, AIMessage{Role: string(message.Role), Content: message.Text})
-	}
-	messages = append(messages, AIMessage{Role: "user", Content: text})
-	raw, err := s.ai.Generate(ctx, messages)
-	if err != nil {
-		return AIResult{}, err
-	}
-	return DecodeAIResult(raw)
+	return s.evaluator.Evaluate(ctx, EvaluationRequest{Policy: PolicyFor(attempt.UserRole, riskType), RiskType: riskType, EvaluationContext: step.AIInstruction, Answer: text, History: tailMessages(history, 2)})
 }
 
-func jsonDocument(value domain.JSONObject) string {
-	encoded, err := json.Marshal(value)
-	if err != nil || value == nil {
-		return "{}"
+func (s *GameService) generateReply(ctx context.Context, attempt domain.Attempt, scenario domain.Scenario, step domain.ScenarioStep, history []domain.DialogueMessage, text, phase, summary string) (GeneratorResult, error) {
+	riskType := primaryRisk(scenario.ScamScheme)
+	kind := "мошенник"
+	if attempt.Mode == domain.AttemptModeFreePlay && attempt.IsScam != nil && !*attempt.IsScam {
+		kind = "обычный участник сделки"
 	}
-	return string(encoded)
+	tactics := tacticsForPhase(phase)
+	if kind == "обычный участник сделки" {
+		tactics = honestTacticsForPhase(phase)
+		riskType = "ordinary_transaction"
+	}
+	return s.generator.GenerateReply(ctx, GenerationRequest{Policy: PolicyFor(attempt.UserRole, riskType), RiskType: riskType, Phase: phase, AllowedTactics: tactics, ScenarioFacts: scenario.ProductContext, Summary: summary, History: tailMessages(history, 6), Answer: text, Fallback: step.FallbackMessage, CounterpartKind: kind})
+}
+
+func primaryRisk(value string) string {
+	if field := strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' }); len(field) > 0 {
+		return field[0]
+	}
+	return "social_engineering"
+}
+
+func tailMessages(history []domain.DialogueMessage, limit int) []domain.DialogueMessage {
+	if len(history) <= limit {
+		return history
+	}
+	return history[len(history)-limit:]
+}
+
+func phaseForTurn(turn int) string {
+	switch {
+	case turn <= 2:
+		return "hook"
+	case turn <= 4:
+		return "escalation"
+	case turn == 5:
+		return "critical_request"
+	default:
+		return "resolution"
+	}
+}
+
+func tacticsForPhase(phase string) []string {
+	return map[string][]string{"hook": {"rapport", "convenience"}, "escalation": {"urgency", "authority"}, "critical_request": {"payment", "credential_request"}, "resolution": {"last_chance", "withdrawal"}}[phase]
+}
+
+func honestTacticsForPhase(phase string) []string {
+	return map[string][]string{"hook": {"greeting", "product_question"}, "escalation": {"clarification", "in_service_details"}, "critical_request": {"in_service_offer", "safety_confirmation"}, "resolution": {"agreement", "polite_withdrawal"}}[phase]
+}
+
+func usesGeneratedDialogue(attempt domain.Attempt, scenario domain.Scenario) bool {
+	return attempt.Mode == domain.AttemptModeFreePlay || scenario.Level == "4"
+}
+
+func compactDialogueSummary(messages []domain.DialogueMessage) string {
+	cutoff := len(messages) - 6
+	if cutoff <= 0 {
+		return ""
+	}
+	var summary strings.Builder
+	for _, message := range messages[:cutoff] {
+		line := fmt.Sprintf("%s: %s; ", message.Role, strings.TrimSpace(message.Text))
+		if summary.Len()+len([]byte(line)) > 1100 {
+			break
+		}
+		summary.WriteString(line)
+	}
+	return strings.TrimSpace(summary.String())
 }
 
 func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.Scenario, answer domain.UserAnswer, userMessage, replyMessage domain.DialogueMessage, count int) (GameState, *Completion, error) {
@@ -600,15 +609,15 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 		return GameState{}, nil, err
 	}
 	raw += answer.AwardedPoints
-	attempt.Score = domain.NormalizedScore(raw, count*100)
-	attempt.Status = domain.AttemptStatusCompleted
-	attempt.FinishedAt = time.Now().UTC()
-	attempt.FreeTextCount = count
 	previousAnswers, err := s.repository.Answers(attempt.ID)
 	if err != nil {
 		return GameState{}, nil, err
 	}
 	allAnswers := append(previousAnswers, answer)
+	attempt.Score = domain.NormalizedScore(raw, len(allAnswers)*100)
+	attempt.Status = domain.AttemptStatusCompleted
+	attempt.FinishedAt = time.Now().UTC()
+	attempt.FreeTextCount = count
 	breakdown := make([]AnswerBreakdown, 0, len(allAnswers))
 	for _, item := range allAnswers {
 		entry := AnswerBreakdown{StepID: item.StepID, Points: item.AwardedPoints, Explanation: item.Explanation, FreeText: item.FreeText}
@@ -616,13 +625,15 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 			entry.OptionID = *item.OptionID
 		}
 		if item.Evaluation != nil {
-			entry.RiskSignals = item.Evaluation.RiskSignals
+			entry.RiskSignals = item.Evaluation.DetectedSignals
 		}
 		breakdown = append(breakdown, entry)
 	}
 	attempt.FinalBreakdown = breakdown
 	riskSignals := make([]string, 0)
 	seenRisk := make(map[string]struct{})
+	safeActions := make([]string, 0)
+	seenAction := make(map[string]struct{})
 	for _, item := range breakdown {
 		for _, signal := range item.RiskSignals {
 			if _, exists := seenRisk[signal]; !exists {
@@ -631,7 +642,18 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 			}
 		}
 	}
-	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), DecisionReview: breakdown, RiskSignals: riskSignals, TopicID: scenario.TopicID, IsScam: attempt.IsScam, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать секретные данные", "Остановиться при давлении"}}
+	for _, item := range allAnswers {
+		if item.Evaluation != nil && strings.TrimSpace(item.Evaluation.SafeAction) != "" {
+			if _, exists := seenAction[item.Evaluation.SafeAction]; !exists {
+				seenAction[item.Evaluation.SafeAction] = struct{}{}
+				safeActions = append(safeActions, item.Evaluation.SafeAction)
+			}
+		}
+	}
+	if len(safeActions) == 0 {
+		safeActions = []string{"Сохранять общение внутри сервиса", "Не передавать секретные данные", "Остановиться при давлении"}
+	}
+	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: domain.StarsFromScore(attempt.Score), DecisionReview: breakdown, RiskSignals: riskSignals, TopicID: scenario.TopicID, IsScam: attempt.IsScam, SafeActions: safeActions}
 	if err := s.repository.Complete(func(store GameCompletionStore) error {
 		if err := store.SaveAnswer(answer); err != nil {
 			return err
@@ -642,7 +664,7 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 		if err := store.SaveMessage(replyMessage); err != nil {
 			return err
 		}
-		if err := store.UpdateFreeTextCount(attempt.ID, count); err != nil {
+		if err := store.UpdateDialogueState(attempt.ID, count, attempt.DialoguePhase, attempt.CompactSummary); err != nil {
 			return err
 		}
 		if err := store.CompleteAttempt(attempt); err != nil {
@@ -710,6 +732,11 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 	userMessage := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleUser, Text: option.Text, CreatedAt: time.Now().UTC()}
 	next, nextErr := s.repository.Step(attempt.ScenarioID, attempt.CurrentStepNumber+1)
 	if nextErr == nil {
+		var reactionMessage *domain.DialogueMessage
+		if strings.TrimSpace(option.Reaction) != "" {
+			message := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleAssistant, Text: option.Reaction, CreatedAt: time.Now().UTC()}
+			reactionMessage = &message
+		}
 		var nextMessage *domain.DialogueMessage
 		visibleMessage := next.CounterpartyMessage
 		if strings.TrimSpace(visibleMessage) == "" {
@@ -726,6 +753,11 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 			}
 			if err := store.SaveMessage(userMessage); err != nil {
 				return err
+			}
+			if reactionMessage != nil {
+				if err := store.SaveMessage(*reactionMessage); err != nil {
+					return err
+				}
 			}
 			if nextMessage != nil {
 				if err := store.SaveMessage(*nextMessage); err != nil {
@@ -771,6 +803,11 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 	}
 	progress := domain.Progress{UserID: userID, LevelID: scenario.LevelID, TopicID: scenario.TopicID, UserRole: scenario.UserRole, BestScore: attempt.Score, Stars: stars, Attempts: 1, PassedAt: passedAt}
 	result := domain.AttemptResult{AttemptID: attempt.ID, Score: attempt.Score, Stars: stars, TopicID: scenario.TopicID, RiskSignals: []string{}, SafeActions: []string{"Сохранять общение внутри сервиса", "Не передавать коды и данные карты", "Проверять статус сделки самостоятельно"}}
+	var reactionMessage *domain.DialogueMessage
+	if strings.TrimSpace(option.Reaction) != "" {
+		message := domain.DialogueMessage{AttemptID: attemptID, Role: domain.MessageRoleAssistant, Text: option.Reaction, CreatedAt: time.Now().UTC()}
+		reactionMessage = &message
+	}
 	if err := s.repository.Complete(func(store GameCompletionStore) error {
 		answer.AwardedPoints, answer.Explanation = option.Points, option.Explanation
 		if err := store.SaveAnswer(answer); err != nil {
@@ -778,6 +815,11 @@ func (s *GameService) Submit(userID, attemptID, optionID int, expectedStepID ...
 		}
 		if err := store.SaveMessage(userMessage); err != nil {
 			return err
+		}
+		if reactionMessage != nil {
+			if err := store.SaveMessage(*reactionMessage); err != nil {
+				return err
+			}
 		}
 		if err := store.CompleteAttempt(attempt); err != nil {
 			return err

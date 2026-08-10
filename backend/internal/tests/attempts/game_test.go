@@ -6,24 +6,37 @@ import (
 	"anti-scam-trainer/backend/internal/features/attempts/service"
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 )
 
 type fakeAI struct {
-	result string
-	err    error
+	evaluation service.EvaluatorResult
+	generated  service.GeneratorResult
+	err        error
 }
 
-func (a fakeAI) Generate(context.Context, []service.AIMessage) (string, error) {
-	return a.result, a.err
+func (a fakeAI) Evaluate(context.Context, service.EvaluationRequest) (service.EvaluatorResult, error) {
+	if a.evaluation.Score == 0 {
+		a.evaluation = service.EvaluatorResult{Score: 4, RiskType: "social_engineering", Evaluation: "Безопасный ответ", SafeAction: "Остаться в сервисе"}
+	}
+	return a.evaluation, a.err
+}
+
+func (a fakeAI) GenerateReply(_ context.Context, input service.GenerationRequest) (service.GeneratorResult, error) {
+	if a.generated.Message == "" {
+		a.generated = service.GeneratorResult{Message: "Продолжим", Tactic: input.AllowedTactics[0], Phase: input.Phase}
+	}
+	return a.generated, a.err
 }
 
 func TestLevelThreeFreeTextIsPersistedOnlyAfterValidAIResult(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}}}
 	repo.steps = map[int]domain.ScenarioStep{1: {ID: 31, ScenarioID: 3, Number: 1, ResponseType: "mixed", MaxPoints: 100, AIInstruction: "Проверь отказ от внешней ссылки", FallbackMessage: "Оплатите доставку по ссылке"}}
-	game := service.NewGameWithAI(repo, fakeAI{result: `{"awarded_points":100,"explanation":"Безопасный отказ","reply":"Почему вы не доверяете ссылке?","risk_signals":["внешняя ссылка"]}`})
+	ai := fakeAI{evaluation: service.EvaluatorResult{Score: 4, IsSafe: true, RiskType: "social_engineering", Evaluation: "Безопасный отказ", SafeAction: "Остаться в сервисе", DetectedSignals: []string{"внешняя ссылка"}}}
+	game := service.NewGameWithAI(repo, ai, ai)
 
 	state, err := game.Start(1, 3, "buyer")
 	if err != nil || state.Step.ResponseType != "mixed" || len(state.Messages) != 1 {
@@ -39,6 +52,106 @@ func TestLevelThreeFreeTextIsPersistedOnlyAfterValidAIResult(t *testing.T) {
 	}
 }
 
+type recordingAI struct {
+	evaluations []service.EvaluationRequest
+	generations []service.GenerationRequest
+	results     []service.EvaluatorResult
+}
+
+func (a *recordingAI) Evaluate(_ context.Context, input service.EvaluationRequest) (service.EvaluatorResult, error) {
+	a.evaluations = append(a.evaluations, input)
+	result := a.results[0]
+	a.results = a.results[1:]
+	return result, nil
+}
+
+func (a *recordingAI) GenerateReply(_ context.Context, input service.GenerationRequest) (service.GeneratorResult, error) {
+	a.generations = append(a.generations, input)
+	return service.GeneratorResult{Message: "Сгенерированная реплика", Tactic: input.AllowedTactics[0], Phase: input.Phase}, nil
+}
+
+func TestLevelThreeUsesEvaluatorForExactlyTwoFreeAnswers(t *testing.T) {
+	repo := newGameRepository()
+	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}}}
+	repo.steps = map[int]domain.ScenarioStep{
+		1: {ID: 31, ScenarioID: 3, Number: 1, ResponseType: domain.ResponseTypeMultipleChoice, CounterpartyMessage: "Курьер уже ждёт", Options: []domain.ScenarioOption{{ID: 311, Text: "Проверю оформление", Reaction: "Времени мало", Points: 100}}},
+		2: {ID: 32, ScenarioID: 3, Number: 2, ResponseType: domain.ResponseTypeFreeText, CounterpartyMessage: "Внесите предоплату", AIInstruction: "Отказ от внешней формы", FallbackMessage: "Оформим внутри приложения"},
+		3: {ID: 33, ScenarioID: 3, Number: 3, ResponseType: domain.ResponseTypeFreeText, CounterpartyMessage: "Введите данные карты", AIInstruction: "Отказ от карты и штрафа", FallbackMessage: "Диалог завершён"},
+	}
+	ai := &recordingAI{results: []service.EvaluatorResult{
+		{Score: 2, RiskType: "phishing", Evaluation: "Сомнение сохраняет риск", SafeAction: "Не открывать форму"},
+		{Score: 4, IsSafe: true, RiskType: "phishing", Evaluation: "Безопасный отказ", SafeAction: "Прекратить сделку"},
+	}}
+	game := service.NewGameWithAI(repo, ai, ai)
+	state, err := game.Start(1, 3, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, completed, err := game.Submit(1, state.Attempt.ID, 311, 31)
+	if err != nil || completed != nil || state.Step.ID != 32 {
+		t.Fatalf("scripted answer = (%#v,%#v,%v)", state, completed, err)
+	}
+	first := "Сначала посмотрю форму"
+	state, completed, err = game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{StepID: intPointer(32), FreeText: &first})
+	if err != nil || completed != nil || state.Step.ID != 33 {
+		t.Fatalf("first free answer = (%#v,%#v,%v)", state, completed, err)
+	}
+	second := "Ничего вводить не буду, прекращаю сделку"
+	_, completed, err = game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{StepID: intPointer(33), FreeText: &second})
+	if err != nil || completed == nil || completed.Attempt.Score != 75 {
+		t.Fatalf("second free answer = (%#v,%v), want score 75", completed, err)
+	}
+	if len(ai.evaluations) != 2 || len(ai.generations) != 0 || ai.evaluations[0].EvaluationContext != "Отказ от внешней формы" || len(ai.evaluations[0].History) > 2 {
+		t.Fatalf("AI calls = evaluations %#v generations %#v", ai.evaluations, ai.generations)
+	}
+}
+
+func TestLevelFourUsesServerPhasesRollingHistoryAndSixTurnLimit(t *testing.T) {
+	repo := newGameRepository()
+	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}, {LevelID: 3, Stars: 1}}}
+	repo.steps = map[int]domain.ScenarioStep{}
+	for number := 1; number <= 4; number++ {
+		repo.steps[number] = domain.ScenarioStep{ID: 40 + number, ScenarioID: 4, Number: number, ResponseType: domain.ResponseTypeFreeText, CounterpartyMessage: "Реплика", AIInstruction: "Оценить безопасность", FallbackMessage: "Продолжим"}
+	}
+	results := make([]service.EvaluatorResult, 6)
+	for index := range results {
+		results[index] = service.EvaluatorResult{Score: 3, RiskType: "phishing", Evaluation: "Осторожный ответ", SafeAction: "Остаться в сервисе"}
+	}
+	ai := &recordingAI{results: results}
+	game := service.NewGameWithAI(repo, ai, ai)
+	state, err := game.Start(1, 4, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPhases := []string{"hook", "hook", "escalation", "escalation", "critical_request", "resolution"}
+	for turn := 1; turn <= 6; turn++ {
+		text := "Проверяю сделку только внутри приложения"
+		next, completed, submitErr := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text})
+		if submitErr != nil {
+			t.Fatalf("turn %d: %v", turn, submitErr)
+		}
+		if (turn < 6) != (completed == nil) {
+			t.Fatalf("turn %d completion=%#v", turn, completed)
+		}
+		if turn < 6 {
+			state = next
+		}
+	}
+	if len(ai.evaluations) != 6 || len(ai.generations) != 6 {
+		t.Fatalf("AI calls=(evaluations=%d generations=%d)", len(ai.evaluations), len(ai.generations))
+	}
+	for index, generation := range ai.generations {
+		if generation.Phase != wantPhases[index] || len(generation.History) > 6 {
+			t.Fatalf("generation %d=%#v", index+1, generation)
+		}
+	}
+	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "resolution" {
+		t.Fatalf("persisted dialogue state=%#v, fifth request=%#v", repo.attempts[state.Attempt.ID], ai.generations[4])
+	}
+}
+
+func intPointer(value int) *int { return &value }
+
 func TestAIFailureLeavesAnswerAndDialogueUnchanged(t *testing.T) {
 	cases := []struct {
 		name string
@@ -46,14 +159,14 @@ func TestAIFailureLeavesAnswerAndDialogueUnchanged(t *testing.T) {
 		want error
 	}{
 		{name: "timeout", ai: fakeAI{err: service.ErrAIUnavailable}, want: service.ErrAIUnavailable},
-		{name: "invalid JSON", ai: fakeAI{result: `{"awarded_points":100`}, want: service.ErrAIInvalidResponse},
+		{name: "invalid response", ai: fakeAI{err: service.ErrAIInvalidResponse}, want: service.ErrAIInvalidResponse},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			repo := newGameRepository()
 			repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}}}
 			repo.steps = map[int]domain.ScenarioStep{1: {ID: 31, ScenarioID: 3, Number: 1, ResponseType: "mixed", MaxPoints: 100, FallbackMessage: "Начальная реплика"}}
-			game := service.NewGameWithAI(repo, test.ai)
+			game := service.NewGameWithAI(repo, test.ai, test.ai)
 			state, err := game.Start(1, 3, "buyer")
 			if err != nil {
 				t.Fatal(err)
@@ -74,8 +187,9 @@ func TestAIFailureLeavesAnswerAndDialogueUnchanged(t *testing.T) {
 func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequestedAnswer(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"seller": {{LevelID: 4, Stars: 1}}}
-	ai := fakeAI{result: `{"awarded_points":75,"explanation":"Осторожная стратегия","reply":"Хорошо, продолжим в сервисе","risk_signals":["давление"]}`}
-	game := service.NewGameWithDependencies(repo, ai, func() bool { return false })
+	evaluation := service.EvaluatorResult{Score: 3, RiskType: "ordinary_transaction", Evaluation: "Осторожная стратегия", SafeAction: "Остаться в сервисе", DetectedSignals: []string{"давление"}}
+	ai := &recordingAI{results: []service.EvaluatorResult{evaluation, evaluation, evaluation}}
+	game := service.NewGameWithDependencies(repo, ai, ai, func() bool { return false })
 	state, err := game.StartFreePlay(context.Background(), 1, "seller")
 	if err != nil || state.Attempt.IsScam == nil || *state.Attempt.IsScam || len(state.Messages) != 1 {
 		t.Fatalf("StartFreePlay() = (%#v, %v), want hidden honest counterpart and first message", state, err)
@@ -100,23 +214,41 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 			t.Fatalf("decision step %d has id %d", index+1, item.StepID)
 		}
 	}
+	if len(ai.evaluations) != 3 || len(ai.generations) != 4 {
+		t.Fatalf("honest counterpart AI calls=(eval=%d, gen=%d)", len(ai.evaluations), len(ai.generations))
+	}
+	for _, request := range ai.generations {
+		if request.CounterpartKind != "обычный участник сделки" || request.RiskType != "ordinary_transaction" || containsString(request.AllowedTactics, "payment") || containsString(request.AllowedTactics, "credential_request") {
+			t.Fatalf("honest counterpart received scam policy: %#v", request)
+		}
+	}
 }
 
-func TestFreePlayCompletesAutomaticallyOnFifthAnswer(t *testing.T) {
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func TestFreePlayCompletesAutomaticallyOnSixthAnswer(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 4, Stars: 1}}}
-	game := service.NewGameWithDependencies(repo, fakeAI{result: `{"awarded_points":75,"explanation":"Безопасно","reply":"Продолжим","risk_signals":[]}`}, func() bool { return true })
+	ai := fakeAI{evaluation: service.EvaluatorResult{Score: 3, RiskType: "social_engineering", Evaluation: "Безопасно", SafeAction: "Остаться в сервисе"}}
+	game := service.NewGameWithDependencies(repo, ai, ai, func() bool { return true })
 	state, err := game.StartFreePlay(context.Background(), 1, "buyer")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for turn := 1; turn <= 5; turn++ {
+	for turn := 1; turn <= 6; turn++ {
 		text := "Проверяю условия сделки в сервисе"
 		_, completed, submitErr := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &text})
 		if submitErr != nil {
 			t.Fatalf("turn %d: %v", turn, submitErr)
 		}
-		if (turn < 5) != (completed == nil) {
+		if (turn < 6) != (completed == nil) {
 			t.Fatalf("turn %d completion = %#v", turn, completed)
 		}
 	}
@@ -125,7 +257,8 @@ func TestFreePlayCompletesAutomaticallyOnFifthAnswer(t *testing.T) {
 func TestFinalFreeTextWriteRollsBackAtomically(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"seller": {{LevelID: 4, Stars: 1}}}
-	game := service.NewGameWithDependencies(repo, fakeAI{result: `{"awarded_points":100,"explanation":"Безопасно","reply":"Продолжим","risk_signals":[]}`}, func() bool { return true })
+	ai := fakeAI{}
+	game := service.NewGameWithDependencies(repo, ai, ai, func() bool { return true })
 	state, err := game.StartFreePlay(context.Background(), 1, "seller")
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +284,8 @@ func TestFreePlayStartDoesNotLeaveAttemptWithoutOpeningMessage(t *testing.T) {
 	repo := newGameRepository()
 	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 4, Stars: 1}}}
 	repo.failStartFreePlay = true
-	game := service.NewGameWithDependencies(repo, fakeAI{result: `{"awarded_points":0,"explanation":"Старт","reply":"Первая реплика","risk_signals":[]}`}, func() bool { return true })
+	ai := fakeAI{generated: service.GeneratorResult{Message: "Первая реплика", Tactic: "rapport", Phase: "hook"}}
+	game := service.NewGameWithDependencies(repo, ai, ai, func() bool { return true })
 	if _, err := game.StartFreePlay(context.Background(), 1, "buyer"); err == nil {
 		t.Fatal("start succeeded, want storage failure")
 	}
@@ -186,6 +320,70 @@ func TestGameCompletesOnlyAfterLastAnswer(t *testing.T) {
 	}
 	if repo.progress.Stars != 3 || repo.progress.UserRole != "buyer" {
 		t.Fatalf("progress=%#v, want buyer three stars", repo.progress)
+	}
+}
+
+func TestOptionReactionPrecedesNextScriptedMessage(t *testing.T) {
+	repo := newGameRepository()
+	repo.steps[1].Options[0].Reaction = "Поторопитесь, предложение скоро исчезнет"
+	game := service.NewGame(repo)
+	state, err := game.Start(1, 1, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	next, completed, err := game.Submit(1, state.Attempt.ID, 11)
+	if err != nil || completed != nil {
+		t.Fatalf("Submit() = (%#v, %#v, %v)", next, completed, err)
+	}
+	want := []string{"Первая реплика", "", "Поторопитесь, предложение скоро исчезнет", "Вторая реплика"}
+	if len(next.Messages) != len(want) {
+		t.Fatalf("messages = %#v, want %d ordered messages", next.Messages, len(want))
+	}
+	want[1] = next.Step.Options[0].Text
+	for index, text := range want {
+		if next.Messages[index].Text != text {
+			t.Fatalf("message %d = %q, want %q", index, next.Messages[index].Text, text)
+		}
+	}
+}
+
+func TestEmptyOptionReactionDoesNotCreateMessage(t *testing.T) {
+	repo := newGameRepository()
+	game := service.NewGame(repo)
+	state, err := game.Start(1, 1, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, _, err := game.Submit(1, state.Attempt.ID, 11)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(next.Messages) != 3 {
+		t.Fatalf("messages = %#v, want opening, answer and next scripted message", next.Messages)
+	}
+}
+
+func TestFinalOptionReactionIsPersisted(t *testing.T) {
+	repo := newGameRepository()
+	step := repo.steps[2]
+	step.Options[0].Reaction = "Последняя реакция собеседника"
+	repo.steps[2] = step
+	game := service.NewGame(repo)
+	state, err := game.Start(1, 1, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, _, err = game.Submit(1, state.Attempt.ID, 11)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, completed, err := game.Submit(1, state.Attempt.ID, 21)
+	if err != nil || completed == nil {
+		t.Fatalf("final Submit()=(%#v,%v)", completed, err)
+	}
+	if got := repo.messages[len(repo.messages)-1].Text; got != "Последняя реакция собеседника" {
+		t.Fatalf("last message=%q", got)
 	}
 }
 
@@ -276,7 +474,7 @@ func (r *gameRepository) FreePlayConfig(role string) (domain.FreePlayConfig, err
 	return domain.FreePlayConfig{UserRole: role, ProductContext: domain.JSONObject{"item": "товар"}, SystemPrompt: "Веди диалог", FinalRubric: domain.JSONObject{"safe": 100}}, nil
 }
 func (r *gameRepository) Scenario(id int) (domain.Scenario, error) {
-	return domain.Scenario{ID: id, LevelID: id, UserRole: "buyer", AISystemPrompt: "Верни JSON"}, nil
+	return domain.Scenario{ID: id, Level: strconv.Itoa(id), LevelID: id, UserRole: "buyer", ScamScheme: "phishing", AISystemPrompt: "Верни JSON"}, nil
 }
 func (r *gameRepository) FindInProgress(user, scenario int) (domain.Attempt, error) {
 	for _, a := range r.attempts {
@@ -385,9 +583,11 @@ func (r *gameRepository) SaveMessage(message domain.DialogueMessage) error {
 	r.messages = append(r.messages, message)
 	return nil
 }
-func (r *gameRepository) UpdateFreeTextCount(id, count int) error {
+func (r *gameRepository) UpdateDialogueState(id, count int, phase, summary string) error {
 	a := r.attempts[id]
 	a.FreeTextCount = count
+	a.DialoguePhase = phase
+	a.CompactSummary = summary
 	r.attempts[id] = a
 	return nil
 }

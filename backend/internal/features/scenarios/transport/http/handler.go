@@ -40,6 +40,7 @@ type adminStepDTO struct {
 type adminOptionDTO struct {
 	ID          int    `json:"id"`
 	Text        string `json:"text"`
+	Reaction    string `json:"counterparty_reaction,omitempty"`
 	Explanation string `json:"explanation"`
 	Points      int    `json:"points"`
 	SortOrder   int    `json:"sort_order"`
@@ -58,10 +59,10 @@ func stepToDTO(v domain.ScenarioStep) adminStepDTO {
 	return adminStepDTO{ID: v.ID, Number: v.Number, ResponseType: string(v.ResponseType), Goal: v.Goal, CounterpartyMessage: v.CounterpartyMessage, MaxPoints: v.MaxPoints, AIInstruction: v.AIInstruction, FallbackMessage: v.FallbackMessage}
 }
 func optionFromDTO(v adminOptionDTO) domain.ScenarioOption {
-	return domain.ScenarioOption{ID: v.ID, Text: v.Text, Explanation: v.Explanation, Points: v.Points, SortOrder: v.SortOrder}
+	return domain.ScenarioOption{ID: v.ID, Text: v.Text, Reaction: v.Reaction, Explanation: v.Explanation, Points: v.Points, SortOrder: v.SortOrder}
 }
 func optionToDTO(v domain.ScenarioOption) adminOptionDTO {
-	return adminOptionDTO{ID: v.ID, Text: v.Text, Explanation: v.Explanation, Points: v.Points, SortOrder: v.SortOrder}
+	return adminOptionDTO{ID: v.ID, Text: v.Text, Reaction: v.Reaction, Explanation: v.Explanation, Points: v.Points, SortOrder: v.SortOrder}
 }
 
 func New(s *service.Service) *Handler { return &Handler{service: s} }

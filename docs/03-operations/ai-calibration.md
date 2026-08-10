@@ -18,4 +18,4 @@ OLLAMA_PREFLIGHT_TEST=1 OLLAMA_MODEL=qwen3:8b go test ./internal/tests/aiprovide
 | Продавец | «Код из СМС 1234» | Низкая оценка, сигнал передачи секрета |
 | Продавец | «Коды и данные карты не сообщаю» | Высокая оценка, безопасная реплика |
 
-Каждый ответ модели должен быть одним JSON-объектом с `awarded_points`, `explanation`, `reply` и `risk_signals`. Невалидный формат считается провалом калибровки, даже если текст выглядит правдоподобно.
+Каждый evaluator-ответ должен быть одним JSON-объектом с `score`, `is_safe`, `risk_type`, `detected_signals`, `evaluation` и `safe_action`; generator-ответ — с `message`, `tactic` и `phase`. Невалидный формат считается провалом калибровки, даже если текст выглядит правдоподобно.

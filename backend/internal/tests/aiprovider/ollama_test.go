@@ -55,6 +55,37 @@ func TestOllamaGeneratesVirtualInterlocutorMessage(t *testing.T) {
 	}
 }
 
+func TestOllamaUsesSeparateStructuredProfiles(t *testing.T) {
+	requests := make([]map[string]any, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		requests = append(requests, request)
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"{}"},"done":true,"prompt_eval_count":10,"eval_count":2}`))
+	}))
+	defer server.Close()
+	provider := mustProvider(t, aiprovider.Config{URL: server.URL, Model: "qwen3:8b", ContextWindowTokens: 8192})
+	schema := map[string]any{"type": "object", "additionalProperties": false}
+	_, err := provider.GenerateStructured(context.Background(), aiprovider.StructuredRequest{Messages: []aiprovider.Message{{Role: aiprovider.RoleUser, Content: "evaluate"}}, Schema: schema, OutputTokens: 240, Temperature: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.GenerateStructured(context.Background(), aiprovider.StructuredRequest{Messages: []aiprovider.Message{{Role: aiprovider.RoleUser, Content: "generate"}}, Schema: schema, OutputTokens: 120, Temperature: .3, TopP: .8, TopK: 20, RepeatPenalty: 1.1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 2 || requests[0]["think"] != false || requests[1]["think"] != false {
+		t.Fatalf("requests = %#v", requests)
+	}
+	firstOptions := requests[0]["options"].(map[string]any)
+	secondOptions := requests[1]["options"].(map[string]any)
+	if firstOptions["num_predict"] != float64(240) || secondOptions["num_predict"] != float64(120) || secondOptions["temperature"] != .3 || requests[0]["format"] == nil {
+		t.Fatalf("structured profiles = %#v", requests)
+	}
+}
+
 func TestOllamaDistinguishesFailures(t *testing.T) {
 	tests := []struct {
 		name    string

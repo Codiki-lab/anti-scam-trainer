@@ -15,6 +15,8 @@
 - `POST /attempts/{id}/answers` требует актуальный `step_id` и ровно одно из `option_id` и `free_text`; устаревший Шаг возвращает `STALE_STEP`.
 - Закрытая прогрессией Теория, Quiz или Уровень возвращает `CONTENT_UNAVAILABLE`; недостаточная роль доступа возвращает `FORBIDDEN`.
 - В административных DTO `product_context` и `final_rubric` передаются JSON-объектами, а не строками с вложенным JSON.
+- Административный вариант ответа принимает необязательное `counterparty_reaction` до 280 символов. После выбора GameState показывает Сообщения в порядке «Ответ пользователя → реакция → следующая общая реплика»; пустая реакция пропускается.
+- Публичные GameState и Result не возвращают policy, контекст evaluator-а, rubric, compact summary или фазу generator-а.
 - Ошибка AI возвращается как `502` или `503` и гарантирует отсутствие изменений Прохождения.
 - Ограничение частоты возвращает `429`, `RATE_LIMITED`, целочисленный `Retry-After` и общий error envelope; отклонённая AI-операция не меняет GameState.
 - Credentialed CORS разрешён только origin из `FRONTEND_ORIGINS`; для демо предпочтителен same-origin `/api` через Nginx.
@@ -43,5 +45,6 @@
 - `POST /api/v1/admin/topics/{id}/publish|deactivate|restore` — проверяемые lifecycle-переходы.
 - `/api/v1/admin/topics/{id}/theory-blocks` и `/api/v1/admin/topics/{id}/quiz-questions` с вложенными `/options` — CRUD Теории и Quiz только в черновой Теме.
 - Все маршруты требуют роль доступа `admin`; пользовательские методы показывают только `published` и никогда не возвращают `is_correct`.
+- `/api/v1/admin/steps/{id}/options` поддерживает `counterparty_reaction` в create/update DTO; поле не добавляется к публичному `GameOption`.
 
 Подробные DTO, примеры и статусы находятся в каноническом OpenAPI. Восстановление пароля, рейтинг и пользовательская админка не входят в MVP.
