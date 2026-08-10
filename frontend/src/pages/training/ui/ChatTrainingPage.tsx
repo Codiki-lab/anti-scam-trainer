@@ -21,8 +21,10 @@ export function ChatTrainingPage({ preview }: ChatTrainingPageProps) {
   const state = useTrainingSession(attemptId, preview)
 
   useEffect(() => {
-    if (state.result) navigate(`${isPreview ? '/preview' : ''}/sessions/${attemptId}/result`)
-  }, [attemptId, isPreview, navigate, state.result])
+    if (state.result || state.session?.status === 'COMPLETED') {
+      navigate(`${isPreview ? '/preview' : ''}/sessions/${attemptId}/result`, { replace: true })
+    }
+  }, [attemptId, isPreview, navigate, state.result, state.session?.status])
 
   if (!isPreview && !parsedAttemptId) {
     return <InvalidRouteState backTo="/chats" backLabel="К тренировкам" />
@@ -45,7 +47,11 @@ export function ChatTrainingPage({ preview }: ChatTrainingPageProps) {
       session={state.session}
       isSubmitting={state.isSubmitting}
       error={state.error}
+      cooldown={state.cooldown}
       onSubmit={state.submit}
+      onAbandon={async () => {
+        if (await state.abandon()) navigate(`${isPreview ? '/preview' : ''}/chats`)
+      }}
     />
   )
 }

@@ -1,35 +1,83 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { TrainingAnswer, TrainingSession } from '@/entities/training'
-import { uiStyles } from '@/shared/ui-kit'
+import { ConfirmDialog, uiStyles } from '@/shared/ui-kit'
 import styles from './TrainingChat.module.scss'
 
 interface TrainingChatProps {
   session: TrainingSession
   isSubmitting: boolean
   error: string
-  onSubmit: (answer: TrainingAnswer) => void
+  cooldown: number
+  onSubmit: (answer: TrainingAnswer) => Promise<boolean>
+  onAbandon: () => Promise<void>
 }
 
-export function TrainingChat({ session, isSubmitting, error, onSubmit }: TrainingChatProps) {
+const dealMethodLabels = {
+  delivery: 'Avito Доставка',
+  meetup: 'Личная встреча',
+  pickup: 'Самовывоз',
+}
+
+export function TrainingChat({
+  session,
+  isSubmitting,
+  error,
+  cooldown,
+  onSubmit,
+  onAbandon,
+}: TrainingChatProps) {
   const [freeText, setFreeText] = useState('')
+  const [selectedOptionId, setSelectedOptionId] = useState<number>()
+  const [finishOpen, setFinishOpen] = useState(false)
+  const [abandonOpen, setAbandonOpen] = useState(false)
   const acceptsText = session.mode === 'mixed' || session.mode === 'free_text'
 
-  const submitText = () => {
+  useEffect(() => {
+    setSelectedOptionId(undefined)
+    setFreeText('')
+  }, [session.step.id])
+
+  const submitText = async (finish = false) => {
     const text = freeText.trim()
     if (!text) return
-    onSubmit({ type: 'text', stepId: session.step.id, text })
-    setFreeText('')
+    const succeeded = await onSubmit({ type: 'text', stepId: session.step.id, text, finish })
+    if (succeeded) setFreeText('')
+    setFinishOpen(false)
   }
+
+  const selectedOption = session.step.options.find((option) => option.id === selectedOptionId)
+  const price = session.productContext.price
+    ? new Intl.NumberFormat('ru-RU').format(session.productContext.price) + ' ₽'
+    : 'Цена не указана'
 
   return (
     <section className={styles.layout}>
       <div className={styles.main}>
         <div className={styles.header}>
           <div>
-            <small>Прохождение · Шаг {session.step.number}</small>
-            <h2>Безопасная сделка</h2>
+            <small>
+              {session.topicTitle} · {session.level ? `Уровень ${session.level}` : 'Свободная игра'}
+            </small>
+            <h2>{session.scenarioTitle}</h2>
+            <p>{session.scenarioDescription}</p>
           </div>
-          <span className={uiStyles.tag}>В процессе</span>
+          <div className={styles.headerActions}>
+            <span className={uiStyles.tag}>
+              Шаг {session.progress.currentStep} из {session.progress.totalSteps}
+            </span>
+            <button
+              type="button"
+              className={styles.abandonButton}
+              onClick={() => setAbandonOpen(true)}
+            >
+              Выйти
+            </button>
+          </div>
+        </div>
+        <div className={styles.compactProduct} aria-label="Контекст товара">
+          <b>{session.productContext.itemTitle}</b>
+          <span>{price}</span>
+          <small>{dealMethodLabels[session.productContext.dealMethod]}</small>
         </div>
         <div className={styles.messages}>
           {session.messages.map((message, index) => (
@@ -48,13 +96,28 @@ export function TrainingChat({ session, isSubmitting, error, onSubmit }: Trainin
                 key={option.id}
                 disabled={isSubmitting}
                 type="button"
-                onClick={() =>
-                  onSubmit({ type: 'option', stepId: session.step.id, optionId: option.id })
-                }
+                className={selectedOptionId === option.id ? styles.selectedOption : undefined}
+                aria-pressed={selectedOptionId === option.id}
+                onClick={() => setSelectedOptionId(option.id)}
               >
                 {option.text}
               </button>
             ))}
+            <button
+              className={`${uiStyles.primaryButton} ${styles.confirmButton}`}
+              disabled={!selectedOption || isSubmitting}
+              type="button"
+              onClick={async () => {
+                if (!selectedOption) return
+                await onSubmit({
+                  type: 'option',
+                  stepId: session.step.id,
+                  optionId: selectedOption.id,
+                })
+              }}
+            >
+              {isSubmitting ? 'Отправляем…' : 'Подтвердить ответ'}
+            </button>
           </div>
         )}
         {acceptsText && (
@@ -67,26 +130,86 @@ export function TrainingChat({ session, isSubmitting, error, onSubmit }: Trainin
             />
             <button
               className={`${uiStyles.primaryButton} ${styles.sendButton}`}
-              disabled={isSubmitting || !freeText.trim()}
+              disabled={isSubmitting || cooldown > 0 || !freeText.trim()}
               type="button"
-              onClick={submitText}
+              onClick={() => void submitText(false)}
             >
-              Отправить
+              {isSubmitting ? 'Отправляем…' : cooldown > 0 ? `Через ${cooldown} сек.` : 'Отправить'}
             </button>
+            {session.canFinishEarly && (
+              <button
+                className={uiStyles.secondaryButton}
+                type="button"
+                onClick={() => setFinishOpen(true)}
+                disabled={isSubmitting || cooldown > 0 || !freeText.trim()}
+              >
+                Завершить этим ответом
+              </button>
+            )}
           </div>
+        )}
+        {isSubmitting && (
+          <p className={styles.typing} role="status">
+            Собеседник печатает… Это может занять до 30 секунд.
+          </p>
         )}
         {error && <p className={uiStyles.formError}>{error}</p>}
       </div>
-      <aside className={styles.side}>
+      <aside className={styles.side} aria-label="Контекст товара и сделки">
         <p className={uiStyles.eyebrow}>Контекст сделки</p>
-        <h3>Сохраните сделку безопасной</h3>
-        <p>{session.step.counterpartyMessage}</p>
+        <div className={styles.productImage} aria-hidden="true">
+          {session.productContext.imageKey ? '📦' : '🛍️'}
+        </div>
+        <h3>{session.productContext.itemTitle}</h3>
+        <strong className={styles.price}>{price}</strong>
+        <dl>
+          <div>
+            <dt>Категория</dt>
+            <dd>{session.productContext.category}</dd>
+          </div>
+          <div>
+            <dt>Сделка</dt>
+            <dd>{dealMethodLabels[session.productContext.dealMethod]}</dd>
+          </div>
+          {session.productContext.location && (
+            <div>
+              <dt>Локация</dt>
+              <dd>{session.productContext.location}</dd>
+            </div>
+          )}
+          <div>
+            <dt>Ваша роль</dt>
+            <dd>{session.userRole === 'buyer' ? 'Покупатель' : 'Продавец'}</dd>
+          </div>
+          <div>
+            <dt>Собеседник</dt>
+            <dd>{session.counterpartyRole === 'buyer' ? 'Покупатель' : 'Продавец'}</dd>
+          </div>
+        </dl>
         <div className={styles.riskNote}>
           <b>Помните</b>
           <br />
           Не сообщайте секретные данные и не уходите на сторонние страницы.
         </div>
       </aside>
+      <ConfirmDialog
+        open={finishOpen}
+        title="Завершить Прохождение?"
+        description="Текущий текст станет последним Ответом пользователя и перейдёт в Result."
+        confirmLabel="Завершить"
+        isPending={isSubmitting}
+        onClose={() => setFinishOpen(false)}
+        onConfirm={() => void submitText(true)}
+      />
+      <ConfirmDialog
+        open={abandonOpen}
+        title="Отказаться от Прохождения?"
+        description="Незавершённое Прохождение будет закрыто без Result и не изменит Прогресс."
+        confirmLabel="Отказаться"
+        isPending={isSubmitting}
+        onClose={() => setAbandonOpen(false)}
+        onConfirm={() => void onAbandon()}
+      />
     </section>
   )
 }
