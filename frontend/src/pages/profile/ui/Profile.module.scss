@@ -183,22 +183,23 @@
 
 .achievement {
   display: grid;
-  grid-template-columns: 46px 1fr;
+  grid-template-columns: 72px 1fr;
   min-height: 154px;
-  gap: 15px;
+  gap: 18px;
   padding: 20px;
   border: 1px solid #eeeef0;
   border-radius: 15px;
   color: #95959d;
   background: #fafafa;
 
-  > span {
+  > .achievementPicture {
     display: grid;
-    width: 46px;
-    height: 46px;
-    border-radius: 13px;
+    width: 72px;
+    height: 72px;
+    border-radius: 20px;
     place-items: center;
-    background: #ececf0;
+    color: #8b8c96;
+    background: linear-gradient(145deg, #f0f0f3, #e4e5e9);
   }
 
   h3 {
@@ -259,9 +260,10 @@
   color: #34343a;
   background: #fff;
 
-  > span {
+  > .achievementPicture {
     color: #fff;
-    background: var(--color-accent);
+    background: linear-gradient(145deg, #18aee7, #006f9f);
+    box-shadow: 0 10px 24px rgb(0 111 159 / 20%);
   }
 }
 

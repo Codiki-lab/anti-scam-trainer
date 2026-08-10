@@ -83,12 +83,36 @@
   justify-self: end;
 }
 
-.options {
+.replyOptions,
+.composer {
   display: grid;
   gap: 9px;
   margin-bottom: 15px;
 
-  > button:not(.sendButton) {
+  > p {
+    margin: 0 0 2px;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    text-align: right;
+  }
+
+  textarea {
+    min-height: 96px;
+    padding: 14px;
+    resize: vertical;
+    border: 1px solid #dcdce1;
+    border-radius: 14px 14px 4px;
+    outline-color: var(--color-accent);
+  }
+}
+
+.replyOptions {
+  > p {
+    text-align: left;
+  }
+
+  > button:not(.confirmReplyButton) {
+    width: 100%;
     padding: 16px;
     border: 1px solid #e1e1e5;
     border-radius: 10px;
@@ -107,18 +131,9 @@
       box-shadow: 0 0 0 2px rgb(0 170 255 / 18%);
     }
   }
-
-  textarea {
-    min-height: 96px;
-    padding: 14px;
-    resize: vertical;
-    border: 1px solid #dcdce1;
-    border-radius: 10px;
-    outline-color: var(--color-accent);
-  }
 }
 
-.confirmButton {
+.confirmReplyButton {
   justify-self: end;
 }
 

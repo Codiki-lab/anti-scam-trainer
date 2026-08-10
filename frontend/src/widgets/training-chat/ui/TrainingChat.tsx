@@ -41,7 +41,7 @@ export function TrainingChat({
   const [selectedOptionId, setSelectedOptionId] = useState<number>()
   const [finishOpen, setFinishOpen] = useState(false)
   const [abandonOpen, setAbandonOpen] = useState(false)
-  const acceptsText = session.mode === 'mixed' || session.mode === 'free_text'
+  const acceptsText = session.step.options.length === 0
 
   useEffect(() => {
     setSelectedOptionId(undefined)
@@ -57,6 +57,7 @@ export function TrainingChat({
   }
 
   const selectedOption = session.step.options.find((option) => option.id === selectedOptionId)
+
   let answerIndex = 0
   const dialogueHistory = session.messages.map((message) => {
     if (message.role !== 'user') return message
@@ -112,7 +113,8 @@ export function TrainingChat({
           ))}
         </div>
         {session.step.options.length > 0 && (
-          <div className={styles.options}>
+          <div className={styles.replyOptions} aria-label="Готовые ответы пользователя">
+            <p>Выберите, что ответить</p>
             {session.step.options.map((option) => (
               <button
                 key={option.id}
@@ -126,27 +128,28 @@ export function TrainingChat({
               </button>
             ))}
             <button
-              className={`${uiStyles.primaryButton} ${styles.confirmButton}`}
+              className={`${uiStyles.primaryButton} ${styles.confirmReplyButton}`}
               disabled={!selectedOption || isSubmitting}
               type="button"
-              onClick={async () => {
+              onClick={() => {
                 if (!selectedOption) return
-                await onSubmit({
+                void onSubmit({
                   type: 'option',
                   stepId: session.step.id,
                   optionId: selectedOption.id,
                 })
               }}
             >
-              {isSubmitting ? 'Отправляем…' : 'Подтвердить ответ'}
+              {isSubmitting ? 'Отправляем…' : 'Отправить реплику'}
             </button>
           </div>
         )}
         {acceptsText && (
-          <div className={styles.options}>
+          <div className={styles.composer}>
             <textarea
               maxLength={400}
-              placeholder="Напишите безопасный ответ…"
+              aria-label="Ответ пользователя"
+              placeholder="Напишите ответ собеседнику…"
               value={freeText}
               onChange={(event) => setFreeText(event.target.value)}
             />

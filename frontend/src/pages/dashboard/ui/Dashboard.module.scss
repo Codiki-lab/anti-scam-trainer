@@ -151,6 +151,10 @@
 }
 
 .topicCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
   min-height: 210px;
   padding: 20px;
   border: 1px solid var(--color-border);
@@ -170,26 +174,34 @@
   h3 {
     margin: 6px 0 7px;
     font-size: 17px;
+    overflow-wrap: anywhere;
   }
 
   p {
-    min-height: 55px;
     color: var(--color-text-muted);
     font-size: 13px;
     line-height: 1.4;
+    overflow-wrap: anywhere;
   }
 }
 
-.topicIcon {
+.topicCardHeader {
   display: grid;
-  width: 34px;
-  height: 34px;
-  margin-bottom: 17px;
-  border-radius: 10px;
-  place-items: center;
+  justify-items: center;
+  gap: 9px;
+}
+
+.topicCardBody {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+}
+
+.topicProgressLabel {
+  margin-top: auto;
   color: #006f9f;
-  background: #e8f7ff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -283,6 +295,24 @@
   gap: 15px;
   justify-items: end;
   text-align: right;
+}
+
+.levelDots {
+  display: flex;
+  gap: 10px;
+}
+
+.levelDot,
+.completedLevelDot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #0aa8f5;
+  border-radius: 50%;
+}
+
+.completedLevelDot {
+  background: #0aa8f5;
 }
 
 @media (max-width: 840px) {
