@@ -24,6 +24,11 @@ type DailyTaskRepository interface {
 	AnswerDailyTask(userID int, activityDate time.Time, answer bool) (domain.DailyTask, domain.Streak, error)
 }
 
+type RecommendationRepository interface {
+	FindRecommendation(userID int, activityDate time.Time, role domain.UserRole) (domain.ContinueAction, bool, error)
+	SaveRecommendation(userID int, activityDate time.Time, role domain.UserRole, action domain.ContinueAction) error
+}
+
 type ContentRepository interface {
 	ListContent() ([]domain.Topic, error)
 	Content(id int) (domain.TopicContent, error)

@@ -17,6 +17,7 @@ export function TrainingPage({ preview }: { preview?: TrainingPreview }) {
   const { account } = useCurrentAccount()
   const role = account.trainingRole
   const isPreview = useIsPreview()
+  const basePath = isPreview ? '/preview' : ''
   const [searchParams, setSearchParams] = useSearchParams()
   const { topics, isLoading: areTopicsLoading } = useTopics(role, preview?.topics)
   const selectedTopicId = parsePositiveInteger(searchParams.get('topic'))
@@ -70,7 +71,13 @@ export function TrainingPage({ preview }: { preview?: TrainingPreview }) {
         </p>
       </div>
       {error && <p className={uiStyles.formError}>{error}</p>}
-      <TrainingList topic={topic} levels={levels} isStarting={isStarting} onStart={startLevel} />
+      <TrainingList
+        topic={topic}
+        levels={levels}
+        isStarting={isStarting}
+        onStart={startLevel}
+        basePath={basePath}
+      />
     </>
   )
 }

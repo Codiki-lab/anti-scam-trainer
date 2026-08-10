@@ -1,4 +1,5 @@
 import { LockKey } from '@phosphor-icons/react'
+import { Link } from 'react-router-dom'
 import type { LevelState } from '@/entities/training'
 import type { Topic } from '@/entities/learning'
 import { Stars } from '@/shared/stars'
@@ -10,28 +11,49 @@ interface TrainingListProps {
   levels: LevelState[]
   isStarting: boolean
   onStart: (level: number) => void
+  basePath: string
 }
 
-export function TrainingList({ topic, levels, isStarting, onStart }: TrainingListProps) {
+const mechanics = {
+  multiple_choice: 'Выберите однозначно безопасный вариант и подтвердите решение.',
+  similar_choice: 'Сравните похожие ответы и найдите наиболее безопасный.',
+  mixed: 'Сначала выберите вариант, затем сформулируйте ответ своими словами.',
+  free_text: 'Ведите диалог самостоятельно без готовых формулировок.',
+}
+
+export function TrainingList({ topic, levels, isStarting, onStart, basePath }: TrainingListProps) {
   return (
     <div className={styles.list}>
       {topic.levels.map((progress) => {
         const level = levels.find((item) => item.number === progress.number)
-        const isOpened = level?.isOpened ?? progress.isOpened
+        const isOpened = level?.isOpened ?? false
 
         return (
           <div className={`${styles.row} ${isOpened ? '' : styles.locked}`} key={progress.number}>
             <div>
               <small>Уровень {progress.number}</small>
-              <h2>{topic.title}</h2>
-              <p>{topic.description}</p>
+              <h2>{level?.scenarioTitle ?? topic.title}</h2>
+              <p>{level?.scenarioDescription ?? topic.description}</p>
+              {level && <p className={styles.mechanic}>{mechanics[level.responseType]}</p>}
               <span className={`${uiStyles.tag} ${isOpened ? '' : styles.lockedTag}`}>
                 {!isOpened && <LockKey aria-hidden="true" size={15} weight="bold" />}
-                {isOpened ? 'Доступен' : 'Откроется после прошлого уровня'}
+                {isOpened
+                  ? 'Доступен'
+                  : progress.number === 1
+                    ? 'Пройдите Quiz минимум на 80%'
+                    : `Получите хотя бы одну Звезду за Уровень ${progress.number - 1}`}
               </span>
             </div>
             <div className={styles.action}>
               <Stars value={progress.stars} />
+              <small>
+                Лучший Балл: {progress.bestScore} · Прохождений: {progress.attempts}
+              </small>
+              {progress.lastAttemptId && (
+                <Link to={`${basePath}/sessions/${progress.lastAttemptId}/result`}>
+                  Последний Result →
+                </Link>
+              )}
               <button
                 className={`${uiStyles.primaryButton} ${isOpened ? '' : styles.lockedButton}`}
                 disabled={isStarting || !isOpened}
@@ -39,7 +61,15 @@ export function TrainingList({ topic, levels, isStarting, onStart }: TrainingLis
                 onClick={() => onStart(progress.number)}
               >
                 {!isOpened && <LockKey aria-hidden="true" size={18} weight="bold" />}
-                {isStarting ? 'Запускаем…' : isOpened ? 'Начать' : 'Закрыто'}
+                {isStarting
+                  ? 'Запускаем…'
+                  : !isOpened
+                    ? 'Закрыто'
+                    : level?.inProgressAttemptId
+                      ? 'Продолжить'
+                      : progress.attempts > 0
+                        ? 'Попробовать снова'
+                        : 'Начать'}
               </button>
             </div>
           </div>

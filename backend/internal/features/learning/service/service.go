@@ -121,7 +121,7 @@ func (s *Service) Dashboard(userID int, role domain.UserRole) (domain.User, []do
 	if err != nil {
 		return domain.User{}, nil, nil, nil, nil, err
 	}
-	action := s.continueAction(userID, role, topics)
+	action := s.stableContinueAction(userID, role, topics)
 	profileTopics := append([]domain.Topic{}, topics...)
 	otherRole := domain.UserRoleBuyer
 	if role == domain.UserRoleBuyer {
@@ -148,6 +148,22 @@ func (s *Service) Dashboard(userID int, role domain.UserRole) (domain.User, []do
 		task = &value
 	}
 	return user, topics, achievements, action, task, nil
+}
+
+func (s *Service) stableContinueAction(userID int, role domain.UserRole, topics []domain.Topic) *domain.ContinueAction {
+	recommendations, ok := s.repository.(RecommendationRepository)
+	if !ok {
+		return s.continueAction(userID, role, topics)
+	}
+	date := s.activityDate()
+	if saved, exists, err := recommendations.FindRecommendation(userID, date, role); err == nil && exists {
+		return &saved
+	}
+	action := s.continueAction(userID, role, topics)
+	if action != nil {
+		_ = recommendations.SaveRecommendation(userID, date, role, *action)
+	}
+	return action
 }
 func (s *Service) AnswerDailyTask(userID int, answer *bool) (domain.DailyTask, domain.Streak, error) {
 	if answer == nil {

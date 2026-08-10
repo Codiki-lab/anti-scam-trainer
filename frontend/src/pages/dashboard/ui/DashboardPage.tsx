@@ -11,6 +11,7 @@ import { uiStyles } from '@/shared/ui-kit'
 import { DailyTaskModal } from '@/widgets/daily-task'
 import { TopicCard } from './TopicCard'
 import { TrainingRow } from './TrainingRow'
+import { getContinuePath } from '../lib/getContinuePath'
 import styles from './Dashboard.module.scss'
 
 export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboard }) {
@@ -33,6 +34,23 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
 
   const completedTopics = dashboard.topics.filter((topic) => topic.isCompleted).length
   const progress = Math.round((completedTopics / Math.max(dashboard.topics.length, 1)) * 100)
+  const action = dashboard.continueAction
+  const actionTopic = dashboard.topics.find((topic) => topic.id === action?.topicId)
+  const actionCopy = action
+    ? {
+        resume_attempt: ['Продолжить Прохождение', 'Вернитесь к сохранённому Шагу сделки.'],
+        read_theory: ['Читать Теорию', 'Начните с пяти коротких учебных блоков.'],
+        take_quiz: ['Пройти Quiz', 'Наберите не менее 80%, чтобы открыть практику.'],
+        start_level: [
+          `Начать Уровень ${action.level ?? 1}`,
+          'Примените знания в реалистичной сделке.',
+        ],
+        start_free_play: [
+          'Начать Свободную игру',
+          'Проверьте весь навык без заранее известного типа собеседника.',
+        ],
+      }[action.type]
+    : ['Выбрать следующую Тему', 'Продолжите независимый Прогресс этой ролевой ветки.']
 
   return (
     <>
@@ -45,6 +63,39 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
               Небольшие задания помогут вовремя заметить опасный сигнал.
             </p>
             <TrainingRoleSelector />
+            <aside className={styles.recommendation} aria-label="Рекомендованное действие">
+              <div>
+                <span>Рекомендуем продолжить</span>
+                <h2>{actionCopy[0]}</h2>
+                <p>
+                  {actionTopic ? `${actionTopic.title}. ` : ''}
+                  {actionCopy[1]}
+                </p>
+                {action?.level && (
+                  <small>
+                    Уровень {action.level} ·{' '}
+                    {actionTopic?.levels.find((level) => level.number === action.level)?.stars ?? 0}{' '}
+                    из 3 Звёзд
+                  </small>
+                )}
+              </div>
+              {action?.type === 'start_free_play' ? (
+                <button
+                  className={uiStyles.primaryButton}
+                  type="button"
+                  disabled={isFreePlayStarting}
+                  onClick={() =>
+                    void startFreePlay().then((message) => setFreePlayError(message ?? ''))
+                  }
+                >
+                  {isFreePlayStarting ? 'Запускаем…' : actionCopy[0]}
+                </button>
+              ) : (
+                <Link className={uiStyles.primaryButton} to={getContinuePath(action, basePath)}>
+                  {actionCopy[0]}
+                </Link>
+              )}
+            </aside>
           </div>
           <div className={styles.topicsSection}>
             <div className={uiStyles.sectionHeading}>
@@ -80,8 +131,13 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
               <span>Свободная игра</span>
               <h3>Диалог без подсказок</h3>
               <p>Сложность подстроится под ваши знания и результаты тренировок.</p>
+              <small>
+                {completedTopics === 6
+                  ? 'Открыта: завершены 6 из 6 Тем.'
+                  : `Закрыта: завершите все 6 Темы этой ролевой ветки (${completedTopics}/6).`}
+              </small>
               <button
-                disabled={isFreePlayStarting}
+                disabled={isFreePlayStarting || completedTopics < 6}
                 type="button"
                 onClick={() =>
                   void startFreePlay().then((message) => setFreePlayError(message ?? ''))
