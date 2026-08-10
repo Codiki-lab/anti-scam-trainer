@@ -11,10 +11,10 @@
   background: #fff;
   font-synthesis: none;
 
-  --color-accent: #00aaff;
-  --color-accent-hover: #0099e6;
+  --color-accent: #006f9f;
+  --color-accent-hover: #005f89;
   --color-text: #0b0b0c;
-  --color-text-muted: #777780;
+  --color-text-muted: #5b5b64;
   --color-border: #e8e8eb;
   --color-surface: #f6f6f7;
   --page-width: 1240px;
@@ -44,6 +44,7 @@ button,
 input,
 select,
 textarea {
+  min-height: 44px;
   font: inherit;
 }
 

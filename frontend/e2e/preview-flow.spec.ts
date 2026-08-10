@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 
 test('preview user can open the main learning flow', async ({ page }) => {
   await page.goto('/preview/login')
@@ -25,6 +26,9 @@ test('free play stays locked until all topics are completed', async ({ page }) =
 test('navigation and focus remain accessible at every breakpoint', async ({ page }) => {
   await page.goto('/preview/dashboard')
 
+  const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+  expect(accessibility.violations).toEqual([])
+
   await expect(page.getByRole('link', { name: 'Главная', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
@@ -45,13 +49,19 @@ test('navigation and focus remain accessible at every breakpoint', async ({ page
 
   const viewport = page.viewportSize()
   if (viewport && viewport.width <= 560) {
-    const targets = await page.locator('nav a').evaluateAll((links) =>
-      links.map((link) => {
-        const rect = link.getBoundingClientRect()
-        return { width: rect.width, height: rect.height }
-      }),
-    )
-    expect(targets.some(({ width, height }) => width >= 44 && height >= 44)).toBe(true)
+    const targets = await page
+      .locator('button:visible, input:visible, select:visible, textarea:visible, nav a:visible')
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect()
+          return {
+            name: element.getAttribute('aria-label') || element.textContent,
+            width: rect.width,
+            height: rect.height,
+          }
+        }),
+      )
+    expect(targets.filter(({ width, height }) => width < 44 || height < 44)).toEqual([])
   }
 })
 

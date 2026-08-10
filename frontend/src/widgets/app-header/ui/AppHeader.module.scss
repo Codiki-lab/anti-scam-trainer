@@ -22,7 +22,7 @@
     display: grid;
     place-items: center;
     border-bottom: 2px solid transparent;
-    color: #85858d;
+    color: #5b5b64;
     font-size: 14px;
 
     &:hover,
@@ -51,12 +51,12 @@
 
 .avatar {
   display: grid;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 50%;
   place-items: center;
-  color: #0088cc;
+  color: #006f9f;
   background: #e5f6ff;
   font-weight: 800;
 }
@@ -75,7 +75,7 @@
   box-shadow: 0 10px 28px rgb(0 0 0 / 11%);
 
   span {
-    color: #777780;
+    color: #5b5b64;
     font-size: 13px;
   }
 
@@ -130,7 +130,7 @@
       }
 
       &.active {
-        color: #007db8;
+        color: #00658f;
         font-weight: 700;
       }
     }
