@@ -33,6 +33,7 @@ test('returning seller completes the saved smartphone attempt through HTTP API',
   await expect(page.getByText('75/100')).toBeVisible()
   await expect(page.getByLabel('2 из 3 звёзд')).toBeVisible()
   await expect(page.getByText('Новые достижения')).toBeVisible()
+  await expect(page.getByText(/Серия 3 дня/)).toBeVisible()
 
   await page.getByRole('link', { name: 'Мой прогресс' }).click()
   await expect(page.getByRole('heading', { name: 'Прогресс' })).toBeVisible()
