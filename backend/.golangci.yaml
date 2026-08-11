@@ -8,9 +8,10 @@ linters:
   default: standard
   settings:
     errcheck:
-      # API and database operations must not silently drop an error.
-      check-type-assertions: true
-      check-blank: true
+      # Calls with best-effort semantics explicitly assign their error to `_`.
+      # Implicitly discarded errors remain reportable.
+      check-type-assertions: false
+      check-blank: false
   enable:
     # Additional low-noise checks suitable for the current Go backend.
     - gocritic

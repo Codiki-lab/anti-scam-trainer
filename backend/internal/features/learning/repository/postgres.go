@@ -255,8 +255,6 @@ func (r *PostgresRepository) SubmitQuiz(userID, topicID int, answers []domain.Qu
 		if err := refreshTopicCompletion(tx, userID, topicID); err != nil {
 			return err
 		}
-		if passed {
-		}
 		result.Streak, _, err = recordActivity(tx, userID, activityDate)
 		return err
 	})

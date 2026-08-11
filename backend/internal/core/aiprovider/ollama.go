@@ -212,10 +212,13 @@ func (o *Ollama) generate(ctx context.Context, input StructuredRequest) (Result,
 		}
 		return Result{}, &TransportError{Err: err}
 	}
-	defer response.Body.Close()
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return Result{}, &TransportError{Err: fmt.Errorf("read ollama response: %w", err)}
+	responseBody, readErr := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		return Result{}, &TransportError{Err: fmt.Errorf("read ollama response: %w", readErr)}
+	}
+	if closeErr != nil {
+		return Result{}, &TransportError{Err: fmt.Errorf("close ollama response: %w", closeErr)}
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return Result{}, &OllamaError{StatusCode: response.StatusCode, Body: string(responseBody)}

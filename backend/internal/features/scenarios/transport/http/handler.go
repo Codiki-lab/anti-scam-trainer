@@ -120,10 +120,12 @@ func (h *Handler) scenario(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "invalid scenario", 400)
 		return
 	}
-	if len(parts) == 1 {
-		if r.Method == http.MethodDelete {
+	switch {
+	case len(parts) == 1:
+		switch r.Method {
+		case http.MethodDelete:
 			err = h.service.Archive(id)
-		} else if r.Method == http.MethodPut {
+		case http.MethodPut:
 			var input adminScenarioDTO
 			if request.DecodeJSON(r, &input) != nil {
 				response.Error(w, "invalid JSON", 400)
@@ -131,17 +133,17 @@ func (h *Handler) scenario(w http.ResponseWriter, r *http.Request) {
 			}
 			input.ID = id
 			err = h.service.Update(scenarioFromDTO(input))
-		} else {
+		default:
 			response.Error(w, "method not allowed", 405)
 			return
 		}
-	} else if parts[1] == "publish" && r.Method == http.MethodPost {
+	case len(parts) > 1 && parts[1] == "publish" && r.Method == http.MethodPost:
 		err = h.service.Publish(id)
-	} else if parts[1] == "deactivate" && r.Method == http.MethodPost {
+	case len(parts) > 1 && parts[1] == "deactivate" && r.Method == http.MethodPost:
 		err = h.service.Deactivate(id)
-	} else if parts[1] == "restore" && r.Method == http.MethodPost {
+	case len(parts) > 1 && parts[1] == "restore" && r.Method == http.MethodPost:
 		err = h.service.Restore(id)
-	} else if parts[1] == "steps" && r.Method == http.MethodPost {
+	case len(parts) > 1 && parts[1] == "steps" && r.Method == http.MethodPost:
 		var input adminStepDTO
 		if request.DecodeJSON(r, &input) != nil {
 			response.Error(w, "invalid JSON", 400)
@@ -156,15 +158,16 @@ func (h *Handler) scenario(w http.ResponseWriter, r *http.Request) {
 		}
 		response.JSONStatus(w, stepToDTO(created), 201)
 		return
-	} else if len(parts) == 3 && parts[1] == "steps" {
+	case len(parts) == 3 && parts[1] == "steps":
 		stepID, parseErr := strconv.Atoi(parts[2])
 		if parseErr != nil {
 			response.Error(w, "invalid step", http.StatusBadRequest)
 			return
 		}
-		if r.Method == http.MethodDelete {
+		switch r.Method {
+		case http.MethodDelete:
 			err = h.service.DeleteStep(stepID)
-		} else if r.Method == http.MethodPut {
+		case http.MethodPut:
 			var input adminStepDTO
 			if request.DecodeJSON(r, &input) != nil {
 				response.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -173,11 +176,11 @@ func (h *Handler) scenario(w http.ResponseWriter, r *http.Request) {
 			step := stepFromDTO(input)
 			step.ID, step.ScenarioID = stepID, id
 			err = h.service.UpdateStep(step)
-		} else {
+		default:
 			response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-	} else {
+	default:
 		response.Error(w, "method not allowed", 405)
 		return
 	}
@@ -228,9 +231,10 @@ func (h *Handler) step(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "invalid option", http.StatusBadRequest)
 		return
 	}
-	if r.Method == http.MethodDelete {
+	switch r.Method {
+	case http.MethodDelete:
 		err = h.service.DeleteOption(optionID)
-	} else if r.Method == http.MethodPut {
+	case http.MethodPut:
 		var input adminOptionDTO
 		if request.DecodeJSON(r, &input) != nil {
 			response.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -239,7 +243,7 @@ func (h *Handler) step(w http.ResponseWriter, r *http.Request) {
 		option := optionFromDTO(input)
 		option.ID, option.StepID = optionID, id
 		err = h.service.UpdateOption(option)
-	} else {
+	default:
 		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}

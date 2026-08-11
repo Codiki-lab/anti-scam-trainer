@@ -27,7 +27,7 @@ func TestPostgresHTTPPublishesAndServesCompleteTopicAggregate(t *testing.T) {
 		t.Skip("POSTGRES_TEST_NAME is not set")
 	}
 	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	learningRepo := learningrepository.NewPostgres(db)
 	scenarioRepo := scenariosrepository.NewPostgres(db)

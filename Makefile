@@ -4,11 +4,12 @@
 export
 export PROJECT_ROOT := $(CURDIR)
 
-COMPOSE := docker compose --env-file backend/.env -f deploy/docker-compose.yml
-COMPOSE_OLLAMA := docker compose \
+COMPOSE := docker compose \
+	--project-name anti-scam-trainer \
 	--env-file backend/.env \
 	-f deploy/docker-compose.yml \
 	-f deploy/docker-compose.ollama.yml
+COMPOSE_OLLAMA := $(COMPOSE) --profile ollama
 
 .PHONY: help env setup build up down logs lint test gateway-regression demo-reset db-reset \
 	build-ollama up-ollama down-ollama logs-ollama ollama-init ollama-reset \

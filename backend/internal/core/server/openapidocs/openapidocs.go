@@ -14,10 +14,14 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	switch request.URL.Path {
 	case "/openapi/v1.yaml":
 		writer.Header().Set("Content-Type", "application/yaml; charset=utf-8")
-		_, _ = writer.Write(openapi.V1())
+		if _, err := writer.Write(openapi.V1()); err != nil {
+			return
+		}
 	case "/swagger/":
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = writer.Write([]byte(swaggerUI))
+		if _, err := writer.Write([]byte(swaggerUI)); err != nil {
+			return
+		}
 	default:
 		http.NotFound(writer, request)
 	}

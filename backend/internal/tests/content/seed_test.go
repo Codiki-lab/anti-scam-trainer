@@ -20,7 +20,7 @@ func TestPublishedContentMatrix(t *testing.T) {
 		t.Skip("POSTGRES_TEST_NAME is not set")
 	}
 	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var topics, theory, quiz, scenarios int
 	_, err := db.QueryOne(pg.Scan(&topics, &theory, &quiz, &scenarios), `SELECT (SELECT COUNT(*) FROM topics),(SELECT COUNT(*) FROM theory_blocks),(SELECT COUNT(*) FROM quiz_questions),(SELECT COUNT(*) FROM chats WHERE content_status='published' AND archived_at IS NULL)`)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestAvitoScenariosReplaceTenTemplatesAndPreserveArchivedReferences(t *testi
 		t.Skip("POSTGRES_TEST_NAME is not set")
 	}
 	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var publishedReplacements, archivedTemplates, preservedPublished, steps, options, reactions int
 	_, err := db.QueryOne(pg.Scan(&publishedReplacements, &archivedTemplates, &preservedPublished, &steps, &options, &reactions), `SELECT
 		(SELECT COUNT(*) FROM chats WHERE content_status='published' AND archived_at IS NULL AND product_context?'content_key'),
@@ -213,7 +213,7 @@ func TestCompleteAvitoCurriculumReplacesEveryPublishedScenario(t *testing.T) {
 		t.Skip("POSTGRES_TEST_NAME is not set")
 	}
 	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var topics, theoryBlocks, questions, quizOptions, scenarios, steps, options, reactions, archived int
 	_, err := db.QueryOne(pg.Scan(&topics, &theoryBlocks, &questions, &quizOptions, &scenarios, &steps, &options, &reactions, &archived), `SELECT
@@ -297,7 +297,7 @@ func TestLearningActivityAwardsStreakAchievements(t *testing.T) {
 		t.Skip("POSTGRES_TEST_NAME is not set")
 	}
 	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var userID, topicID int
 	_, err := db.QueryOne(pg.Scan(&userID), `INSERT INTO users(username,password_hash,access_role,training_role,current_streak,longest_streak,last_activity_date) VALUES('streak-learning-test','hash','user','buyer',2,2,'2026-08-08') RETURNING id`)
 	if err != nil {
@@ -358,7 +358,7 @@ func TestPostgresDailyTaskAndTopicLifecycle(t *testing.T) {
 		t.Skip("POSTGRES_TEST_NAME is not set")
 	}
 	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var userID, topicID int
 	if _, err := db.QueryOne(pg.Scan(&userID), `INSERT INTO users(username,password_hash,access_role,training_role) VALUES('daily-content-test','hash','user','buyer') RETURNING id`); err != nil {
 		t.Fatal(err)
@@ -406,7 +406,7 @@ func TestProgressStatsExcludeAbandonedAttempts(t *testing.T) {
 		t.Skip("POSTGRES_TEST_NAME is not set")
 	}
 	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var userID, chatID int
 	_, err := db.QueryOne(pg.Scan(&userID), `INSERT INTO users(username,password_hash,access_role,training_role) VALUES('progress-stats-test','hash','user','buyer') RETURNING id`)
 	if err != nil {
