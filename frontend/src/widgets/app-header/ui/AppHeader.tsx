@@ -48,10 +48,7 @@ export function AppHeader({ account, basePath = '' }: AppHeaderProps) {
         <Brand />
         <nav className={styles.nav} aria-label="Основная навигация">
           {account.accessRole === 'admin' && !basePath && (
-            <Link
-              className={isActive('/admin') ? styles.active : undefined}
-              to="/admin"
-            >
+            <Link className={isActive('/admin') ? styles.active : undefined} to="/admin">
               Админ-панель
             </Link>
           )}
