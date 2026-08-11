@@ -1,18 +1,107 @@
-name: GitHub Actions Demo
-run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
-on: [push]
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  Explore-GitHub-Actions:
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
-      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
-      - name: Check out repository code
-        uses: actions/checkout@v6
-      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
-      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-      - name: List files in the repository
-        run: |
-          ls ${{ github.workspace }}
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.10.1
+          working-directory: backend
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Check frontend formatting
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Lint frontend code
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Type-check frontend code
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Run Go unit and contract tests with race detector
+        working-directory: backend
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Upload Go coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: backend/coverage.out
+          if-no-files-found: error
+
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: npm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Compose images
+        run: make build
+
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Prepare local configuration
+        run: make env
+
+      - name: Apply migrations
+        run: make migrate-up
+
+      - name: Roll back the latest migration
+        run: make migrate-down
+
+      - name: Apply migrations again
+        run: make migrate-up
+
+      - name: Stop migration database
+        if: always()
+        run: make down
