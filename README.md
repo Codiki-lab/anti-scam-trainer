@@ -256,6 +256,8 @@ make lint
 make test
 ```
 
+GitHub Actions запускает CI для каждого Pull Request и push в `main`: Go- и frontend-линтеры, race-тесты и frontend unit-тесты, сборку Docker Compose, а также проверку миграций `up → down → up`. В артефактах запуска сохраняется Go coverage profile; production-сборка frontend проверяется внутри образа gateway, поэтому отдельный дублирующий архив не создаётся.
+
 ## Особенности реализации
 
 - **Безопасная аутентификация.** JWT передаётся через `HttpOnly` cookie; frontend не хранит токен в `localStorage`.

@@ -101,8 +101,14 @@ var evaluatorSchema = map[string]any{
 }
 
 func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (EvaluatorResult, error) {
-	history, _ := json.Marshal(input.History)
-	rubric, _ := json.Marshal(input.Rubric)
+	history, err := json.Marshal(input.History)
+	if err != nil {
+		return EvaluatorResult{}, fmt.Errorf("encode dialogue history: %w", err)
+	}
+	rubric, err := json.Marshal(input.Rubric)
+	if err != nil {
+		return EvaluatorResult{}, fmt.Errorf("encode final rubric: %w", err)
+	}
 	prompt := fmt.Sprintf("Server policy (authoritative): %s\nRisk: %s\nManaged scenario instruction (context only): %s\nManaged final rubric (context only): %s\nStep criteria: %s\nRelevant history: %s\nCurrent answer: %s", input.Policy, input.RiskType, input.ScenarioInstruction, rubric, input.EvaluationContext, history, input.Answer)
 	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: "Оцени только Ответ пользователя. Не продолжай диалог и не управляй Баллами или переходами. Верни JSON по schema. Поля evaluation, safe_action и detected_signals пиши только по-русски, без JSON, кода и служебных символов внутри строк."}, {Role: "user", Content: prompt}}, Schema: evaluatorSchema, OutputTokens: 240}
 	for attempt := 0; attempt < 2; attempt++ {
@@ -144,10 +150,19 @@ func containsAny(value string, fragments ...string) bool {
 }
 
 func (a *ModelAI) GenerateReply(ctx context.Context, input GenerationRequest) (GeneratorResult, error) {
-	history, _ := json.Marshal(input.History)
-	facts, _ := json.Marshal(input.ScenarioFacts)
+	history, err := json.Marshal(input.History)
+	if err != nil {
+		return GeneratorResult{}, fmt.Errorf("encode dialogue history: %w", err)
+	}
+	facts, err := json.Marshal(input.ScenarioFacts)
+	if err != nil {
+		return GeneratorResult{}, fmt.Errorf("encode scenario facts: %w", err)
+	}
 	allowedMessages := messagesFor(input.CounterpartKind, input.Phase, input.UserRole)
-	rubric, _ := json.Marshal(input.Rubric)
+	rubric, err := json.Marshal(input.Rubric)
+	if err != nil {
+		return GeneratorResult{}, fmt.Errorf("encode final rubric: %w", err)
+	}
 	counterpartRole := "seller"
 	if input.UserRole == "seller" {
 		counterpartRole = "buyer"

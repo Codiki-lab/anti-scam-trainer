@@ -103,9 +103,10 @@ describe('TrainingChat', () => {
     const user = userEvent.setup()
     let resolveSubmit: (value: boolean) => void = () => undefined
     const onSubmit = vi.fn(
-      () => new Promise<boolean>((resolve) => {
-        resolveSubmit = resolve
-      }),
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSubmit = resolve
+        }),
     )
     render(
       <TrainingChat

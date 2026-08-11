@@ -150,7 +150,7 @@ func (s *adminLearningStore) CreateQuizOption(v domain.QuizOption) (domain.QuizO
 		for i, q := range x.Quiz {
 			if q.ID == v.QuestionID {
 				v.ID = len(q.Options) + 1
-				x.Quiz[i].Options = append(q.Options, v)
+				x.Quiz[i].Options = append(x.Quiz[i].Options, v)
 				s.topics[id] = x
 				return v, nil
 			}

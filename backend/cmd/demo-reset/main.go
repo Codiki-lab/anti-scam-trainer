@@ -21,20 +21,25 @@ func main() {
 		Password: os.Getenv("POSTGRES_PASSWORD"),
 		Database: env("POSTGRES_NAME", os.Getenv("POSTGRES_DB")),
 	})
-	defer func() { _ = db.Close() }()
-
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("demo reset: close database: %v", err)
+		}
+	}()
 	if _, err := db.Exec(`SELECT 1`); err != nil {
-		log.Fatalf("demo reset: database is unavailable: %v", err)
+		log.Printf("demo reset: database is unavailable: %v", err)
+		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(demoPassword), bcrypt.DefaultCost)
 	if err != nil {
-		log.Fatalf("demo reset: hash password: %v", err)
+		log.Printf("demo reset: hash password: %v", err)
+		return
 	}
 	if err := reset(db, string(hash)); err != nil {
-		log.Fatalf("demo reset: %v", err)
+		log.Printf("demo reset: %v", err)
+		return
 	}
-
 	fmt.Printf("Demo account is ready: %s / %s\n", demoUsername, demoPassword)
 }
 

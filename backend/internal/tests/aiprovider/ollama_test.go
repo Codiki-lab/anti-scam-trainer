@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -122,8 +123,14 @@ func TestOllamaReturnsCallerCancellation(t *testing.T) {
 
 func TestOllamaTimeoutIsTransportErrorAndDoesNotRetry(t *testing.T) {
 	calls := 0
+	var callsMu sync.Mutex
+	requestStarted := make(chan struct{})
+	var startedOnce sync.Once
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		callsMu.Lock()
 		calls++
+		callsMu.Unlock()
+		startedOnce.Do(func() { close(requestStarted) })
 		time.Sleep(50 * time.Millisecond)
 	}))
 	defer server.Close()
@@ -133,6 +140,13 @@ func TestOllamaTimeoutIsTransportErrorAndDoesNotRetry(t *testing.T) {
 	if !errors.As(err, &transportError) {
 		t.Fatalf("error = %T (%v), want TransportError", err, err)
 	}
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the request to reach Ollama")
+	}
+	callsMu.Lock()
+	defer callsMu.Unlock()
 	if calls != 1 {
 		t.Fatalf("calls = %d, want exactly one request", calls)
 	}

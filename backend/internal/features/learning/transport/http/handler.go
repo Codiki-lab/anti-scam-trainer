@@ -456,11 +456,12 @@ func (h *AdminHandler) topic(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, "method not allowed", 405)
 			return
 		}
-		if parts[1] == "publish" {
+		switch parts[1] {
+		case "publish":
 			err = h.service.Publish(topicID)
-		} else if parts[1] == "deactivate" {
+		case "deactivate":
 			err = h.service.Deactivate(topicID)
-		} else {
+		default:
 			err = h.service.Restore(topicID)
 		}
 		if err != nil {
@@ -532,15 +533,16 @@ func (h *AdminHandler) theory(w http.ResponseWriter, r *http.Request, topicID in
 		response.Error(w, "invalid theory block", 400)
 		return
 	}
-	if r.Method == http.MethodDelete {
+	switch r.Method {
+	case http.MethodDelete:
 		err = h.service.DeleteTheory(topicID, id)
-	} else if r.Method == http.MethodPut {
+	case http.MethodPut:
 		if request.DecodeStrictJSON(r, &input) != nil {
 			response.Error(w, "invalid JSON", 400)
 			return
 		}
 		err = h.service.UpdateTheory(domain.TheoryBlock{ID: id, TopicID: topicID, SortOrder: input.SortOrder, Kind: input.Kind, Title: input.Title, Body: input.Body})
-	} else {
+	default:
 		response.Error(w, "method not allowed", 405)
 		return
 	}
@@ -576,15 +578,16 @@ func (h *AdminHandler) questions(w http.ResponseWriter, r *http.Request, topicID
 		return
 	}
 	if len(rest) == 1 {
-		if r.Method == http.MethodDelete {
+		switch r.Method {
+		case http.MethodDelete:
 			err = h.service.DeleteQuestion(topicID, questionID)
-		} else if r.Method == http.MethodPut {
+		case http.MethodPut:
 			if request.DecodeStrictJSON(r, &input) != nil {
 				response.Error(w, "invalid JSON", 400)
 				return
 			}
 			err = h.service.UpdateQuestion(domain.QuizQuestion{ID: questionID, TopicID: topicID, SortOrder: input.SortOrder, Text: input.Text, Explanation: input.Explanation})
-		} else {
+		default:
 			response.Error(w, "method not allowed", 405)
 			return
 		}
@@ -626,15 +629,16 @@ func (h *AdminHandler) options(w http.ResponseWriter, r *http.Request, topicID, 
 		response.Error(w, "invalid quiz option", 400)
 		return
 	}
-	if r.Method == http.MethodDelete {
+	switch r.Method {
+	case http.MethodDelete:
 		err = h.service.DeleteOption(topicID, questionID, id)
-	} else if r.Method == http.MethodPut {
+	case http.MethodPut:
 		if request.DecodeStrictJSON(r, &input) != nil {
 			response.Error(w, "invalid JSON", 400)
 			return
 		}
 		err = h.service.UpdateOption(topicID, domain.QuizOption{ID: id, QuestionID: questionID, SortOrder: input.SortOrder, Text: input.Text, Correct: input.IsCorrect})
-	} else {
+	default:
 		response.Error(w, "method not allowed", 405)
 		return
 	}

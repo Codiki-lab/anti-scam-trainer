@@ -11,7 +11,7 @@ import (
 type PostgresRepository struct{ db *pg.DB }
 
 type userRecord struct {
-	tableName        struct{}  `sql:"users"`
+	tableName        struct{}  `sql:"users"` //nolint:unused // Used by go-pg through reflection.
 	ID               int       `pg:"id,pk"`
 	Username         string    `pg:"username,notnull"`
 	PasswordHash     string    `pg:"password_hash,notnull"`

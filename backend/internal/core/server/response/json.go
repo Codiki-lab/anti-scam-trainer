@@ -8,11 +8,15 @@ import (
 
 func JSON(writer http.ResponseWriter, payload any) {
 	writer.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(writer).Encode(payload)
+	if err := json.NewEncoder(writer).Encode(payload); err != nil {
+		return
+	}
 }
 
 func JSONStatus(writer http.ResponseWriter, payload any, status int) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
-	_ = json.NewEncoder(writer).Encode(payload)
+	if err := json.NewEncoder(writer).Encode(payload); err != nil {
+		return
+	}
 }

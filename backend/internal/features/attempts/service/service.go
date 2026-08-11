@@ -691,7 +691,7 @@ func (s *GameService) completeFreeText(attempt domain.Attempt, scenario domain.S
 	if err != nil {
 		return GameState{}, nil, err
 	}
-	allAnswers := append(previousAnswers, answer)
+	allAnswers := append(append([]domain.UserAnswer{}, previousAnswers...), answer)
 	attempt.Score = domain.NormalizedScore(raw, len(allAnswers)*100)
 	attempt.Status = domain.AttemptStatusCompleted
 	attempt.FinishedAt = time.Now().UTC()

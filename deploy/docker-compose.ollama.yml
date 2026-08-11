@@ -2,6 +2,7 @@ services:
   anti-scam-trainer-ollama:
     image: ollama/ollama:0.32.6
     container_name: anti-scam-trainer-ollama
+    profiles: [ollama]
     ports:
       - "11434:11434"
     volumes:
@@ -15,6 +16,7 @@ services:
 
   anti-scam-trainer-ollama-init:
     image: ollama/ollama:0.32.6
+    profiles: [ollama]
     env_file:
       - ${PROJECT_ROOT}/backend/.env
     environment:

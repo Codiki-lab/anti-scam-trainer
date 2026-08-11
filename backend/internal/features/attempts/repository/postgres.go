@@ -14,7 +14,7 @@ import (
 type PostgresRepository struct{ db *pg.DB }
 
 type attemptRecord struct {
-	tableName         struct{}  `sql:"chat_sessions"`
+	tableName         struct{}  `sql:"chat_sessions"` //nolint:unused // Used by go-pg through reflection.
 	ID                int       `pg:"id,pk"`
 	UserID            int       `pg:"user_id,notnull"`
 	ChatID            int       `pg:"chat_id,notnull"`
@@ -78,7 +78,7 @@ type levelRecord struct {
 }
 
 type progressRecord struct {
-	tableName struct{}  `sql:"user_level_progress"`
+	tableName struct{}  `sql:"user_level_progress"` //nolint:unused // Used by go-pg through reflection.
 	ID        int       `pg:"id,pk"`
 	UserID    int       `pg:"user_id"`
 	LevelID   int       `pg:"level_id"`
@@ -482,11 +482,12 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 		}
 		result.LevelProgress = domain.TopicLevelProgress{Number: level, Opened: true, BestScore: progress.BestScore, Stars: progress.Stars, Attempts: progress.Attempts, LastAttemptID: result.AttemptID}
 	}
-	if level > 0 && result.LevelProgress.Stars == 0 {
+	switch {
+	case level > 0 && result.LevelProgress.Stars == 0:
 		result.NextAction = &domain.ContinueAction{Type: "start_level", TopicID: result.TopicID, Level: level}
-	} else if level > 0 && level < 4 {
+	case level > 0 && level < 4:
 		result.NextAction = &domain.ContinueAction{Type: "start_level", TopicID: result.TopicID, Level: level + 1}
-	} else if level == 4 {
+	case level == 4:
 		var completedTopics int
 		_, err = s.db.QueryOne(pg.Scan(&completedTopics), `SELECT COUNT(*) FROM user_topic_progress p JOIN topics t ON t.id=p.topic_id WHERE p.user_id=? AND t.user_role=? AND p.completed_at IS NOT NULL`, userID, userRole)
 		if err != nil {
