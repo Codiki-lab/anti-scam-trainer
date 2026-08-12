@@ -23,6 +23,10 @@ func TestTopicRequiresTheoryQuizAndAllFourLevels(t *testing.T) {
 	if domain.TopicComplete(true, true, levels) {
 		t.Fatal("topic completed without passing level 4")
 	}
+	duplicates := []domain.TopicLevelProgress{{Number: 1, Stars: 1}, {Number: 1, Stars: 1}, {Number: 2, Stars: 1}, {Number: 3, Stars: 1}}
+	if domain.TopicComplete(true, true, duplicates) {
+		t.Fatal("topic completed with duplicated level and no level 4")
+	}
 }
 
 func TestStreakUsesDistinctConsecutiveCalendarDates(t *testing.T) {

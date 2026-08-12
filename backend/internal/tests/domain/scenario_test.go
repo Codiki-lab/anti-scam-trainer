@@ -59,4 +59,9 @@ func TestAssessmentCategoriesFollowAllowedPoints(t *testing.T) {
 			t.Errorf("AssessmentForPoints(%d)=%q, want %q", points, got, want)
 		}
 	}
+	for _, points := range []int{26, 76, 101} {
+		if got := domain.AssessmentForPoints(points); got != "invalid" {
+			t.Errorf("AssessmentForPoints(%d)=%q, want invalid", points, got)
+		}
+	}
 }

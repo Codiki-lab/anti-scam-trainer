@@ -6,12 +6,13 @@ import (
 )
 
 type GameRepository interface {
-	Levels(userID int, userRole string) ([]domain.Level, []domain.Progress, error)
-	PublishedScenario(levelNumber int, userRole string) (domain.Scenario, error)
-	FreePlayConfig(userRole string) (domain.FreePlayConfig, error)
+	Levels(userID int, userRole domain.UserRole) ([]domain.Level, []domain.Progress, error)
+	PublishedScenario(levelNumber int, userRole domain.UserRole) (domain.Scenario, error)
+	FreePlayUnlocked(userID int, userRole domain.UserRole) (bool, error)
+	FreePlayConfig(userRole domain.UserRole) (domain.FreePlayConfig, error)
 	Scenario(id int) (domain.Scenario, error)
 	FindInProgress(userID, scenarioID int) (domain.Attempt, error)
-	FindInProgressFreePlay(userID int, userRole string) (domain.Attempt, error)
+	FindInProgressFreePlay(userID int, userRole domain.UserRole) (domain.Attempt, error)
 	CreateGameAttempt(domain.Attempt) (domain.Attempt, error)
 	StartFreePlay(domain.Attempt, domain.DialogueMessage) (domain.Attempt, error)
 	GetGameAttempt(id int) (domain.Attempt, error)
@@ -25,9 +26,8 @@ type GameRepository interface {
 }
 
 type TopicGameRepository interface {
-	TopicLevels(userID int, userRole string, topicID int) ([]domain.Level, []domain.Progress, bool, error)
-	PublishedTopicScenario(levelNumber int, userRole string, topicID int) (domain.Scenario, error)
-	FreePlayUnlocked(userID int, userRole string) (bool, error)
+	TopicLevels(userID int, userRole domain.UserRole, topicID int) ([]domain.Level, []domain.Progress, bool, error)
+	PublishedTopicScenario(levelNumber int, userRole domain.UserRole, topicID int) (domain.Scenario, error)
 	Result(attemptID int) (domain.AttemptResult, error)
 }
 

@@ -10,7 +10,7 @@ type Level struct {
 type Progress struct {
 	UserID    int
 	LevelID   int
-	UserRole  string
+	UserRole  UserRole
 	TopicID   int
 	BestScore int
 	Stars     int

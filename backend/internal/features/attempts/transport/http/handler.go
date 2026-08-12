@@ -54,7 +54,7 @@ func (h *Handler) levels(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "topic_id is required", http.StatusBadRequest)
 		return
 	}
-	levels, err := h.service.Levels(identity.UserID, role, topicID)
+	levels, err := h.service.Levels(identity.UserID, domain.UserRole(role), topicID)
 	if err != nil {
 		gameError(w, err)
 		return
@@ -101,7 +101,7 @@ func (h *Handler) start(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "topic_id is required", http.StatusBadRequest)
 		return
 	}
-	state, err := h.service.Start(identity.UserID, level, role, topicID)
+	state, err := h.service.Start(identity.UserID, level, domain.UserRole(role), topicID)
 	if err != nil {
 		gameError(w, err)
 		return
@@ -124,7 +124,7 @@ func (h *Handler) startFreePlay(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "role must be buyer or seller", http.StatusBadRequest)
 		return
 	}
-	state, err := h.service.StartFreePlay(r.Context(), identity.UserID, role)
+	state, err := h.service.StartFreePlay(r.Context(), identity.UserID, domain.UserRole(role))
 	if err != nil {
 		gameError(w, err)
 		return

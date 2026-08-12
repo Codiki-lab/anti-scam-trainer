@@ -107,18 +107,20 @@ type httpGameStore struct {
 
 func newHTTPGameStore() *httpGameStore { return &httpGameStore{attempts: map[int]domain.Attempt{}} }
 
-func (s *httpGameStore) Levels(int, string) ([]domain.Level, []domain.Progress, error) {
+func (s *httpGameStore) Levels(int, domain.UserRole) ([]domain.Level, []domain.Progress, error) {
 	return []domain.Level{{ID: 1, Number: 1}, {ID: 2, Number: 2}, {ID: 3, Number: 3}, {ID: 4, Number: 4}}, []domain.Progress{{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}, {LevelID: 4, Stars: 1}}, nil
 }
 
-func (s *httpGameStore) PublishedScenario(level int, role string) (domain.Scenario, error) {
+func (s *httpGameStore) PublishedScenario(level int, role domain.UserRole) (domain.Scenario, error) {
 	if level != 3 {
 		return domain.Scenario{}, errors.New("missing")
 	}
 	return domain.Scenario{ID: 3, LevelID: 3, UserRole: role}, nil
 }
 
-func (s *httpGameStore) FreePlayConfig(role string) (domain.FreePlayConfig, error) {
+func (s *httpGameStore) FreePlayUnlocked(int, domain.UserRole) (bool, error) { return true, nil }
+
+func (s *httpGameStore) FreePlayConfig(role domain.UserRole) (domain.FreePlayConfig, error) {
 	return domain.FreePlayConfig{UserRole: role}, nil
 }
 
@@ -135,7 +137,7 @@ func (s *httpGameStore) FindInProgress(userID, scenarioID int) (domain.Attempt, 
 	return domain.Attempt{}, errors.New("missing")
 }
 
-func (s *httpGameStore) FindInProgressFreePlay(int, string) (domain.Attempt, error) {
+func (s *httpGameStore) FindInProgressFreePlay(int, domain.UserRole) (domain.Attempt, error) {
 	return domain.Attempt{}, errors.New("missing")
 }
 

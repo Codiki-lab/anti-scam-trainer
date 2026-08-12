@@ -3,19 +3,21 @@ package domain
 import "time"
 
 const (
-	AttemptStatusInProgress = "IN_PROGRESS"
-	AttemptStatusCompleted  = "COMPLETED"
-	AttemptStatusAbandoned  = "ABANDONED"
+	AttemptStatusInProgress AttemptStatus = "IN_PROGRESS"
+	AttemptStatusCompleted  AttemptStatus = "COMPLETED"
+	AttemptStatusAbandoned  AttemptStatus = "ABANDONED"
 )
+
+type AttemptStatus string
 
 type Attempt struct {
 	ID                int
 	UserID            int
 	ScenarioID        int
 	Mode              AttemptMode
-	UserRole          string
+	UserRole          UserRole
 	IsScam            *bool
-	Status            string
+	Status            AttemptStatus
 	StartedAt         time.Time
 	FinishedAt        time.Time
 	Score             int
@@ -50,11 +52,26 @@ const (
 	AttemptModeFreePlay AttemptMode = "free_play"
 )
 
-func CanTransitionAttemptStatus(currentStatus, nextStatus string) bool {
+func ValidAttemptStatus(status AttemptStatus) bool {
+	return status == AttemptStatusInProgress || status == AttemptStatusCompleted || status == AttemptStatusAbandoned
+}
+
+func CanTransitionAttemptStatus(currentStatus, nextStatus AttemptStatus) bool {
+	if !ValidAttemptStatus(currentStatus) || !ValidAttemptStatus(nextStatus) {
+		return false
+	}
 	if currentStatus == nextStatus {
 		return true
 	}
 
 	return currentStatus == AttemptStatusInProgress &&
 		(nextStatus == AttemptStatusCompleted || nextStatus == AttemptStatusAbandoned)
+}
+
+func (attempt *Attempt) TransitionTo(nextStatus AttemptStatus) bool {
+	if !CanTransitionAttemptStatus(attempt.Status, nextStatus) {
+		return false
+	}
+	attempt.Status = nextStatus
+	return true
 }

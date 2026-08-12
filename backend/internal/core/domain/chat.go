@@ -13,9 +13,9 @@ type Scenario struct {
 	LevelID        int
 	TopicID        int
 	TopicTitle     string
-	UserRole       string
+	UserRole       UserRole
 	IsActive       bool
-	Status         string
+	Status         ScenarioStatus
 	Archived       bool
 	ScamScheme     string
 	RiskType       RiskType
@@ -27,6 +27,7 @@ type Scenario struct {
 type JSONObject map[string]any
 
 type RiskType string
+type ScenarioStatus string
 
 const (
 	RiskPhishing          RiskType = "phishing"
@@ -85,9 +86,9 @@ type ResponseType string
 type MessageRole string
 
 const (
-	ScenarioStatusDraft     = "draft"
-	ScenarioStatusPublished = "published"
-	ScenarioStatusArchived  = "archived"
+	ScenarioStatusDraft     ScenarioStatus = "draft"
+	ScenarioStatusPublished ScenarioStatus = "published"
+	ScenarioStatusArchived  ScenarioStatus = "archived"
 )
 
 const (
@@ -121,7 +122,7 @@ type DialogueMessage struct {
 }
 
 type FreePlayConfig struct {
-	UserRole       string
+	UserRole       UserRole
 	ProductContext ProductContext
 	SystemPrompt   string
 	FinalRubric    JSONObject
