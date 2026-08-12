@@ -50,22 +50,41 @@ func TestProductionFeaturesFollowADR0012(t *testing.T) {
 		}
 	}
 
-	composition, err := os.ReadFile(filepath.Join(root, "internal/core/app/app.go"))
+	composition, err := readCompositionPackage(filepath.Join(root, "internal/core/app"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, route := range []string{
-		"authhttp.NewWithRateLimits(authentication",
-		"learninghttp.New(learning).Routes()",
-		"scenarioshttp.New(content).Routes()",
-		"attemptshttp.New(game).Routes()",
+		"authhttp.NewWithRateLimits(dependencies.authentication",
+		"learninghttp.New(dependencies.learning).Routes()",
+		"scenarioshttp.New(dependencies.content).Routes()",
+		"attemptshttp.New(dependencies.game).Routes()",
 	} {
-		if !strings.Contains(string(composition), route) {
+		if !strings.Contains(composition, route) {
 			t.Errorf("composition root does not register active feature route %q", route)
 		}
 	}
-	assertOpenAPIPathsMatchProductionRoutes(t, root, string(composition), features)
+	assertOpenAPIPathsMatchProductionRoutes(t, root, composition, features)
 	assertLegacyImplementationsAreAbsent(t, root)
+}
+
+func readCompositionPackage(directory string) (string, error) {
+	var sources strings.Builder
+	err := filepath.WalkDir(directory, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		sources.Write(content)
+		return nil
+	})
+	return sources.String(), err
 }
 
 func assertOnlyADR0012Anchors(t *testing.T, root, feature string) {
@@ -81,6 +100,10 @@ func assertOnlyADR0012Anchors(t *testing.T, root, feature string) {
 	if feature == "attempts" {
 		want["service/ai.go"] = true
 		want["service/ai_policy.go"] = true
+		want["aiprovider/adapter.go"] = true
+	}
+	// Daily task generation is a learning-specific external AI adapter.
+	if feature == "learning" {
 		want["aiprovider/adapter.go"] = true
 	}
 	featureRoot := filepath.Join(root, "internal/features", feature)
