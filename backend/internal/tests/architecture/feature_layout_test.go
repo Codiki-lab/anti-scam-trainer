@@ -81,6 +81,7 @@ func assertOnlyADR0012Anchors(t *testing.T, root, feature string) {
 	if feature == "attempts" {
 		want["service/ai.go"] = true
 		want["service/ai_policy.go"] = true
+		want["aiprovider/adapter.go"] = true
 	}
 	featureRoot := filepath.Join(root, "internal/features", feature)
 	err := filepath.WalkDir(featureRoot, func(file string, entry os.DirEntry, walkErr error) error {
