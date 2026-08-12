@@ -58,7 +58,9 @@ jobs:
 
       - name: Run Go unit and contract tests with race detector
         working-directory: backend
-        run: go test -race -coverprofile=coverage.out ./...
+        run: |
+          go test -race -coverpkg=./... -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
 
       - name: Upload Go coverage report
         uses: actions/upload-artifact@v4
