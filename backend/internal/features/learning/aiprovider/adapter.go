@@ -1,7 +1,8 @@
-package app
+// Package aiprovider adapts the technical AI provider to learning ports.
+package aiprovider
 
 import (
-	"anti-scam-trainer/backend/internal/core/aiprovider"
+	coreai "anti-scam-trainer/backend/internal/core/aiprovider"
 	"anti-scam-trainer/backend/internal/core/domain"
 	"anti-scam-trainer/backend/internal/core/ratelimit"
 	learning "anti-scam-trainer/backend/internal/features/learning/service"
@@ -11,12 +12,13 @@ import (
 	"fmt"
 )
 
-type dailyTaskAIAdapter struct {
-	provider aiprovider.Provider
+type DailyTaskGenerator struct {
+	provider coreai.Provider
 	limiter  *ratelimit.Limiter
 	gate     *ratelimit.Gate
 }
-type dailyTaskAIResponse struct {
+
+type dailyTaskResponse struct {
 	Messages []struct {
 		Role string `json:"role"`
 		Text string `json:"text"`
@@ -26,7 +28,11 @@ type dailyTaskAIResponse struct {
 	SafeAction *string   `json:"safe_action"`
 }
 
-func (a dailyTaskAIAdapter) GenerateDailyTask(ctx context.Context, profile learning.DailyTaskProfile, role domain.UserRole) (domain.DailyTask, error) {
+func NewDailyTaskGenerator(provider coreai.Provider, limiter *ratelimit.Limiter, gate *ratelimit.Gate) *DailyTaskGenerator {
+	return &DailyTaskGenerator{provider: provider, limiter: limiter, gate: gate}
+}
+
+func (a *DailyTaskGenerator) GenerateDailyTask(ctx context.Context, profile learning.DailyTaskProfile, role domain.UserRole) (domain.DailyTask, error) {
 	key := fmt.Sprintf("user:%d", profile.UserID)
 	if a.limiter != nil {
 		if ok, _ := a.limiter.Allow(key); !ok {
@@ -51,11 +57,11 @@ func (a dailyTaskAIAdapter) GenerateDailyTask(ctx context.Context, profile learn
 		recent[i] = map[string]any{"topic_id": attempt.TopicID, "level": attempt.Level, "score": attempt.Score, "stars": attempt.Stars}
 	}
 	input, _ := json.Marshal(map[string]any{"preferred_role": profile.PreferredRole, "topics": topics, "recent_completed_attempts": recent, "task_role": role})
-	result, err := a.provider.Generate(ctx, []aiprovider.Message{{Role: aiprovider.RoleSystem, Content: "Generate one Russian anti-scam dialogue snapshot. Return JSON only: {messages:[{role:user|assistant,text:string}],verdict:boolean,signals:[string],safe_action:string}. Include 2-6 messages, at most 3 concise signals and one safe action. Do not include personal data."}, {Role: aiprovider.RoleUser, Content: string(input)}})
+	result, err := a.provider.Generate(ctx, []coreai.Message{{Role: coreai.RoleSystem, Content: "Generate one Russian anti-scam dialogue snapshot. Return JSON only: {messages:[{role:user|assistant,text:string}],verdict:boolean,signals:[string],safe_action:string}. Include 2-6 messages, at most 3 concise signals and one safe action. Do not include personal data."}, {Role: coreai.RoleUser, Content: string(input)}})
 	if err != nil {
 		return domain.DailyTask{}, err
 	}
-	var decoded dailyTaskAIResponse
+	var decoded dailyTaskResponse
 	if err := json.Unmarshal([]byte(result.Content), &decoded); err != nil {
 		return domain.DailyTask{}, err
 	}
@@ -66,6 +72,5 @@ func (a dailyTaskAIAdapter) GenerateDailyTask(ctx context.Context, profile learn
 	for i, message := range decoded.Messages {
 		messages[i] = domain.DialogueMessage{Role: domain.MessageRole(message.Role), Text: message.Text}
 	}
-	task := domain.DailyTask{Role: role, Messages: messages, Verdict: *decoded.Verdict, Signals: *decoded.Signals, SafeAction: *decoded.SafeAction}
-	return task, nil
+	return domain.DailyTask{Role: role, Messages: messages, Verdict: *decoded.Verdict, Signals: *decoded.Signals, SafeAction: *decoded.SafeAction}, nil
 }
