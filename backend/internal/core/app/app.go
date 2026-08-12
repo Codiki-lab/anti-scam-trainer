@@ -13,6 +13,7 @@ import (
 	"anti-scam-trainer/backend/internal/core/server/response"
 	"anti-scam-trainer/backend/internal/core/server/router"
 	serverruntime "anti-scam-trainer/backend/internal/core/server/runtime"
+	attemptsai "anti-scam-trainer/backend/internal/features/attempts/aiprovider"
 	attemptsrepository "anti-scam-trainer/backend/internal/features/attempts/repository"
 	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	attemptshttp "anti-scam-trainer/backend/internal/features/attempts/transport/http"
@@ -96,7 +97,7 @@ func New() (*App, error) {
 	learning := learningservice.NewWithDailyTaskGenerator(learningrepository.NewPostgres(db), dailyTaskAIAdapter{provider: provider, limiter: aiLimiter, gate: dailyAIGate})
 	learningContent := learningservice.NewContent(learningrepository.NewPostgres(db))
 	attemptRepository := attemptsrepository.NewPostgres(db)
-	modelAI := attemptsservice.NewModelAI(gameAIAdapter{provider: provider})
+	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 	game := attemptsservice.NewGameWithRateLimits(attemptRepository, modelAI, modelAI, aiLimiter, freePlayLimiter, ratelimit.NewGate())
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, []router.Route{{Path: "/health", Handler: health}})

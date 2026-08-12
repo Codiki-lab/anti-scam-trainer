@@ -1,4 +1,5 @@
-package app
+// Package aiprovider adapts the technical AI provider for the attempts feature.
+package aiprovider
 
 import (
 	"anti-scam-trainer/backend/internal/core/aiprovider"
@@ -7,9 +8,11 @@ import (
 	"errors"
 )
 
-type gameAIAdapter struct{ provider aiprovider.Provider }
+type Adapter struct{ provider aiprovider.Provider }
 
-func (a gameAIAdapter) GenerateStructured(ctx context.Context, input attemptsservice.StructuredModelRequest) (string, error) {
+func New(provider aiprovider.Provider) Adapter { return Adapter{provider: provider} }
+
+func (a Adapter) GenerateStructured(ctx context.Context, input attemptsservice.StructuredModelRequest) (string, error) {
 	messages := make([]aiprovider.Message, 0, len(input.Messages))
 	for _, message := range input.Messages {
 		messages = append(messages, aiprovider.Message{Role: aiprovider.Role(message.Role), Content: message.Content})
