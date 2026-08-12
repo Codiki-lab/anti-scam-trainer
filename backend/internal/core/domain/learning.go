@@ -125,11 +125,18 @@ func TopicComplete(theoryRead, quizPassed bool, levels []TopicLevelProgress) boo
 		return false
 	}
 	for _, level := range levels {
-		if level.Stars < 1 {
+		if level.Number < 1 || level.Number > 4 || level.Stars < 1 {
 			return false
 		}
 	}
-	return true
+	seen := make(map[int]bool, 4)
+	for _, level := range levels {
+		if seen[level.Number] {
+			return false
+		}
+		seen[level.Number] = true
+	}
+	return len(seen) == 4
 }
 
 func NextStreak(current, longest int, lastActivity, activityDate time.Time) (int, int, bool) {

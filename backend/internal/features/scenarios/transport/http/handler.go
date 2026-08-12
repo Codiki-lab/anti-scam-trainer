@@ -48,10 +48,10 @@ type adminOptionDTO struct {
 }
 
 func scenarioFromDTO(v adminScenarioDTO) domain.Scenario {
-	return domain.Scenario{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, UserRole: v.Role, Status: v.Status, ScamScheme: v.ScamScheme, RiskType: domain.RiskType(v.RiskType), ProductContext: v.ProductContext, AISystemPrompt: v.AISystemPrompt, FinalRubric: domain.JSONObject(v.FinalRubric)}
+	return domain.Scenario{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, UserRole: domain.UserRole(v.Role), Status: domain.ScenarioStatus(v.Status), ScamScheme: v.ScamScheme, RiskType: domain.RiskType(v.RiskType), ProductContext: v.ProductContext, AISystemPrompt: v.AISystemPrompt, FinalRubric: domain.JSONObject(v.FinalRubric)}
 }
 func scenarioToDTO(v domain.Scenario) adminScenarioDTO {
-	return adminScenarioDTO{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, Role: v.UserRole, Status: v.Status, ScamScheme: v.ScamScheme, RiskType: string(v.RiskType), ProductContext: v.ProductContext, AISystemPrompt: v.AISystemPrompt, FinalRubric: map[string]any(v.FinalRubric)}
+	return adminScenarioDTO{ID: v.ID, Title: v.Title, Description: v.Description, LevelID: v.LevelID, TopicID: v.TopicID, Role: string(v.UserRole), Status: string(v.Status), ScamScheme: v.ScamScheme, RiskType: string(v.RiskType), ProductContext: v.ProductContext, AISystemPrompt: v.AISystemPrompt, FinalRubric: map[string]any(v.FinalRubric)}
 }
 func stepFromDTO(v adminStepDTO) domain.ScenarioStep {
 	return domain.ScenarioStep{ID: v.ID, Number: v.Number, ResponseType: domain.ResponseType(v.ResponseType), Goal: v.Goal, CounterpartyMessage: v.CounterpartyMessage, MaxPoints: v.MaxPoints, AIInstruction: v.AIInstruction, FallbackMessage: v.FallbackMessage}

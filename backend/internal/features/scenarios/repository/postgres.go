@@ -36,7 +36,7 @@ func (r *PostgresRepository) ListContent() ([]domain.Scenario, error) {
 	_, err := r.db.Query(&rows, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,COALESCE(risk_type,'') AS risk_type,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats ORDER BY id`)
 	result := make([]domain.Scenario, len(rows))
 	for i, x := range rows {
-		result[i] = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, RiskType: domain.RiskType(x.RiskType), ProductContext: decodeProductContext(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
+		result[i] = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: domain.UserRole(x.UserRole), Status: domain.ScenarioStatus(x.Status), ScamScheme: x.ScamScheme, RiskType: domain.RiskType(x.RiskType), ProductContext: decodeProductContext(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
 	}
 	return result, err
 }
@@ -58,7 +58,7 @@ func (r *PostgresRepository) ContentScenario(id int) (domain.Scenario, error) {
 	}
 	var x row
 	_, err := r.db.QueryOne(&x, `SELECT id,title,description,level_id,topic_id,user_role,content_status AS status,COALESCE(scam_scheme,'') AS scam_scheme,COALESCE(risk_type,'') AS risk_type,product_context::text AS product_context,COALESCE(ai_system_prompt,'') AS ai_system_prompt,final_rubric::text AS final_rubric FROM chats WHERE id=?`, id)
-	s = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, Status: x.Status, ScamScheme: x.ScamScheme, RiskType: domain.RiskType(x.RiskType), ProductContext: decodeProductContext(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
+	s = domain.Scenario{ID: x.ID, Title: x.Title, Description: x.Description, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: domain.UserRole(x.UserRole), Status: domain.ScenarioStatus(x.Status), ScamScheme: x.ScamScheme, RiskType: domain.RiskType(x.RiskType), ProductContext: decodeProductContext(x.ProductContext), AISystemPrompt: x.AISystemPrompt, FinalRubric: decodeJSONObject(x.FinalRubric)}
 	return s, err
 }
 
@@ -105,7 +105,7 @@ func (r *PostgresRepository) UpdateContent(s domain.Scenario) error {
 	_, err := r.db.Exec(`UPDATE chats SET title=?, description=?, level_id=?,topic_id=?,user_role=?,role=?,scam_scheme=?,risk_type=?, product_context=?::jsonb, ai_system_prompt=?, final_rubric=?::jsonb WHERE id=?`, s.Title, s.Description, s.LevelID, s.TopicID, s.UserRole, s.UserRole, s.ScamScheme, s.RiskType, encodeProductContext(s.ProductContext), s.AISystemPrompt, encodeJSONObject(s.FinalRubric), s.ID)
 	return err
 }
-func (r *PostgresRepository) SetContentStatus(id int, status string, archived bool) error {
+func (r *PostgresRepository) SetContentStatus(id int, status domain.ScenarioStatus, archived bool) error {
 	var at interface{}
 	if archived {
 		at = time.Now().UTC()

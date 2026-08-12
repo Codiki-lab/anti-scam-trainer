@@ -58,14 +58,28 @@ func TestFreePlayKeepsCounterpartTypeHiddenFromStateAndCompletesOnThirdRequested
 	}
 }
 
-func TestFreePlayStartsBeforeTrainingIsCompleted(t *testing.T) {
+func TestFreePlayRequiresCompletedRoleBranch(t *testing.T) {
 	repo := newGameRepository()
+	repo.freePlayUnlocked = false
 	ai := fakeAI{generated: service.GeneratorResult{Message: "Первая реплика", Tactic: "rapport", Phase: "hook"}}
 	game := service.NewGameWithDependencies(repo, ai, ai, func() bool { return true })
 
-	state, err := game.StartFreePlay(context.Background(), 1, "buyer")
-	if err != nil || state.Attempt.Mode != domain.AttemptModeFreePlay || len(state.Messages) != 1 {
-		t.Fatalf("StartFreePlay() = (%#v, %v), want a free-play attempt with opening message", state, err)
+	_, err := game.StartFreePlay(context.Background(), 1, "buyer")
+	if err != service.ErrFreePlayLocked {
+		t.Fatalf("StartFreePlay() error = %v, want %v", err, service.ErrFreePlayLocked)
+	}
+}
+
+func TestFreePlayDoesNotResumeWhenRoleBranchIsNoLongerCompleted(t *testing.T) {
+	repo := newGameRepository()
+	isScam := true
+	repo.attempts[1] = domain.Attempt{ID: 1, UserID: 1, Mode: domain.AttemptModeFreePlay, UserRole: domain.UserRoleBuyer, IsScam: &isScam, Status: domain.AttemptStatusInProgress}
+	repo.freePlayUnlocked = false
+	game := service.NewGameWithDependencies(repo, fakeAI{}, fakeAI{}, func() bool { return true })
+
+	_, err := game.StartFreePlay(context.Background(), 1, domain.UserRoleBuyer)
+	if err != service.ErrFreePlayLocked {
+		t.Fatalf("StartFreePlay() error = %v, want %v", err, service.ErrFreePlayLocked)
 	}
 }
 

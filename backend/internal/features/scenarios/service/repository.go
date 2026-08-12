@@ -6,7 +6,7 @@ type ContentRepository interface {
 	CreateContent(domain.Scenario) (domain.Scenario, error)
 	ListContent() ([]domain.Scenario, error)
 	UpdateContent(domain.Scenario) error
-	SetContentStatus(id int, status string, archived bool) error
+	SetContentStatus(id int, status domain.ScenarioStatus, archived bool) error
 	CreateStep(domain.ScenarioStep) (domain.ScenarioStep, error)
 	CreateOption(domain.ScenarioOption) (domain.ScenarioOption, error)
 	StepScenario(stepID int) (domain.Scenario, error)

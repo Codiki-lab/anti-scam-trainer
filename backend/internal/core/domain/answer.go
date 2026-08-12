@@ -42,6 +42,9 @@ type RiskSignal struct {
 }
 
 func AssessmentForPoints(points int) string {
+	if !ValidOptionPoints(points) {
+		return "invalid"
+	}
 	switch {
 	case points <= 25:
 		return "unsafe"

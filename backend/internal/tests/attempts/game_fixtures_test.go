@@ -65,20 +65,21 @@ type gameRepository struct {
 	messages            []domain.DialogueMessage
 	progress            domain.Progress
 	progressByRole      map[string][]domain.Progress
+	freePlayUnlocked    bool
 	next                int
 	failCompleteAttempt bool
 	failStartFreePlay   bool
 }
 
 func newGameRepository() *gameRepository {
-	return &gameRepository{attempts: map[int]domain.Attempt{}, next: 1, steps: map[int]domain.ScenarioStep{1: {ID: 1, ScenarioID: 1, Number: 1, MaxPoints: 100, FallbackMessage: "Первая реплика", Options: []domain.ScenarioOption{{ID: 11, Points: 100}}}, 2: {ID: 2, ScenarioID: 1, Number: 2, MaxPoints: 100, FallbackMessage: "Вторая реплика", Options: []domain.ScenarioOption{{ID: 21, Points: 100}}}}}
+	return &gameRepository{attempts: map[int]domain.Attempt{}, next: 1, freePlayUnlocked: true, steps: map[int]domain.ScenarioStep{1: {ID: 1, ScenarioID: 1, Number: 1, MaxPoints: 100, FallbackMessage: "Первая реплика", Options: []domain.ScenarioOption{{ID: 11, Points: 100}}}, 2: {ID: 2, ScenarioID: 1, Number: 2, MaxPoints: 100, FallbackMessage: "Вторая реплика", Options: []domain.ScenarioOption{{ID: 21, Points: 100}}}}}
 }
 
-func (r *gameRepository) Levels(_ int, role string) ([]domain.Level, []domain.Progress, error) {
-	return []domain.Level{{ID: 1, Number: 1}, {ID: 2, Number: 2}, {ID: 3, Number: 3}, {ID: 4, Number: 4}}, r.progressByRole[role], nil
+func (r *gameRepository) Levels(_ int, role domain.UserRole) ([]domain.Level, []domain.Progress, error) {
+	return []domain.Level{{ID: 1, Number: 1}, {ID: 2, Number: 2}, {ID: 3, Number: 3}, {ID: 4, Number: 4}}, r.progressByRole[string(role)], nil
 }
 
-func (r *gameRepository) PublishedScenario(level int, role string) (domain.Scenario, error) {
+func (r *gameRepository) PublishedScenario(level int, role domain.UserRole) (domain.Scenario, error) {
 	if (role == "buyer" || role == "seller") && level >= 1 && level <= 4 {
 		id := level
 		if role == "seller" {
@@ -89,7 +90,11 @@ func (r *gameRepository) PublishedScenario(level int, role string) (domain.Scena
 	return domain.Scenario{}, errors.New("missing")
 }
 
-func (r *gameRepository) FreePlayConfig(role string) (domain.FreePlayConfig, error) {
+func (r *gameRepository) FreePlayUnlocked(int, domain.UserRole) (bool, error) {
+	return r.freePlayUnlocked, nil
+}
+
+func (r *gameRepository) FreePlayConfig(role domain.UserRole) (domain.FreePlayConfig, error) {
 	return domain.FreePlayConfig{UserRole: role, ProductContext: domain.ProductContext{ItemTitle: "Товар", Category: "Другое", DealMethod: "delivery"}, SystemPrompt: "Веди диалог", FinalRubric: domain.JSONObject{"safe": 100}}, nil
 }
 
@@ -106,7 +111,7 @@ func (r *gameRepository) FindInProgress(user, scenario int) (domain.Attempt, err
 	return domain.Attempt{}, errors.New("missing")
 }
 
-func (r *gameRepository) FindInProgressFreePlay(user int, role string) (domain.Attempt, error) {
+func (r *gameRepository) FindInProgressFreePlay(user int, role domain.UserRole) (domain.Attempt, error) {
 	for _, a := range r.attempts {
 		if a.UserID == user && a.Mode == domain.AttemptModeFreePlay && a.UserRole == role && a.Status == domain.AttemptStatusInProgress {
 			return a, nil

@@ -92,7 +92,7 @@ type progressRecord struct {
 
 func NewPostgres(db *pg.DB) *PostgresRepository { return &PostgresRepository{db: db} }
 
-func (r *PostgresRepository) Levels(userID int, userRole string) ([]domain.Level, []domain.Progress, error) {
+func (r *PostgresRepository) Levels(userID int, userRole domain.UserRole) ([]domain.Level, []domain.Progress, error) {
 	var levels []levelRecord
 	if _, err := r.db.Query(&levels, `SELECT id, level_number FROM levels WHERE is_active = TRUE ORDER BY level_number`); err != nil {
 		return nil, nil, err
@@ -107,12 +107,12 @@ func (r *PostgresRepository) Levels(userID int, userRole string) ([]domain.Level
 	}
 	progress := make([]domain.Progress, len(records))
 	for i, record := range records {
-		progress[i] = domain.Progress{UserID: record.UserID, LevelID: record.LevelID, UserRole: record.UserRole, BestScore: record.BestScore, Stars: record.Stars, Attempts: record.Attempts, PassedAt: record.PassedAt}
+		progress[i] = domain.Progress{UserID: record.UserID, LevelID: record.LevelID, UserRole: domain.UserRole(record.UserRole), BestScore: record.BestScore, Stars: record.Stars, Attempts: record.Attempts, PassedAt: record.PassedAt}
 	}
 	return result, progress, nil
 }
 
-func (r *PostgresRepository) PublishedScenario(levelNumber int, userRole string) (domain.Scenario, error) {
+func (r *PostgresRepository) PublishedScenario(levelNumber int, userRole domain.UserRole) (domain.Scenario, error) {
 	var record gameScenarioRecord
 	query := `SELECT c.id, c.title, c.description, c.level_id, c.topic_id, t.title AS topic_title, l.level_number, c.user_role, c.content_status, COALESCE(c.scam_scheme,'') AS scam_scheme, COALESCE(c.risk_type,'') AS risk_type, c.product_context::text AS product_context, COALESCE(c.ai_system_prompt,'') AS ai_system_prompt, c.final_rubric::text AS final_rubric FROM chats c JOIN levels l ON l.id = c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status = 'published' AND c.archived_at IS NULL AND t.content_status='published'`
 	args := []interface{}{}
@@ -130,7 +130,7 @@ func (r *PostgresRepository) PublishedScenario(levelNumber int, userRole string)
 	return scenarioFromGameRecord(record), nil
 }
 
-func (r *PostgresRepository) PublishedTopicScenario(levelNumber int, userRole string, topicID int) (domain.Scenario, error) {
+func (r *PostgresRepository) PublishedTopicScenario(levelNumber int, userRole domain.UserRole, topicID int) (domain.Scenario, error) {
 	var record gameScenarioRecord
 	_, err := r.db.QueryOne(&record, `SELECT c.id,c.title,c.description,c.level_id,c.topic_id,t.title AS topic_title,l.level_number,c.user_role,c.content_status,COALESCE(c.scam_scheme,'') scam_scheme,COALESCE(c.risk_type,'') risk_type,c.product_context::text product_context,COALESCE(c.ai_system_prompt,'') ai_system_prompt,c.final_rubric::text final_rubric FROM chats c JOIN levels l ON l.id=c.level_id JOIN topics t ON t.id=c.topic_id WHERE c.content_status='published' AND c.archived_at IS NULL AND t.content_status='published' AND l.level_number=? AND c.user_role=? AND c.topic_id=? AND t.user_role=?`, levelNumber, userRole, topicID, userRole)
 	if err != nil {
@@ -139,7 +139,7 @@ func (r *PostgresRepository) PublishedTopicScenario(levelNumber int, userRole st
 	return scenarioFromGameRecord(record), nil
 }
 
-func (r *PostgresRepository) TopicLevels(userID int, userRole string, topicID int) ([]domain.Level, []domain.Progress, bool, error) {
+func (r *PostgresRepository) TopicLevels(userID int, userRole domain.UserRole, topicID int) ([]domain.Level, []domain.Progress, bool, error) {
 	var valid bool
 	_, err := r.db.QueryOne(pg.Scan(&valid), `SELECT EXISTS(SELECT 1 FROM topics WHERE id=? AND user_role=? AND content_status='published')`, topicID, userRole)
 	if err != nil {
@@ -164,18 +164,18 @@ func (r *PostgresRepository) TopicLevels(userID int, userRole string, topicID in
 	}
 	progress := make([]domain.Progress, len(records))
 	for i, x := range records {
-		progress[i] = domain.Progress{UserID: x.UserID, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: x.UserRole, BestScore: x.BestScore, Stars: x.Stars, Attempts: x.Attempts, PassedAt: x.PassedAt}
+		progress[i] = domain.Progress{UserID: x.UserID, LevelID: x.LevelID, TopicID: x.TopicID, UserRole: domain.UserRole(x.UserRole), BestScore: x.BestScore, Stars: x.Stars, Attempts: x.Attempts, PassedAt: x.PassedAt}
 	}
 	return result, progress, quiz, nil
 }
 
-func (r *PostgresRepository) FreePlayUnlocked(userID int, userRole string) (bool, error) {
+func (r *PostgresRepository) FreePlayUnlocked(userID int, userRole domain.UserRole) (bool, error) {
 	var unlocked bool
 	_, err := r.db.QueryOne(pg.Scan(&unlocked), `SELECT COUNT(DISTINCT p.topic_id)=6 FROM user_level_progress p JOIN topics t ON t.id=p.topic_id JOIN levels l ON l.id=p.level_id WHERE p.user_id=? AND t.user_role=? AND t.content_status='published' AND l.level_number=4 AND p.stars>0`, userID, userRole)
 	return unlocked, err
 }
 
-func (r *PostgresRepository) FreePlayConfig(userRole string) (domain.FreePlayConfig, error) {
+func (r *PostgresRepository) FreePlayConfig(userRole domain.UserRole) (domain.FreePlayConfig, error) {
 	type row struct {
 		UserRole       string `pg:"user_role"`
 		ProductContext string `pg:"product_context"`
@@ -187,7 +187,7 @@ func (r *PostgresRepository) FreePlayConfig(userRole string) (domain.FreePlayCon
 	if err != nil {
 		return domain.FreePlayConfig{}, err
 	}
-	return domain.FreePlayConfig{UserRole: item.UserRole, ProductContext: decodeProductContext(item.ProductContext), SystemPrompt: item.SystemPrompt, FinalRubric: decodeJSONObject(item.FinalRubric)}, nil
+	return domain.FreePlayConfig{UserRole: domain.UserRole(item.UserRole), ProductContext: decodeProductContext(item.ProductContext), SystemPrompt: item.SystemPrompt, FinalRubric: decodeJSONObject(item.FinalRubric)}, nil
 }
 
 func (r *PostgresRepository) Scenario(id int) (domain.Scenario, error) {
@@ -207,7 +207,7 @@ func (r *PostgresRepository) FindInProgress(userID, scenarioID int) (domain.Atte
 	return attemptFromRecord(record), nil
 }
 
-func (r *PostgresRepository) FindInProgressFreePlay(userID int, userRole string) (domain.Attempt, error) {
+func (r *PostgresRepository) FindInProgressFreePlay(userID int, userRole domain.UserRole) (domain.Attempt, error) {
 	var record attemptRecord
 	if err := r.db.Model(&record).Where("user_id = ? AND mode = ? AND user_role = ? AND status = ?", userID, domain.AttemptModeFreePlay, userRole, domain.AttemptStatusInProgress).Select(); err != nil {
 		return domain.Attempt{}, err
@@ -519,7 +519,7 @@ func (s gameTransactionStore) saveResult(result *domain.AttemptResult) error {
 }
 
 func scenarioFromGameRecord(record gameScenarioRecord) domain.Scenario {
-	return domain.Scenario{ID: record.ID, Title: record.Title, Description: record.Description, Level: strconv.Itoa(record.LevelNumber), LevelID: record.LevelID, TopicID: record.TopicID, TopicTitle: record.TopicTitle, UserRole: record.UserRole, Status: record.ContentStatus, ScamScheme: record.ScamScheme, RiskType: domain.RiskType(record.RiskType), ProductContext: decodeProductContext(record.ProductContext), AISystemPrompt: record.AISystemPrompt, FinalRubric: decodeJSONObject(record.FinalRubric)}
+	return domain.Scenario{ID: record.ID, Title: record.Title, Description: record.Description, Level: strconv.Itoa(record.LevelNumber), LevelID: record.LevelID, TopicID: record.TopicID, TopicTitle: record.TopicTitle, UserRole: domain.UserRole(record.UserRole), Status: domain.ScenarioStatus(record.ContentStatus), ScamScheme: record.ScamScheme, RiskType: domain.RiskType(record.RiskType), ProductContext: decodeProductContext(record.ProductContext), AISystemPrompt: record.AISystemPrompt, FinalRubric: decodeJSONObject(record.FinalRubric)}
 }
 
 func decodeJSONObject(value string) domain.JSONObject {
@@ -536,7 +536,7 @@ func decodeProductContext(value string) domain.ProductContext {
 
 func toAttemptRecord(attempt domain.Attempt) attemptRecord {
 	encodedBreakdown, _ := json.Marshal(attempt.FinalBreakdown)
-	return attemptRecord{ID: attempt.ID, UserID: attempt.UserID, ChatID: attempt.ScenarioID, Mode: string(attempt.Mode), UserRole: attempt.UserRole, IsScam: attempt.IsScam, Status: attempt.Status, StartedAt: attempt.StartedAt, FinishedAt: attempt.FinishedAt, Score: attempt.Score, MaxScore: attempt.MaxScore, CurrentStepNumber: attempt.CurrentStepNumber, FreeTextCount: attempt.FreeTextCount, DialoguePhase: attempt.DialoguePhase, CompactSummary: attempt.CompactSummary, FinalBreakdown: string(encodedBreakdown)}
+	return attemptRecord{ID: attempt.ID, UserID: attempt.UserID, ChatID: attempt.ScenarioID, Mode: string(attempt.Mode), UserRole: string(attempt.UserRole), IsScam: attempt.IsScam, Status: string(attempt.Status), StartedAt: attempt.StartedAt, FinishedAt: attempt.FinishedAt, Score: attempt.Score, MaxScore: attempt.MaxScore, CurrentStepNumber: attempt.CurrentStepNumber, FreeTextCount: attempt.FreeTextCount, DialoguePhase: attempt.DialoguePhase, CompactSummary: attempt.CompactSummary, FinalBreakdown: string(encodedBreakdown)}
 }
 
 func attemptFromRecord(record attemptRecord) domain.Attempt {
@@ -544,11 +544,11 @@ func attemptFromRecord(record attemptRecord) domain.Attempt {
 	if record.FinalBreakdown != "" {
 		_ = json.Unmarshal([]byte(record.FinalBreakdown), &breakdown)
 	}
-	return domain.Attempt{ID: record.ID, UserID: record.UserID, ScenarioID: record.ChatID, Mode: domain.AttemptMode(record.Mode), UserRole: record.UserRole, IsScam: record.IsScam, Status: record.Status, StartedAt: record.StartedAt, FinishedAt: record.FinishedAt, Score: record.Score, MaxScore: record.MaxScore, CurrentStepNumber: record.CurrentStepNumber, FreeTextCount: record.FreeTextCount, DialoguePhase: record.DialoguePhase, CompactSummary: record.CompactSummary, FinalBreakdown: breakdown}
+	return domain.Attempt{ID: record.ID, UserID: record.UserID, ScenarioID: record.ChatID, Mode: domain.AttemptMode(record.Mode), UserRole: domain.UserRole(record.UserRole), IsScam: record.IsScam, Status: domain.AttemptStatus(record.Status), StartedAt: record.StartedAt, FinishedAt: record.FinishedAt, Score: record.Score, MaxScore: record.MaxScore, CurrentStepNumber: record.CurrentStepNumber, FreeTextCount: record.FreeTextCount, DialoguePhase: record.DialoguePhase, CompactSummary: record.CompactSummary, FinalBreakdown: breakdown}
 }
 
 func toProgressRecord(progress domain.Progress) progressRecord {
-	return progressRecord{UserID: progress.UserID, LevelID: progress.LevelID, TopicID: progress.TopicID, UserRole: progress.UserRole, BestScore: progress.BestScore, Stars: progress.Stars, Attempts: progress.Attempts, PassedAt: progress.PassedAt}
+	return progressRecord{UserID: progress.UserID, LevelID: progress.LevelID, TopicID: progress.TopicID, UserRole: string(progress.UserRole), BestScore: progress.BestScore, Stars: progress.Stars, Attempts: progress.Attempts, PassedAt: progress.PassedAt}
 }
 
 func (r *PostgresRepository) Result(attemptID int) (domain.AttemptResult, error) {
