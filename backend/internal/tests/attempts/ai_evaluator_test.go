@@ -58,7 +58,7 @@ func TestEvaluatorRecognizesShortRefusalWithoutCallingModel(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"phishing","detected_signals":[],"evaluation":"Небезопасно","safe_action":"Отказаться"}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 
-	for _, answer := range []string{"Нет, спасибо", "Не буду открывать ссылку", "Не дам код", "Не собираюсь платить"} {
+	for _, answer := range []string{"Не буду открывать ссылку", "Не дам код", "Не собираюсь платить"} {
 		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: answer})
 		if err != nil || result.Score != 4 || !result.IsSafe || result.RiskType != "phishing" {
 			t.Fatalf("Evaluate(%q) = (%#v, %v); want immediate safe assessment", answer, result, err)
@@ -70,12 +70,13 @@ func TestEvaluatorRecognizesShortRefusalWithoutCallingModel(t *testing.T) {
 }
 
 func TestEvaluatorEvaluatesBareRefusalAgainstStepMeaning(t *testing.T) {
-	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"fake_payment","detected_signals":[],"evaluation":"Пользователь отказывается от самостоятельной проверки оплаты","safe_action":"Проверить поступление самостоятельно"}`}}
-	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
-
-	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "fake_payment", Answer: "Не буду"})
-	if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 1 {
-		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want contextual model evaluation", result, err, len(provider.requests))
+	for _, answer := range []string{"Не буду", "Нет, спасибо"} {
+		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"fake_payment","detected_signals":[],"evaluation":"Пользователь отказывается от самостоятельной проверки оплаты","safe_action":"Проверить поступление самостоятельно"}`}}
+		modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
+		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "fake_payment", Answer: answer})
+		if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 1 {
+			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want contextual model evaluation", answer, result, err, len(provider.requests))
+		}
 	}
 }
 
