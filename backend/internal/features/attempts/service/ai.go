@@ -21,16 +21,6 @@ var promptInjection = regexp.MustCompile(`(?i)(ignore|ignore previous|system pro
 
 const ordinaryTransactionRisk = "ordinary_transaction"
 
-var shortRefusals = map[string]struct{}{
-	"нет": {}, "не буду": {}, "я не буду": {}, "не буду так делать": {},
-	"я не буду так делать": {}, "нет не буду": {}, "нет я не буду": {},
-	"нет не буду так делать": {}, "нет я не буду так делать": {},
-	"не стану": {}, "я не стану": {}, "не стану это делать": {},
-	"не стану так делать": {}, "не буду этого делать": {}, "не сделаю": {},
-	"не согласен": {}, "не согласна": {}, "отказываюсь": {},
-	"я отказываюсь": {}, "ни за что": {}, "не хочу": {}, "я не хочу": {},
-}
-
 var (
 	shortRefusalAction = regexp.MustCompile(`^(?:нет спасибо|(?:я )?(?:не буду|не стану|не хочу|не собираюсь) (?:открывать ссылку|переходить по ссылке|платить|оплачивать|переводить|вводить данные|сообщать код|называть код|передавать данные|показывать код|отправлять код)|(?:я )?не (?:дам код|сообщу код|назову код|передам данные|покажу код|открою ссылку|перейду по ссылке|оплачу|переведу|введу данные|отправлю код|соглашусь))$`)
 	substantiveSuffix  = regexp.MustCompile(`[0-9A-Za-z]`)
@@ -253,9 +243,6 @@ func isShortRefusal(answer string) bool {
 	padded := " " + normalized + " "
 	if len(strings.Fields(normalized)) > 8 || containsAny(padded, " но ", " хотя ", " потом ", " ладно ", " всё таки ", " все таки ", " всё же ", " все же ", " и ", " а ", " затем ") {
 		return false
-	}
-	if _, ok := shortRefusals[normalized]; ok {
-		return true
 	}
 	return shortRefusalAction.MatchString(normalized)
 }
