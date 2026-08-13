@@ -1,5 +1,4 @@
 import { mapTopic } from '@/entities/learning'
-import { mapContinueAction } from '@/entities/learning-path'
 import type {
   AchievementDto,
   AchievementsDto,
@@ -56,7 +55,12 @@ export const mapDashboard = (dto: DashboardDto): Dashboard => ({
   streak: mapStreak(dto.streak),
   topics: dto.topics.map(mapTopic),
   achievements: dto.achievements.map(mapAchievement),
-  continueAction: mapContinueAction(dto.continue_action),
+  continueAction: dto.continue_action && {
+    type: dto.continue_action.type,
+    topicId: dto.continue_action.topic_id,
+    level: dto.continue_action.level,
+    attemptId: dto.continue_action.attempt_id,
+  },
   dailyTask: mapDailyTask(dto.daily_task),
 })
 

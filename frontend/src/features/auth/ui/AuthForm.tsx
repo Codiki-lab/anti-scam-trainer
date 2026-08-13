@@ -1,12 +1,19 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { Link, useSearchParams } from 'react-router-dom'
-import { RoleSelector } from '@/entities/user'
+import { z } from 'zod'
+import { RoleSelector, type UserRole } from '@/entities/user'
 import { useIsPreview } from '@/shared/runtime-mode'
 import { uiStyles } from '@/shared/ui-kit'
-import { authFormSchema, type AuthFormValues } from '../model/authFormSchema'
 import { useAuthFlow } from '../model/useAuthFlow'
 import styles from './AuthForm.module.scss'
+
+type AuthValues = { username: string; password: string; trainingRole: UserRole }
+const credentialsSchema = z.object({
+  username: z.string().trim().min(3, 'Введите минимум 3 символа.'),
+  password: z.string().min(6, 'Введите минимум 6 символов.'),
+  trainingRole: z.enum(['buyer', 'seller']),
+})
 
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const isRegister = mode === 'register'
@@ -18,8 +25,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
     setValue,
     watch,
     formState: { errors },
-  } = useForm<AuthFormValues>({
-    resolver: zodResolver(authFormSchema),
+  } = useForm<AuthValues>({
+    resolver: zodResolver(credentialsSchema),
     defaultValues: { trainingRole: 'buyer' },
   })
   const trainingRole = watch('trainingRole')
@@ -56,7 +63,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         <input
           type="password"
           autoComplete={isRegister ? 'new-password' : 'current-password'}
-          placeholder="Введите пароль"
+          placeholder="Минимум 6 символов"
           {...register('password')}
         />
       </label>

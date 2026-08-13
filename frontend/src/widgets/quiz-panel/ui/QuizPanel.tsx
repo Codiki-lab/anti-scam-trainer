@@ -47,7 +47,7 @@ export function QuizPanel({ quiz, isSubmitting, onSubmit, onPassed }: QuizPanelP
   if (outcome) {
     return (
       <section className={styles.quiz}>
-        <p className={uiStyles.eyebrow}>Результат Quiz</p>
+        <p className={uiStyles.eyebrow}>Результат квиза</p>
         <h1>{outcome.score}%</h1>
         <p>
           {outcome.isPassed
@@ -84,7 +84,6 @@ export function QuizPanel({ quiz, isSubmitting, onSubmit, onPassed }: QuizPanelP
           <button
             key={choice.id}
             className={selectedChoice === choice.id ? styles.selected : undefined}
-            aria-pressed={selectedChoice === choice.id}
             type="button"
             onClick={() => setSelectedChoice(choice.id)}
           >

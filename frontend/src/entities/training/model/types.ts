@@ -1,5 +1,4 @@
 import type { LevelProgress } from '../../learning'
-import type { ContinueAction } from '@/entities/learning-path'
 import type { Streak } from '../../user'
 
 export type ResponseMode = 'multiple_choice' | 'similar_choice' | 'mixed' | 'free_text'
@@ -11,7 +10,7 @@ export interface LevelState {
   scenarioId: number
   scenarioTitle: string
   scenarioDescription: string
-  responseType: ResponseMode
+  responseMode: ResponseMode
   inProgressAttemptId?: number
 }
 
@@ -29,38 +28,17 @@ export interface TrainingSession {
   attemptId: number
   status: AttemptStatus
   scenarioId: number
-  scenarioTitle: string
-  scenarioDescription: string
   topicId: number
-  topicTitle: string
-  level: number
-  userRole: 'buyer' | 'seller'
-  counterpartyRole: 'buyer' | 'seller'
-  productContext: {
-    itemTitle: string
-    category: string
-    dealMethod: 'delivery' | 'meetup' | 'pickup'
-    price?: number
-    currency?: 'RUB'
-    location?: string
-    imageKey?: string
-  }
+  productContext: Record<string, unknown>
   mode: ResponseMode
-  progress: { currentStep: number; answeredSteps: number; totalSteps: number }
+  progress: { currentStep: number; answeredSteps: number }
   step: {
     id: number
     number: number
     counterpartyMessage: string
     options: TrainingOption[]
   }
-  answers: Array<{
-    stepId: number
-    answerType: 'option' | 'free_text'
-    optionId?: number
-    optionText?: string
-    freeText?: string
-    points: number
-  }>
+  answers: Array<{ stepId: number; optionId: number }>
   messages: TrainingMessage[]
   canFinishEarly: boolean
 }
@@ -71,16 +49,12 @@ export type TrainingAnswer =
 
 export interface DecisionReview {
   stepId: number
-  stepNumber: number
-  answerType: 'option' | 'free_text'
   optionId?: number
   optionText?: string
   freeText?: string
   points: number
-  assessment: 'unsafe' | 'risky' | 'mostly_safe' | 'safe'
   explanation: string
-  safeAction: string
-  riskSignals: Array<{ code: string; label: string }>
+  riskSignals: string[]
 }
 
 export interface AttemptResult {
@@ -88,12 +62,17 @@ export interface AttemptResult {
   score: number
   stars: number
   decisionReview: DecisionReview[]
-  riskSignals: Array<{ code: string; label: string }>
+  riskSignals: string[]
   safeActions: string[]
   levelProgress: LevelProgress
   topicId: number
   isTopicCompleted: boolean
-  nextAction: ContinueAction | null
+  nextAction: {
+    type: 'resume_attempt' | 'read_theory' | 'take_quiz' | 'start_level' | 'start_free_play'
+    topicId?: number
+    level?: number
+    attemptId?: number
+  } | null
   newAchievements: Array<{
     code: string
     title: string

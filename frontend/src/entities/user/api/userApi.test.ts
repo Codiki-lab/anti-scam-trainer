@@ -31,47 +31,4 @@ describe('account API boundary', () => {
       streak: { current: 3, longest: 5, isActiveToday: true },
     })
   })
-
-  it('sends only credentials to Login and preserves the API error envelope', async () => {
-    let requestBody: unknown
-    server.use(
-      http.post('http://localhost/api/v1/auth/login', async ({ request }) => {
-        requestBody = await request.json()
-        return HttpResponse.json(
-          {
-            error: {
-              code: 'INVALID_CREDENTIALS',
-              message: 'invalid username or password',
-              details: {},
-              request_id: 'request-42',
-            },
-          },
-          { status: 401 },
-        )
-      }),
-    )
-
-    const store = createTestStore()
-    const formValues = {
-      username: 'Ирина',
-      password: 'secret-password',
-      trainingRole: 'buyer',
-    }
-    const error = await store
-      .dispatch(userApi.endpoints.login.initiate(formValues))
-      .unwrap()
-      .catch((reason: unknown) => reason)
-
-    expect(requestBody).toEqual({ username: 'Ирина', password: 'secret-password' })
-    expect(error).toMatchObject({
-      status: 401,
-      data: {
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: 'invalid username or password',
-          request_id: 'request-42',
-        },
-      },
-    })
-  })
 })

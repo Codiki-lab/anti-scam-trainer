@@ -15,11 +15,7 @@ export const userApi = api.injectEndpoints({
       transformResponse: (response: AccountDto) => mapAccount(accountDtoSchema.parse(response)),
     }),
     login: build.mutation<void, Credentials>({
-      query: ({ username, password }) => ({
-        url: '/auth/login',
-        method: 'POST',
-        body: { username, password },
-      }),
+      query: (body) => ({ url: '/auth/login', method: 'POST', body, responseHandler: 'text' }),
       invalidatesTags: ['Account'],
     }),
     logout: build.mutation<void, void>({

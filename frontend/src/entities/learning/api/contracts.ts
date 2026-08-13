@@ -52,7 +52,7 @@ export interface TopicContract {
 export interface TheoryBlock {
   id: number
   sort_order: number
-  kind: 'intro' | 'risk' | 'example' | 'safe_action' | 'summary'
+  kind: string
   title: string
   body: string
 }
@@ -105,7 +105,7 @@ export const theoryResponseSchema = z.object({
       z.object({
         id: z.number().int(),
         sort_order: z.number().int().min(1).max(5),
-        kind: z.enum(['intro', 'risk', 'example', 'safe_action', 'summary']),
+        kind: z.string(),
         title: z.string(),
         body: z.string(),
       }),

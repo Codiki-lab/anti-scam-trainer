@@ -1,19 +1,25 @@
 import type { TopicContract } from '@/entities/learning'
-import type { ContinueActionDto } from '@/entities/learning-path'
+import type { AchievementCode } from '../model/types'
 import type { StreakDto, UserRole } from '@/entities/user'
 import { z } from 'zod'
-import { continueActionDtoSchema } from '@/entities/learning-path'
 import { streakDtoSchema, userRoleSchema } from '@/entities/user'
 import { topicContractSchema } from '@/entities/learning'
 
 export interface AchievementDto {
-  code: string
+  code: AchievementCode
   title: string
   description: string
   icon: string
   earned: boolean
   earned_at?: string
   progress: { current: number; target: number }
+}
+
+export interface ContinueActionDto {
+  type: 'resume_attempt' | 'read_theory' | 'take_quiz' | 'start_level' | 'start_free_play'
+  topic_id?: number
+  level?: number
+  attempt_id?: number
 }
 
 export interface DailyTaskDto {
@@ -69,8 +75,19 @@ export interface AchievementsDto {
   available: AchievementDto[]
 }
 
+export const achievementCodeSchema = z.enum([
+  'first_training',
+  'five_trainings',
+  'perfect_score',
+  'first_topic_completed',
+  'all_buyer_topics',
+  'all_seller_topics',
+  'streak_3',
+  'streak_7',
+])
+
 export const achievementDtoSchema = z.object({
-  code: z.string(),
+  code: achievementCodeSchema,
   title: z.string(),
   description: z.string(),
   icon: z.string(),
@@ -108,7 +125,20 @@ export const dashboardDtoSchema = z.object({
   streak: streakDtoSchema,
   topics: z.array(topicContractSchema).length(6),
   achievements: z.array(achievementDtoSchema).max(3),
-  continue_action: continueActionDtoSchema.nullable(),
+  continue_action: z
+    .object({
+      type: z.enum([
+        'resume_attempt',
+        'read_theory',
+        'take_quiz',
+        'start_level',
+        'start_free_play',
+      ]),
+      topic_id: z.number().int().optional(),
+      level: z.number().int().optional(),
+      attempt_id: z.number().int().optional(),
+    })
+    .nullable(),
   daily_task: dailyTaskDtoSchema,
 })
 

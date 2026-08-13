@@ -12,7 +12,7 @@ export function AdminPage() {
         <div>
           <span className={styles.eyebrow}>Управление контентом</span>
           <h1>Админ-панель</h1>
-          <p>Создавайте и публикуйте Темы, Теорию, Quiz и Сценарии тренировок.</p>
+          <p>Создавайте и публикуйте Темы, Теорию, квизы и Сценарии тренировок.</p>
         </div>
         <div className={styles.sectionTabs} role="tablist" aria-label="Раздел админ-панели">
           <button
