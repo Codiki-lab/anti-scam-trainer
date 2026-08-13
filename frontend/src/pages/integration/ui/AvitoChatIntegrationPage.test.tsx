@@ -52,7 +52,9 @@ describe('AvitoChatIntegrationPage', () => {
     expect(screen.getByText('Собеседник кажется подозрительным')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Пройти антискам-тренажёр/ }))
 
-    expect(screen.getByRole('dialog', { name: 'Разобрать ситуацию в тренажёре?' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('dialog', { name: 'Разобрать ситуацию в тренажёре?' }),
+    ).toBeInTheDocument()
     expect(submit).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Продолжить' }))

@@ -33,13 +33,7 @@ const profileLinks = [
   'Гараж',
 ]
 
-function Message({
-  children,
-  isMine = false,
-}: {
-  children: React.ReactNode
-  isMine?: boolean
-}) {
+function Message({ children, isMine = false }: { children: React.ReactNode; isMine?: boolean }) {
   return <p className={isMine ? styles.outgoingMessage : styles.incomingMessage}>{children}</p>
 }
 
@@ -67,8 +61,12 @@ export function AvitoChatIntegrationPage() {
           <div>
             <a href="#post-ad">+ Разместить объявление</a>
             <a href="#my-ads">Мои объявления</a>
-            <button type="button" aria-label="Открыть избранное">♡</button>
-            <button type="button" aria-label="Открыть профиль">●</button>
+            <button type="button" aria-label="Открыть избранное">
+              ♡
+            </button>
+            <button type="button" aria-label="Открыть профиль">
+              ●
+            </button>
           </div>
         </div>
         <div className={styles.marketNavigation}>
@@ -86,9 +84,13 @@ export function AvitoChatIntegrationPage() {
 
       <div className={styles.messengerLayout}>
         <aside className={styles.profileSidebar} aria-label="Профиль пользователя Avito">
-          <div className={styles.profileAvatar}>А<span /></div>
+          <div className={styles.profileAvatar}>
+            А<span />
+          </div>
           <h2>Алексей</h2>
-          <p className={styles.rating}>4,9 ★★★★★ <a href="#reviews">12 отзывов</a></p>
+          <p className={styles.rating}>
+            4,9 ★★★★★ <a href="#reviews">12 отзывов</a>
+          </p>
           <nav aria-label="Навигация профиля">
             {profileLinks.map((label) => (
               <a key={label} href={`#${label}`}>
@@ -98,7 +100,9 @@ export function AvitoChatIntegrationPage() {
           </nav>
           <div className={styles.sidebarSection}>
             <b>Сообщения</b>
-            <a className={styles.selectedLink} href="#messages">Сообщения</a>
+            <a className={styles.selectedLink} href="#messages">
+              Сообщения
+            </a>
             <a href="#notifications">Уведомления</a>
           </div>
           <div className={styles.sidebarSection}>
@@ -112,7 +116,11 @@ export function AvitoChatIntegrationPage() {
 
         <article className={styles.chatPanel}>
           <header className={styles.chatHeader}>
-            <button className={styles.iconButton} type="button" aria-label="Вернуться к списку диалогов">
+            <button
+              className={styles.iconButton}
+              type="button"
+              aria-label="Вернуться к списку диалогов"
+            >
               <ArrowLeft size={27} weight="bold" />
             </button>
             <div className={styles.counterpartyAvatar}>Н</div>
@@ -121,7 +129,9 @@ export function AvitoChatIntegrationPage() {
               <span>в сети в 13:05</span>
             </div>
             <div className={styles.productPreview} aria-label="Объявление о городском велосипеде">
-              <span className={styles.productImage}><Bicycle size={28} weight="duotone" /></span>
+              <span className={styles.productImage}>
+                <Bicycle size={28} weight="duotone" />
+              </span>
               <div>
                 <b>Городской велосипед</b>
                 <span>18 000 ₽ · Москва</span>
@@ -142,18 +152,25 @@ export function AvitoChatIntegrationPage() {
             <Message>{state.snapshot[0].text}</Message>
             <Message isMine>
               {state.snapshot[1].text}
-              <small>12:04 <Check size={13} weight="bold" aria-label="Прочитано" /></small>
+              <small>
+                12:04 <Check size={13} weight="bold" aria-label="Прочитано" />
+              </small>
             </Message>
             <Message>
               {state.snapshot[2].text}
-              <a className={styles.fakeLink} href="#phishing-example">avito-delivery.example</a>
+              <a className={styles.fakeLink} href="#phishing-example">
+                avito-delivery.example
+              </a>
               <small>12:05</small>
             </Message>
             <aside className={styles.safetyWarning} aria-label="Предупреждение безопасности">
               <ShieldWarning size={20} weight="fill" aria-hidden="true" />
               <div>
                 <b>Собеседник кажется подозрительным</b>
-                <p>В переписке обнаружена просьба перейти по внешней ссылке. Проверьте признаки риска перед продолжением сделки.</p>
+                <p>
+                  В переписке обнаружена просьба перейти по внешней ссылке. Проверьте признаки риска
+                  перед продолжением сделки.
+                </p>
                 <button type="button" onClick={openConsent}>
                   Пройти антискам-тренажёр <span aria-hidden="true">→</span>
                 </button>
@@ -172,7 +189,11 @@ export function AvitoChatIntegrationPage() {
             <button className={styles.iconButton} type="button" aria-label="Сделать фото">
               <Camera size={22} weight="regular" />
             </button>
-            <button className={styles.iconButton} type="button" aria-label="Записать голосовое сообщение">
+            <button
+              className={styles.iconButton}
+              type="button"
+              aria-label="Записать голосовое сообщение"
+            >
               <Microphone size={22} weight="regular" />
             </button>
           </form>
@@ -194,13 +215,24 @@ export function AvitoChatIntegrationPage() {
                 <p className={uiStyles.eyebrow}>Контекстная тренировка</p>
                 <h1 id="consent-title">Разобрать ситуацию в тренажёре?</h1>
                 <p>
-                  Передадим только обезличенный Снимок диалога из трёх Сообщений. История чата, контакты и данные объявления не сохраняются.
+                  Передадим только обезличенный Снимок диалога из трёх Сообщений. История чата,
+                  контакты и данные объявления не сохраняются.
                 </p>
                 <div className={styles.dialogActions}>
-                  <button className={uiStyles.primaryButton} type="button" disabled={state.isLoading} onClick={() => void state.submit()}>
+                  <button
+                    className={uiStyles.primaryButton}
+                    type="button"
+                    disabled={state.isLoading}
+                    onClick={() => void state.submit()}
+                  >
                     {state.isLoading ? 'Подбираем Тему…' : 'Продолжить'}
                   </button>
-                  <button className={uiStyles.secondaryButton} type="button" disabled={state.isLoading} onClick={closeConsent}>
+                  <button
+                    className={uiStyles.secondaryButton}
+                    type="button"
+                    disabled={state.isLoading}
+                    onClick={closeConsent}
+                  >
                     Отмена
                   </button>
                 </div>
@@ -212,10 +244,15 @@ export function AvitoChatIntegrationPage() {
                 <h1 id="consent-title">{state.recommendation.topic.title}</h1>
                 <p>{state.recommendation.explanation}</p>
                 <div className={styles.dialogActions}>
-                  <Link className={uiStyles.primaryButton} to={getLearningActionPath(state.recommendation.nextAction, '')}>
+                  <Link
+                    className={uiStyles.primaryButton}
+                    to={getLearningActionPath(state.recommendation.nextAction, '')}
+                  >
                     Начать тренировку
                   </Link>
-                  <Link className={uiStyles.secondaryButton} to="/lessons">Все Темы</Link>
+                  <Link className={uiStyles.secondaryButton} to="/lessons">
+                    Все Темы
+                  </Link>
                 </div>
               </>
             )}
