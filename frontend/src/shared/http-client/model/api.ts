@@ -10,13 +10,16 @@ export const apiTags = {
   dashboard: 'Dashboard',
   progress: 'Progress',
   achievements: 'Achievements',
+  skillChecks: 'SkillChecks',
   adminTopics: 'AdminTopics',
   adminScenarios: 'AdminScenarios',
 } as const
 
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL ??
-  (import.meta.env.MODE === 'test' ? 'http://localhost/api' : '/api')
+  import.meta.env.MODE === 'test'
+    ? new URL(configuredApiBaseUrl, 'http://localhost').toString().replace(/\/$/, '')
+    : configuredApiBaseUrl
 
 const baseQuery = fetchBaseQuery({
   baseUrl: `${apiBaseUrl}/v1`,
@@ -32,7 +35,6 @@ const baseQueryWithAuthenticationRedirect: BaseQueryFn<
   const pathname = typeof window === 'undefined' ? '' : window.location.pathname
 
   if (
-    typeof window !== 'undefined' &&
     result.error?.status === 401 &&
     !pathname.startsWith('/login') &&
     !pathname.startsWith('/register') &&

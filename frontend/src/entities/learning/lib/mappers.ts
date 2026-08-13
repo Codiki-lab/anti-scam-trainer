@@ -3,8 +3,17 @@ import type {
   QuizResult as QuizResultDto,
   TheoryResponse as TheoryResponseDto,
   TopicContract as TopicDto,
+  RecommendationDto,
+  SkillCheckDto,
 } from '../api/contracts'
-import type { Quiz, QuizOutcome, Theory, Topic } from '../model/types'
+import type {
+  LearningRecommendation,
+  Quiz,
+  QuizOutcome,
+  SkillCheck,
+  Theory,
+  Topic,
+} from '../model/types'
 import { mapStreak } from '@/entities/user'
 
 export function mapTopic(dto: TopicDto): Topic {
@@ -62,5 +71,35 @@ export function mapQuizOutcome(dto: QuizResultDto): QuizOutcome {
     bestScore: dto.best_score,
     isFirstPass: dto.newly_passed,
     streak: mapStreak(dto.streak),
+  }
+}
+
+export function mapRecommendation(dto: RecommendationDto): LearningRecommendation {
+  return {
+    topic: mapTopic(dto.topic),
+    explanation: dto.explanation,
+    nextAction: {
+      type: dto.next_action.type,
+      topicId: dto.next_action.topic_id,
+      level: dto.next_action.level,
+      attemptId: dto.next_action.attempt_id,
+    },
+    isFallback: dto.fallback,
+  }
+}
+
+export function mapSkillCheck(dto: SkillCheckDto): SkillCheck {
+  return {
+    id: dto.id,
+    topicId: dto.topic_id,
+    phase: dto.phase,
+    snapshot: dto.snapshot,
+    beforeCorrect: dto.before_correct,
+    afterCorrect: dto.after_correct,
+    isVerdictImproved: dto.verdict_improved,
+    beforePattern: dto.before_pattern,
+    afterPattern: dto.after_pattern,
+    isPatternImproved: dto.pattern_improved,
+    isImproved: dto.improved,
   }
 }

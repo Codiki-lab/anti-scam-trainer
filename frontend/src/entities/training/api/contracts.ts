@@ -37,7 +37,23 @@ export interface GameStateDto {
   level: number
   user_role: 'buyer' | 'seller'
   counterparty_role: 'buyer' | 'seller'
-  product_context: ProductContextDto
+  product_context: {
+    item_title: string
+    category: string
+    deal_method: 'delivery' | 'meetup' | 'pickup'
+    price?: number
+    currency?: 'RUB'
+    location?: string
+    image_key?:
+      | 'smartphone'
+      | 'electronics'
+      | 'appliance'
+      | 'camera'
+      | 'bicycle'
+      | 'laptop'
+      | 'headphones'
+      | 'console'
+  }
   mode: ResponseModeDto
   step_progress: { current: number; answered: number; total: number }
   step: {
@@ -52,28 +68,10 @@ export interface GameStateDto {
     option_id?: number
     option_text?: string
     free_text?: string
-    points: number
+    points: 0 | 25 | 50 | 75 | 100
   }>
   messages: Array<{ role: 'user' | 'assistant'; text: string }>
   can_finish_early: boolean
-}
-
-export interface ProductContextDto {
-  item_title: string
-  category: string
-  deal_method: 'delivery' | 'meetup' | 'pickup'
-  price?: number
-  currency?: 'RUB'
-  location?: string
-  image_key?:
-    | 'smartphone'
-    | 'electronics'
-    | 'appliance'
-    | 'camera'
-    | 'bicycle'
-    | 'laptop'
-    | 'headphones'
-    | 'console'
 }
 
 export interface AnswerCommandDto {
@@ -94,7 +92,29 @@ export interface AnswerBreakdownDto {
   assessment: 'unsafe' | 'risky' | 'mostly_safe' | 'safe'
   explanation: string
   safe_action: string
-  risk_signals: Array<{ code: string; label: string }>
+  risk_signals: RiskSignalDto[]
+}
+
+export interface RiskSignalDto {
+  code: string
+  label: string
+}
+
+export interface ResultFeedbackDto {
+  reason: string
+  risk_signals: RiskSignalDto[]
+  safe_alternative: string
+}
+
+export interface MicroQuestionDto {
+  pattern_code: string
+  question: string
+  options: [string, string]
+}
+
+export interface MicroQuestionAnswerDto {
+  correct: boolean
+  safe_action: string
 }
 
 export interface AchievementDto {
@@ -119,8 +139,10 @@ export interface AttemptResultDto {
   score: number
   stars: number
   decision_review: AnswerBreakdownDto[]
-  risk_signals: Array<{ code: string; label: string }>
+  risk_signals: RiskSignalDto[]
   safe_actions: string[]
+  feedback: ResultFeedbackDto
+  micro_question?: MicroQuestionDto
   level_progress: TopicLevelProgress
   topic_id: number
   topic_completed: boolean
@@ -138,6 +160,27 @@ const gameStepSchema = z.object({
   options: z.array(gameOptionSchema),
 })
 
+const productContextSchema = z.object({
+  item_title: z.string().min(1),
+  category: z.string().min(1),
+  deal_method: z.enum(['delivery', 'meetup', 'pickup']),
+  price: z.number().int().nonnegative().optional(),
+  currency: z.literal('RUB').optional(),
+  location: z.string().optional(),
+  image_key: z
+    .enum([
+      'smartphone',
+      'electronics',
+      'appliance',
+      'camera',
+      'bicycle',
+      'laptop',
+      'headphones',
+      'console',
+    ])
+    .optional(),
+})
+
 export const gameStateDtoSchema = z.object({
   attempt_id: z.number().int(),
   status: z.enum(['IN_PROGRESS', 'COMPLETED', 'ABANDONED']),
@@ -149,26 +192,7 @@ export const gameStateDtoSchema = z.object({
   level: z.number().int().min(0).max(4),
   user_role: z.enum(['buyer', 'seller']),
   counterparty_role: z.enum(['buyer', 'seller']),
-  product_context: z.object({
-    item_title: z.string().min(1),
-    category: z.string().min(1),
-    deal_method: z.enum(['delivery', 'meetup', 'pickup']),
-    price: z.number().int().nonnegative().optional(),
-    currency: z.literal('RUB').optional(),
-    location: z.string().optional(),
-    image_key: z
-      .enum([
-        'smartphone',
-        'electronics',
-        'appliance',
-        'camera',
-        'bicycle',
-        'laptop',
-        'headphones',
-        'console',
-      ])
-      .optional(),
-  }),
+  product_context: productContextSchema,
   mode: z.enum(['multiple_choice', 'similar_choice', 'mixed', 'free_text']),
   step_progress: z.object({
     current: z.number().int().nonnegative(),
@@ -180,10 +204,10 @@ export const gameStateDtoSchema = z.object({
     z.object({
       step_id: z.number().int().nonnegative(),
       answer_type: z.enum(['option', 'free_text']),
-      option_id: z.number().int().nonnegative().optional(),
+      option_id: z.number().int().positive().optional(),
       option_text: z.string().optional(),
       free_text: z.string().optional(),
-      points: z.number().int().min(0).max(100),
+      points: z.union([z.literal(0), z.literal(25), z.literal(50), z.literal(75), z.literal(100)]),
     }),
   ),
   messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(400) })),
@@ -210,6 +234,28 @@ const continueActionDtoSchema = z.object({
   attempt_id: z.number().int().optional(),
 })
 
+const riskSignalDtoSchema = z.object({
+  code: z.string(),
+  label: z.string(),
+})
+
+const resultFeedbackDtoSchema = z.object({
+  reason: z.string(),
+  risk_signals: z.array(riskSignalDtoSchema).max(2),
+  safe_alternative: z.string(),
+})
+
+const microQuestionDtoSchema = z.object({
+  pattern_code: z.string(),
+  question: z.string(),
+  options: z.tuple([z.string(), z.string()]),
+})
+
+export const microQuestionAnswerDtoSchema = z.object({
+  correct: z.boolean(),
+  safe_action: z.string(),
+})
+
 export const attemptResultDtoSchema = z.object({
   attempt_id: z.number().int(),
   score: z.number().int().min(0).max(100),
@@ -226,11 +272,13 @@ export const attemptResultDtoSchema = z.object({
       assessment: z.enum(['unsafe', 'risky', 'mostly_safe', 'safe']),
       explanation: z.string(),
       safe_action: z.string(),
-      risk_signals: z.array(z.object({ code: z.string(), label: z.string() })),
+      risk_signals: z.array(riskSignalDtoSchema),
     }),
   ),
-  risk_signals: z.array(z.object({ code: z.string(), label: z.string() })),
+  risk_signals: z.array(riskSignalDtoSchema),
   safe_actions: z.array(z.string()),
+  feedback: resultFeedbackDtoSchema,
+  micro_question: microQuestionDtoSchema.optional(),
   level_progress: topicLevelProgressSchema,
   topic_id: z.number().int(),
   topic_completed: z.boolean(),

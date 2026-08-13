@@ -36,7 +36,7 @@ export function QuizEditor({ topic, editable }: { topic: AdminTopic; editable: b
     <section className={styles.contentSection}>
       <div className={styles.contentSectionHeader}>
         <div>
-          <h3>Quiz</h3>
+          <h3>Квиз</h3>
           <p>{topic.quiz.length} из 5 обязательных вопросов, по 4 варианта в каждом</p>
         </div>
         {editable && topic.quiz.length < 5 && !adding && (
@@ -102,7 +102,7 @@ function QuestionCard({ topicId, question, editable, onCancel, onCreated }: Ques
   }
 
   const remove = async () => {
-    if (!question.id || !window.confirm('Удалить вопрос Quiz со всеми вариантами?')) return
+    if (!question.id || !window.confirm('Удалить вопрос квиза со всеми вариантами?')) return
     try {
       await deleteQuestion({ topicId, itemId: question.id }).unwrap()
     } catch (requestError) {

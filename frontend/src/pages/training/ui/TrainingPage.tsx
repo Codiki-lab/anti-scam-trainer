@@ -7,17 +7,17 @@ import { useStartTraining } from '@/features/start-training'
 import { ErrorState } from '@/shared/error-state'
 import { getApiErrorMessage } from '@/shared/http-error'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { LoadingState, uiStyles } from '@/shared/ui-kit'
+import { uiStyles } from '@/shared/ui-kit'
 import { parsePositiveInteger } from '@/shared/url'
 import { TrainingList } from '@/widgets/training-list'
 import type { TrainingPreview } from '../model/types'
+import { TopicSelect } from './TopicSelect'
 import styles from './TrainingPage.module.scss'
 
 export function TrainingPage({ preview }: { preview?: TrainingPreview }) {
   const { account } = useCurrentAccount()
   const role = account.trainingRole
   const isPreview = useIsPreview()
-  const basePath = isPreview ? '/preview' : ''
   const [searchParams, setSearchParams] = useSearchParams()
   const { topics, isLoading: areTopicsLoading } = useTopics(role, preview?.topics)
   const selectedTopicId = parsePositiveInteger(searchParams.get('topic'))
@@ -30,7 +30,8 @@ export function TrainingPage({ preview }: { preview?: TrainingPreview }) {
 
   const startLevel = async (level: number) => setError((await start(level)) ?? '')
 
-  if (areTopicsLoading || levelsQuery.isLoading) return <LoadingState label="Загружаем Уровни…" />
+  if (areTopicsLoading || levelsQuery.isLoading)
+    return <p className={uiStyles.muted}>Загружаем Уровни…</p>
   if (!isPreview && levelsQuery.error) {
     return (
       <ErrorState
@@ -51,32 +52,18 @@ export function TrainingPage({ preview }: { preview?: TrainingPreview }) {
         </p>
       </section>
       <div className={styles.trainingToolbar}>
-        <label className={styles.topicField}>
-          Тема тренировки
-          <select
-            value={topic.id}
-            onChange={(event) => setSearchParams({ topic: event.target.value })}
-          >
-            {topics.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <TopicSelect
+          topics={topics}
+          value={topic.id}
+          onChange={(topicId) => setSearchParams({ topic: String(topicId) })}
+        />
         <p>
           Показаны 4 уровня выбранной темы. Следующий уровень открывается после получения хотя бы
           одной звезды.
         </p>
       </div>
       {error && <p className={uiStyles.formError}>{error}</p>}
-      <TrainingList
-        topic={topic}
-        levels={levels}
-        isStarting={isStarting}
-        onStart={startLevel}
-        basePath={basePath}
-      />
+      <TrainingList topic={topic} levels={levels} isStarting={isStarting} onStart={startLevel} />
     </>
   )
 }

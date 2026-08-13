@@ -1,12 +1,13 @@
 import { useParams } from 'react-router-dom'
 import { useGetAttemptResultQuery, type AttemptResult } from '@/entities/training'
+import { MicroQuestionCard } from '@/features/answer-micro-question'
+import { getLearningActionPath } from '@/features/continue-learning'
 import { ErrorState, InvalidRouteState } from '@/shared/error-state'
 import { getApiErrorMessage } from '@/shared/http-error'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { LoadingState, uiStyles } from '@/shared/ui-kit'
+import { uiStyles } from '@/shared/ui-kit'
 import { parsePositiveInteger } from '@/shared/url'
 import { ResultSummary } from '@/widgets/result-summary'
-import { getNextActionPath } from '../lib/getNextActionPath'
 
 export function ResultPage({ previewResult }: { previewResult?: AttemptResult }) {
   const { sessionId } = useParams()
@@ -19,7 +20,7 @@ export function ResultPage({ previewResult }: { previewResult?: AttemptResult })
   if (!isPreview && !parsedAttemptId) {
     return <InvalidRouteState backTo="/chats" backLabel="К тренировкам" />
   }
-  if (query.isLoading) return <LoadingState label="Загружаем Result…" />
+  if (query.isLoading) return <p className={uiStyles.muted}>Загружаем Result…</p>
   if (query.error) {
     return (
       <ErrorState message={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} />
@@ -32,7 +33,17 @@ export function ResultPage({ previewResult }: { previewResult?: AttemptResult })
     <ResultSummary
       result={result}
       basePath={basePath}
-      nextActionHref={getNextActionPath(result, basePath)}
+      nextActionHref={getLearningActionPath(result.nextAction, basePath)}
+      microQuestion={
+        result.microQuestion ? (
+          <MicroQuestionCard
+            attemptId={attemptId}
+            question={result.microQuestion}
+            isPreview={isPreview}
+            onConflict={() => void query.refetch()}
+          />
+        ) : undefined
+      }
     />
   )
 }

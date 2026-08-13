@@ -7,6 +7,9 @@ import type {
   QuizResult as QuizResultDto,
   TheoryResponse as TheoryResponseDto,
   TopicContract as TopicDto,
+  RecommendationDto,
+  SkillCheckDto,
+  AvitoChatRecommendationRequestDto,
 } from './contracts'
 import {
   quizResultSchema,
@@ -14,9 +17,26 @@ import {
   markTheoryReadResponseSchema,
   theoryResponseSchema,
   topicContractSchema,
+  recommendationDtoSchema,
+  skillCheckDtoSchema,
 } from './contracts'
-import { mapQuiz, mapQuizOutcome, mapTheory, mapTopic } from '../lib/mappers'
-import type { Quiz, QuizOutcome, QuizSubmission, Theory, Topic } from '../model/types'
+import {
+  mapQuiz,
+  mapQuizOutcome,
+  mapRecommendation,
+  mapSkillCheck,
+  mapTheory,
+  mapTopic,
+} from '../lib/mappers'
+import type {
+  LearningRecommendation,
+  Quiz,
+  QuizOutcome,
+  QuizSubmission,
+  SkillCheck,
+  Theory,
+  Topic,
+} from '../model/types'
 
 export const learningApi = api.injectEndpoints({
   endpoints: (build) => ({
@@ -64,6 +84,45 @@ export const learningApi = api.injectEndpoints({
         { type: 'Quiz', id: topicId },
       ],
     }),
+    getRecommendation: build.query<LearningRecommendation, UserRole>({
+      query: (role) => ({ url: '/recommendations/next', params: { role } }),
+      transformResponse: (response: RecommendationDto) =>
+        mapRecommendation(recommendationDtoSchema.parse(response)),
+      providesTags: ['Topics'],
+    }),
+    recommendFromAvitoChat: build.mutation<
+      LearningRecommendation,
+      AvitoChatRecommendationRequestDto
+    >({
+      query: (body) => ({
+        url: '/integrations/avito-chat/recommendations',
+        method: 'POST',
+        body,
+      }),
+      transformResponse: (response: RecommendationDto) =>
+        mapRecommendation(recommendationDtoSchema.parse(response)),
+    }),
+    startSkillCheck: build.mutation<SkillCheck, number>({
+      query: (topicId) => ({ url: `/topics/${topicId}/skill-check/start`, method: 'POST' }),
+      transformResponse: (response: SkillCheckDto) =>
+        mapSkillCheck(skillCheckDtoSchema.parse(response)),
+    }),
+    getSkillCheck: build.query<SkillCheck, number>({
+      query: (checkId) => `/skill-checks/${checkId}`,
+      transformResponse: (response: SkillCheckDto) =>
+        mapSkillCheck(skillCheckDtoSchema.parse(response)),
+      providesTags: (_result, _error, checkId) => [{ type: 'SkillChecks', id: checkId }],
+    }),
+    answerSkillCheck: build.mutation<SkillCheck, { checkId: number; answer: boolean }>({
+      query: ({ checkId, answer }) => ({
+        url: `/skill-checks/${checkId}/answers`,
+        method: 'POST',
+        body: { answer },
+      }),
+      transformResponse: (response: SkillCheckDto) =>
+        mapSkillCheck(skillCheckDtoSchema.parse(response)),
+      invalidatesTags: (_result, _error, { checkId }) => [{ type: 'SkillChecks', id: checkId }],
+    }),
   }),
 })
 
@@ -73,4 +132,10 @@ export const {
   useMarkTheoryReadMutation,
   useGetQuizQuery,
   useSubmitQuizMutation,
+  useGetRecommendationQuery,
+  useRecommendFromAvitoChatMutation,
+  useStartSkillCheckMutation,
+  useGetSkillCheckQuery,
+  useLazyGetSkillCheckQuery,
+  useAnswerSkillCheckMutation,
 } = learningApi

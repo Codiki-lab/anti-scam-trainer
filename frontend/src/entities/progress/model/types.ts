@@ -1,8 +1,18 @@
 import type { Topic } from '@/entities/learning'
 import type { Streak, UserRole } from '@/entities/user'
 
+export type AchievementCode =
+  | 'first_training'
+  | 'five_trainings'
+  | 'perfect_score'
+  | 'first_topic_completed'
+  | 'all_buyer_topics'
+  | 'all_seller_topics'
+  | 'streak_3'
+  | 'streak_7'
+
 export interface Achievement {
-  code: string
+  code: AchievementCode
   title: string
   description: string
   icon: string

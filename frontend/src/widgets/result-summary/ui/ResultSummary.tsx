@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AttemptResult } from '@/entities/training'
 import { Stars } from '@/shared/stars'
@@ -8,15 +9,22 @@ interface ResultSummaryProps {
   result: AttemptResult
   basePath?: string
   nextActionHref?: string
+  microQuestion?: ReactNode
 }
 
-export function ResultSummary({ result, basePath = '', nextActionHref }: ResultSummaryProps) {
-  const assessmentLabels = {
-    unsafe: 'небезопасно',
-    risky: 'рискованно',
-    mostly_safe: 'почти безопасно',
-    safe: 'безопасно',
-  }
+const assessmentLabel = {
+  unsafe: 'опасно',
+  risky: 'риск',
+  mostly_safe: 'почти безопасно',
+  safe: 'безопасно',
+} as const
+
+export function ResultSummary({
+  result,
+  basePath = '',
+  nextActionHref,
+  microQuestion,
+}: ResultSummaryProps) {
   return (
     <section className={styles.result}>
       <p className={uiStyles.eyebrow}>Прохождение завершено</p>
@@ -31,24 +39,23 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
           <Stars value={result.stars} />
         </div>
       </div>
+      <section className={styles.feedback}>
+        <p className={uiStyles.eyebrow}>Почему такой Result</p>
+        <h2>{result.feedback.reason}</h2>
+        <p>
+          <b>Безопасная альтернатива:</b> {result.feedback.safeAlternative}
+        </p>
+      </section>
       <h2>Разбор сделки</h2>
       <div className={styles.checkList}>
-        {result.decisionReview.map((answer) => (
-          <p key={answer.stepId} className={answer.points >= 75 ? undefined : styles.risk}>
-            {answer.points >= 75 ? '✓' : '!'}
+        {result.decisionReview.map((answer, index) => (
+          <p key={answer.stepId} className={answer.assessment === 'safe' ? undefined : styles.risk}>
+            {answer.assessment === 'safe' ? '✓' : '!'}
             <span>
               <b>
-                Шаг {answer.stepNumber} — {assessmentLabels[answer.assessment]} · {answer.points}{' '}
-                Баллов
+                Шаг {answer.stepNumber || index + 1} — {assessmentLabel[answer.assessment]}
               </b>
-              <em>Ваш ответ: {answer.optionText || answer.freeText}</em>
-              {answer.explanation}
-              <small>Безопасная альтернатива: {answer.safeAction}</small>
-              {answer.riskSignals.length > 0 && (
-                <span className={styles.signals}>
-                  {answer.riskSignals.map((signal) => signal.label).join(' · ')}
-                </span>
-              )}
+              {answer.explanation} <strong>{answer.safeAction}</strong>
             </span>
           </p>
         ))}
@@ -73,12 +80,6 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
           </div>
         </div>
       )}
-      {result.isScam !== undefined && (
-        <p className={styles.reveal}>
-          Собеседник в Свободной игре:{' '}
-          <b>{result.isScam ? 'мошенник' : 'обычный участник сделки'}</b>.
-        </p>
-      )}
       {result.newAchievements.length > 0 && (
         <section className={styles.achievements}>
           <h2>Новые достижения</h2>
@@ -90,6 +91,7 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
           ))}
         </section>
       )}
+      {microQuestion}
       <div className={uiStyles.buttonRow}>
         <Link className={uiStyles.primaryButton} to={nextActionHref ?? `${basePath}/chats`}>
           Продолжить обучение

@@ -1,8 +1,7 @@
-import type { AttemptResult } from '@/entities/training'
+import type { LearningAction } from '@/entities/learning'
 
-export function getNextActionPath(result: AttemptResult, basePath: string): string {
-  const action = result.nextAction
-  if (!action) return `${basePath}/chats`
+export function getLearningActionPath(action: LearningAction | null, basePath: string): string {
+  if (!action) return `${basePath}/lessons`
 
   switch (action.type) {
     case 'resume_attempt':

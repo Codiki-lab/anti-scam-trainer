@@ -10,7 +10,7 @@ export interface LevelState {
   scenarioId: number
   scenarioTitle: string
   scenarioDescription: string
-  responseType: ResponseMode
+  responseMode: ResponseMode
   inProgressAttemptId?: number
 }
 
@@ -79,7 +79,29 @@ export interface DecisionReview {
   assessment: 'unsafe' | 'risky' | 'mostly_safe' | 'safe'
   explanation: string
   safeAction: string
-  riskSignals: Array<{ code: string; label: string }>
+  riskSignals: RiskSignal[]
+}
+
+export interface RiskSignal {
+  code: string
+  label: string
+}
+
+export interface ResultFeedback {
+  reason: string
+  riskSignals: RiskSignal[]
+  safeAlternative: string
+}
+
+export interface MicroQuestion {
+  patternCode: string
+  question: string
+  options: [string, string]
+}
+
+export interface MicroQuestionAnswer {
+  isCorrect: boolean
+  safeAction: string
 }
 
 export interface AttemptResult {
@@ -87,8 +109,10 @@ export interface AttemptResult {
   score: number
   stars: number
   decisionReview: DecisionReview[]
-  riskSignals: Array<{ code: string; label: string }>
+  riskSignals: RiskSignal[]
   safeActions: string[]
+  feedback: ResultFeedback
+  microQuestion?: MicroQuestion
   levelProgress: LevelProgress
   topicId: number
   isTopicCompleted: boolean

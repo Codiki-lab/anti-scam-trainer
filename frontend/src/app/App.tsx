@@ -10,7 +10,8 @@ import {
 } from '@/entities/user'
 import { AuthPage } from '@/pages/auth'
 import { DashboardPage } from '@/pages/dashboard'
-import { LessonsPage, QuizPage, TheoryPage } from '@/pages/lessons'
+import { AvitoChatIntegrationPage } from '@/pages/integration'
+import { LessonsPage, QuizPage, SkillCheckPage, TheoryPage } from '@/pages/lessons'
 import { AchievementsPage, ProgressPage } from '@/pages/profile'
 import { ChatTrainingPage, ResultPage, TrainingPage } from '@/pages/training'
 import { PreviewModeProvider } from '@/shared/runtime-mode'
@@ -19,6 +20,7 @@ import {
   createPreviewDashboard,
   createPreviewProgress,
   createPreviewTheory,
+  createPreviewTrainingTopics,
   createPreviewTopics,
   previewAccount,
   previewAchievements,
@@ -28,9 +30,9 @@ import {
   previewQuizOutcome,
   previewResult,
   previewSession,
+  previewSkillCheck,
 } from './preview/data'
 import styles from './App.module.scss'
-import { UIFoundationPreview } from './preview/UIFoundationPreview'
 
 const AdminPage = lazy(() =>
   import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
@@ -153,7 +155,7 @@ function PreviewTrainingRoute() {
   return (
     <TrainingPage
       preview={{
-        topics: createPreviewTopics(account.trainingRole),
+        topics: createPreviewTrainingTopics(account.trainingRole),
         levels: previewLevels,
         session: previewSession,
         result: previewResult,
@@ -184,10 +186,13 @@ export function App() {
       <Route path="/preview/register" element={<PreviewAuth mode="register" />} />
       <Route element={<PreviewLayout />}>
         <Route path="/preview/dashboard" element={<PreviewDashboardRoute />} />
-        <Route path="/preview/ui-states" element={<UIFoundationPreview />} />
         <Route path="/preview/lessons" element={<PreviewLessonsRoute />} />
         <Route path="/preview/lessons/:lessonId" element={<PreviewTheoryRoute />} />
         <Route path="/preview/lessons/:lessonId/quiz" element={<PreviewQuizRoute />} />
+        <Route
+          path="/preview/lessons/:lessonId/skill-check"
+          element={<SkillCheckPage preview={previewSkillCheck} />}
+        />
         <Route path="/preview/chats" element={<PreviewTrainingRoute />} />
         <Route path="/preview/sessions/:sessionId" element={<PreviewChatRoute />} />
         <Route
@@ -208,11 +213,13 @@ export function App() {
         <Route path="/lessons" element={<LessonsPage />} />
         <Route path="/lessons/:lessonId" element={<TheoryPage />} />
         <Route path="/lessons/:lessonId/quiz" element={<QuizPage />} />
+        <Route path="/lessons/:lessonId/skill-check" element={<SkillCheckPage />} />
         <Route path="/chats" element={<TrainingPage />} />
         <Route path="/sessions/:sessionId" element={<ChatTrainingPage />} />
         <Route path="/sessions/:sessionId/result" element={<ResultPage />} />
         <Route path="/progress" element={<ProgressPage />} />
         <Route path="/achievements" element={<AchievementsPage />} />
+        <Route path="/integration/avito-chat" element={<AvitoChatIntegrationPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

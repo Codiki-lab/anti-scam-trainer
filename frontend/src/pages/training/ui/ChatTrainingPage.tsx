@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTrainingSession } from '@/features/training-session'
 import { InvalidRouteState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { LoadingState, uiStyles } from '@/shared/ui-kit'
+import { uiStyles } from '@/shared/ui-kit'
 import { parsePositiveInteger } from '@/shared/url'
 import { TrainingChat } from '@/widgets/training-chat'
 import type { TrainingPreview } from '../model/types'
@@ -21,15 +21,13 @@ export function ChatTrainingPage({ preview }: ChatTrainingPageProps) {
   const state = useTrainingSession(attemptId, preview)
 
   useEffect(() => {
-    if (state.result || state.session?.status === 'COMPLETED') {
-      navigate(`${isPreview ? '/preview' : ''}/sessions/${attemptId}/result`, { replace: true })
-    }
-  }, [attemptId, isPreview, navigate, state.result, state.session?.status])
+    if (state.result) navigate(`${isPreview ? '/preview' : ''}/sessions/${attemptId}/result`)
+  }, [attemptId, isPreview, navigate, state.result])
 
   if (!isPreview && !parsedAttemptId) {
     return <InvalidRouteState backTo="/chats" backLabel="К тренировкам" />
   }
-  if (state.isLoading) return <LoadingState label="Восстанавливаем Прохождение…" />
+  if (state.isLoading) return <p className={uiStyles.muted}>Восстанавливаем Прохождение…</p>
   if (!state.session) {
     return (
       <section className={uiStyles.pageHeading}>
@@ -47,11 +45,7 @@ export function ChatTrainingPage({ preview }: ChatTrainingPageProps) {
       session={state.session}
       isSubmitting={state.isSubmitting}
       error={state.error}
-      cooldown={state.cooldown}
       onSubmit={state.submit}
-      onAbandon={async () => {
-        if (await state.abandon()) navigate(`${isPreview ? '/preview' : ''}/chats`)
-      }}
     />
   )
 }

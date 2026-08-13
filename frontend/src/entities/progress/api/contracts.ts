@@ -1,11 +1,12 @@
 import type { TopicContract } from '@/entities/learning'
+import type { AchievementCode } from '../model/types'
 import type { StreakDto, UserRole } from '@/entities/user'
 import { z } from 'zod'
 import { streakDtoSchema, userRoleSchema } from '@/entities/user'
 import { topicContractSchema } from '@/entities/learning'
 
 export interface AchievementDto {
-  code: string
+  code: AchievementCode
   title: string
   description: string
   icon: string
@@ -74,8 +75,19 @@ export interface AchievementsDto {
   available: AchievementDto[]
 }
 
+export const achievementCodeSchema = z.enum([
+  'first_training',
+  'five_trainings',
+  'perfect_score',
+  'first_topic_completed',
+  'all_buyer_topics',
+  'all_seller_topics',
+  'streak_3',
+  'streak_7',
+])
+
 export const achievementDtoSchema = z.object({
-  code: z.string(),
+  code: achievementCodeSchema,
   title: z.string(),
   description: z.string(),
   icon: z.string(),

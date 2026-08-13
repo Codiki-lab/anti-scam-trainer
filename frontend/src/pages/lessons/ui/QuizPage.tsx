@@ -4,7 +4,7 @@ import { useQuiz, useSubmitQuizAttempt } from '@/features/learning-content'
 import { ErrorState, InvalidRouteState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
 import { parsePositiveInteger } from '@/shared/url'
-import { LoadingState, uiStyles } from '@/shared/ui-kit'
+import { uiStyles } from '@/shared/ui-kit'
 import { QuizPanel } from '@/widgets/quiz-panel'
 
 interface QuizPageProps {
@@ -26,9 +26,9 @@ export function QuizPage({ previewQuiz, previewOutcome, previewTopicId }: QuizPa
   if (!isPreview && !parsedTopicId) {
     return <InvalidRouteState backTo={basePath} backLabel="К темам" />
   }
-  if (isLoading) return <LoadingState label="Загружаем Quiz…" />
+  if (isLoading) return <p className={uiStyles.muted}>Загружаем квиз…</p>
   if (error) return <ErrorState message={error} onRetry={() => void retry()} />
-  if (!quiz) return <p className={uiStyles.formError}>Quiz недоступен.</p>
+  if (!quiz) return <p className={uiStyles.formError}>Квиз недоступен.</p>
 
   return (
     <QuizPanel

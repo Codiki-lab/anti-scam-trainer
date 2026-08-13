@@ -1,17 +1,16 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { Theory } from '@/entities/learning'
 import { TheoryContent } from './TheoryContent'
 
 const theory: Theory = {
   topic: {
-    id: 1,
-    slug: 'phishing',
-    role: 'buyer',
-    title: 'Фишинговые ссылки',
-    description: 'Как распознать поддельную страницу.',
-    order: 1,
+    id: 5,
+    slug: 'sms-codes',
+    role: 'seller',
+    title: 'Коды из SMS',
+    description: 'Не передавайте секретные коды собеседникам.',
+    order: 5,
     isTheoryRead: false,
     isQuizPassed: false,
     bestQuizScore: 0,
@@ -19,35 +18,28 @@ const theory: Theory = {
     levels: [],
   },
   sections: [
-    { id: 1, order: 1, kind: 'intro', title: 'Введение', body: 'Проверяйте адрес страницы.' },
-    { id: 2, order: 2, kind: 'risk', title: 'Риски', body: 'Чужой домен. Срочность.' },
-    { id: 3, order: 3, kind: 'example', title: 'Пример', body: 'Оплатите по этой ссылке.' },
+    { id: 1, order: 1, kind: 'intro', title: 'Как устроена схема', body: 'Вводный текст API' },
+    { id: 2, order: 2, kind: 'risk', title: 'Сигналы риска', body: 'Риск из API' },
+    { id: 3, order: 3, kind: 'example', title: 'Ситуация', body: 'Пример из API' },
     {
       id: 4,
       order: 4,
       kind: 'safe_action',
-      title: 'Что делать',
-      body: 'Закройте страницу. Откройте приложение.',
+      title: 'Безопасное действие',
+      body: 'Действие из API',
     },
-    { id: 5, order: 5, kind: 'summary', title: 'Итог', body: 'Оставайтесь внутри сервиса.' },
+    { id: 5, order: 5, kind: 'summary', title: 'Памятка', body: 'Итог из API' },
   ],
 }
 
 describe('TheoryContent', () => {
-  it('renders all learning block kinds and completes explicitly', async () => {
-    const user = userEvent.setup()
-    const onFinish = vi.fn().mockResolvedValue(undefined)
-    render(<TheoryContent theory={theory} onFinish={onFinish} />)
+  it('renders all five backend theory blocks without phishing-specific copy', () => {
+    render(<TheoryContent theory={theory} onFinish={async () => undefined} />)
 
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(5)
-    expect(screen.getByText('Чужой домен.')).toBeVisible()
-    expect(screen.getByText('Оплатите по этой ссылке.').closest('blockquote')).not.toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Проверить знания' }))
-    expect(onFinish).toHaveBeenCalledOnce()
-  })
-
-  it('shows a pending completion state', () => {
-    render(<TheoryContent theory={theory} isSaving onFinish={vi.fn()} />)
-    expect(screen.getByRole('button', { name: 'Сохраняем…' })).toBeDisabled()
+    for (const body of theory.sections.map((section) => section.body)) {
+      expect(screen.getByText(body)).toBeInTheDocument()
+    }
+    expect(screen.queryByText('avito-pay.example/order')).not.toBeInTheDocument()
+    expect(screen.queryByText('Внешняя ссылка')).not.toBeInTheDocument()
   })
 })

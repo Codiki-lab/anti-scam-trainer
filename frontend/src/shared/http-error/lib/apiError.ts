@@ -19,9 +19,3 @@ export function getApiErrorMessage(error: unknown): string {
 
   return 'Не удалось выполнить запрос. Попробуйте ещё раз.'
 }
-
-export function getApiErrorDetails(error: unknown): Record<string, unknown> {
-  if (!error || typeof error !== 'object' || !('data' in error)) return {}
-  const data = (error as FetchBaseQueryError).data
-  return isApiErrorEnvelope(data) ? data.error.details : {}
-}

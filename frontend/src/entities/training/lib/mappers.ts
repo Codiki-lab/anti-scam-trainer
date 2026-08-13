@@ -9,7 +9,7 @@ export function mapLevelState(dto: LevelStateDto): LevelState {
     scenarioId: dto.scenario_id,
     scenarioTitle: dto.scenario_title,
     scenarioDescription: dto.scenario_description,
-    responseType: dto.response_type,
+    responseMode: dto.response_type,
     inProgressAttemptId: dto.in_progress_attempt_id,
   }
 }
@@ -80,6 +80,18 @@ export function mapAttemptResult(dto: AttemptResultDto): AttemptResult {
     })),
     riskSignals: dto.risk_signals,
     safeActions: dto.safe_actions,
+    feedback: {
+      reason: dto.feedback.reason,
+      riskSignals: dto.feedback.risk_signals,
+      safeAlternative: dto.feedback.safe_alternative,
+    },
+    microQuestion: dto.micro_question
+      ? {
+          patternCode: dto.micro_question.pattern_code,
+          question: dto.micro_question.question,
+          options: dto.micro_question.options,
+        }
+      : undefined,
     levelProgress: {
       number: dto.level_progress.number,
       isOpened: dto.level_progress.opened,

@@ -3,7 +3,7 @@ import { useCurrentAccount } from '@/entities/user'
 import { useTopics } from '@/features/learning-content'
 import { ErrorState } from '@/shared/error-state'
 import { useIsPreview } from '@/shared/runtime-mode'
-import { LoadingState, uiStyles } from '@/shared/ui-kit'
+import { uiStyles } from '@/shared/ui-kit'
 import { TopicList } from '@/widgets/topic-list'
 
 export function LessonsPage({ previewTopics }: { previewTopics?: Topic[] }) {
@@ -12,7 +12,7 @@ export function LessonsPage({ previewTopics }: { previewTopics?: Topic[] }) {
   const isPreview = useIsPreview()
   const { topics, isLoading, error, retry } = useTopics(role, previewTopics)
 
-  if (isLoading) return <LoadingState label="Загружаем Темы…" />
+  if (isLoading) return <p className={uiStyles.muted}>Загружаем Темы…</p>
   if (error) return <ErrorState message={error} onRetry={() => void retry()} />
 
   return (
@@ -20,7 +20,7 @@ export function LessonsPage({ previewTopics }: { previewTopics?: Topic[] }) {
       <section className={uiStyles.pageHeading}>
         <p className={uiStyles.eyebrow}>Обучение</p>
         <h1>Темы для {role === 'buyer' ? 'покупателя' : 'продавца'}</h1>
-        <p className={uiStyles.muted}>Прочитайте Теорию и закрепите её коротким Quiz.</p>
+        <p className={uiStyles.muted}>Прочитайте Теорию и закрепите её коротким квизом.</p>
       </section>
       <TopicList topics={topics} basePath={isPreview ? '/preview/lessons' : '/lessons'} />
     </>
