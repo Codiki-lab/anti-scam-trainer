@@ -49,15 +49,15 @@ func newDependencies(cfg config.Config, db *pg.DB, provider aiprovider.Provider,
 		return dependencies{}, err
 	}
 	limits := newRateLimiters(cfg, log)
-	dailyAIGate := ratelimit.NewGate()
+	localProviderGate := ratelimit.NewGate()
 	learning := learningservice.NewWithDailyTaskGenerator(
 		learningrepository.NewPostgres(db),
-		learningai.NewDailyTaskGenerator(provider, limits.ai, dailyAIGate),
+		learningai.NewDailyTaskGenerator(provider, limits.ai, localProviderGate),
 	)
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 	game := attemptsservice.NewGameWithRateLimits(
 		attemptsrepository.NewPostgres(db), modelAI, modelAI,
-		limits.ai, limits.freePlay, ratelimit.NewGate(),
+		limits.ai, limits.freePlay, localProviderGate,
 	)
 	return dependencies{
 		authentication: authservice.New(accounts, tokens), tokens: tokens,

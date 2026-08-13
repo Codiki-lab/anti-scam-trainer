@@ -118,6 +118,90 @@ type ContinueAction struct {
 	AttemptID int    `json:"attempt_id,omitempty"`
 }
 
+// SkillCheck is an optional diagnostic based on a server-selected pair of
+// anonymized dialogue snapshots. It is intentionally outside progression.
+type SkillCheck struct {
+	ID            int
+	TopicID       int
+	Before        DialogueSnapshot
+	After         DialogueSnapshot
+	BeforeAnswer  *bool
+	AfterAnswer   *bool
+	TopicComplete bool
+}
+
+type DialogueSnapshot struct {
+	Messages    []DialogueMessage
+	IsScam      bool
+	PatternCode string
+}
+
+type SkillCheckOutcome struct {
+	BeforeCorrect   bool
+	AfterCorrect    bool
+	VerdictImproved bool
+	BeforePattern   string
+	AfterPattern    string
+	PatternImproved bool
+	Improved        bool
+}
+
+func (check SkillCheck) Outcome() (SkillCheckOutcome, bool) {
+	if check.BeforeAnswer == nil || check.AfterAnswer == nil {
+		return SkillCheckOutcome{}, false
+	}
+	outcome := SkillCheckOutcome{
+		BeforeCorrect: *check.BeforeAnswer == check.Before.IsScam,
+		AfterCorrect:  *check.AfterAnswer == check.After.IsScam,
+		BeforePattern: check.Before.PatternCode,
+		AfterPattern:  check.After.PatternCode,
+	}
+	outcome.VerdictImproved = !outcome.BeforeCorrect && outcome.AfterCorrect
+	// The pair is curated around one recurring risky pattern. Recognition of
+	// that pattern improves when the later verdict is correct after an earlier miss.
+	outcome.PatternImproved = outcome.BeforePattern != "" && outcome.BeforePattern == outcome.AfterPattern && outcome.VerdictImproved
+	outcome.Improved = outcome.VerdictImproved && outcome.PatternImproved
+	return outcome, true
+}
+
+type MistakePatternStats struct {
+	PatternCode  string
+	UnsafeCount  int
+	SafeCount    int
+	RecentUnsafe int
+}
+
+type MistakePatternEvent struct {
+	PatternCode string
+	IsSafe      bool
+}
+
+func (stats MistakePatternStats) Priority() int {
+	priority := stats.UnsafeCount - stats.SafeCount/2
+	if priority < 0 {
+		return 0
+	}
+	return priority
+}
+
+func (stats MistakePatternStats) Stable() bool {
+	thresholdReached := stats.RecentUnsafe >= 2 || stats.UnsafeCount >= 3
+	return thresholdReached && stats.Priority() >= 2
+}
+
+func (check SkillCheck) Phase() string {
+	if check.BeforeAnswer == nil {
+		return "before"
+	}
+	if check.AfterAnswer == nil && !check.TopicComplete {
+		return "after_locked"
+	}
+	if check.AfterAnswer == nil {
+		return "after"
+	}
+	return "completed"
+}
+
 // ChatRecommendation is the safe, public learning referral returned for an
 // anonymized chat snapshot. It intentionally carries no model data or source
 // chat identifiers.

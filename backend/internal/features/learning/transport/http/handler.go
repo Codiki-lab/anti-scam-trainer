@@ -26,7 +26,7 @@ func NewWithChatRecommendation(service *service.Service, limiter *ratelimit.Limi
 	return &Handler{service: service, chatRecommendationRateLimit: limiter}
 }
 func (h *Handler) Routes() []router.Route {
-	return []router.Route{{Path: "/topics", Handler: h.topics}, {Path: "/topics/", Handler: h.topic}, {Path: "/progress", Handler: h.progress}, {Path: "/achievements", Handler: h.achievements}, {Path: "/dashboard", Handler: h.dashboard}, {Path: "/daily-tasks/answer", Handler: h.answerDailyTask}, {Path: "/integrations/avito-chat/recommendations", Handler: h.chatRecommendation}}
+	return []router.Route{{Path: "/topics", Handler: h.topics}, {Path: "/topics/", Handler: h.topic}, {Path: "/skill-checks/", Handler: h.skillCheck}, {Path: "/recommendations/next", Handler: h.personalRecommendation}, {Path: "/progress", Handler: h.progress}, {Path: "/achievements", Handler: h.achievements}, {Path: "/dashboard", Handler: h.dashboard}, {Path: "/daily-tasks/answer", Handler: h.answerDailyTask}, {Path: "/integrations/avito-chat/recommendations", Handler: h.chatRecommendation}}
 }
 
 func identity(r *http.Request) (auth.Identity, bool) { return auth.IdentityFromContext(r.Context()) }
@@ -58,6 +58,29 @@ func (h *Handler) topics(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, topicsDTO(items))
 }
 
+func (h *Handler) personalRecommendation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user, ok := identity(r)
+	if !ok {
+		response.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	selected, ok := role(r)
+	if !ok {
+		response.Error(w, "role must be buyer or seller", http.StatusBadRequest)
+		return
+	}
+	recommendation, err := h.service.PersonalRecommendation(user.UserID, selected)
+	if err != nil {
+		learningError(w, err)
+		return
+	}
+	response.JSON(w, map[string]any{"topic": topicDTO(recommendation.Topic), "explanation": recommendation.Explanation, "next_action": recommendation.NextAction, "fallback": recommendation.IsFallback})
+}
+
 func (h *Handler) topic(w http.ResponseWriter, r *http.Request) {
 	user, ok := identity(r)
 	if !ok {
@@ -72,6 +95,13 @@ func (h *Handler) topic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case len(parts) == 3 && parts[1] == "skill-check" && parts[2] == "start" && r.Method == http.MethodPost:
+		check, err := h.service.StartSkillCheck(user.UserID, topicID)
+		if err != nil {
+			learningError(w, err)
+			return
+		}
+		response.JSON(w, skillCheckDTO(check))
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		item, err := h.service.Topic(user.UserID, topicID)
 		if err != nil {
@@ -117,6 +147,67 @@ func (h *Handler) topic(w http.ResponseWriter, r *http.Request) {
 	default:
 		response.Error(w, "method not allowed", 405)
 	}
+}
+
+func (h *Handler) skillCheck(w http.ResponseWriter, r *http.Request) {
+	user, ok := identity(r)
+	if !ok {
+		response.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/skill-checks/"), "/"), "/")
+	checkID, err := strconv.Atoi(parts[0])
+	if err != nil || checkID < 1 {
+		response.Error(w, "invalid skill check", http.StatusBadRequest)
+		return
+	}
+	switch {
+	case len(parts) == 1 && r.Method == http.MethodGet:
+		check, err := h.service.SkillCheck(user.UserID, checkID)
+		if err != nil {
+			learningError(w, err)
+			return
+		}
+		response.JSON(w, skillCheckDTO(check))
+	case len(parts) == 2 && parts[1] == "answers" && r.Method == http.MethodPost:
+		var input struct {
+			Answer *bool `json:"answer"`
+		}
+		if err := request.DecodeStrictJSON(r, &input); err != nil || input.Answer == nil {
+			response.Error(w, "answer is required", http.StatusBadRequest)
+			return
+		}
+		check, err := h.service.AnswerSkillCheck(user.UserID, checkID, *input.Answer)
+		if err != nil {
+			learningError(w, err)
+			return
+		}
+		response.JSON(w, skillCheckDTO(check))
+	default:
+		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func skillCheckDTO(check domain.SkillCheck) map[string]any {
+	phase := check.Phase()
+	dto := map[string]any{"id": check.ID, "topic_id": check.TopicID, "phase": phase}
+	if phase == "before" {
+		dto["snapshot"] = check.Before.Messages
+	}
+	if phase == "after" {
+		dto["snapshot"] = check.After.Messages
+	}
+	if phase == "completed" {
+		outcome, _ := check.Outcome()
+		dto["before_correct"] = outcome.BeforeCorrect
+		dto["after_correct"] = outcome.AfterCorrect
+		dto["verdict_improved"] = outcome.VerdictImproved
+		dto["before_pattern"] = outcome.BeforePattern
+		dto["after_pattern"] = outcome.AfterPattern
+		dto["pattern_improved"] = outcome.PatternImproved
+		dto["improved"] = outcome.Improved
+	}
+	return dto
 }
 
 func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {

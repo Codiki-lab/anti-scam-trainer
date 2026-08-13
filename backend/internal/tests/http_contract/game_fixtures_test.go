@@ -19,6 +19,19 @@ func (contractAI) GenerateReply(_ context.Context, input attemptsservice.Generat
 	return contractGeneration(input), nil
 }
 
+type profileContractAI struct{ safe bool }
+
+func (a profileContractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
+	if a.safe {
+		return attemptsservice.EvaluatorResult{Score: 4, IsSafe: true, RiskType: "social_engineering", Evaluation: "безопасно", SafeAction: "проверить внутри приложения"}, nil
+	}
+	return attemptsservice.EvaluatorResult{Score: 1, IsSafe: false, RiskType: "social_engineering", Evaluation: "рискованно", SafeAction: "проверить внутри приложения"}, nil
+}
+
+func (a profileContractAI) GenerateReply(_ context.Context, input attemptsservice.GenerationRequest) (attemptsservice.GeneratorResult, error) {
+	return contractGeneration(input), nil
+}
+
 type countingContractAI struct{ calls int }
 
 func (a *countingContractAI) Evaluate(context.Context, attemptsservice.EvaluationRequest) (attemptsservice.EvaluatorResult, error) {
@@ -103,12 +116,19 @@ type httpGameStore struct {
 	attempts map[int]domain.Attempt
 	answers  []domain.UserAnswer
 	messages []domain.DialogueMessage
+	result   domain.AttemptResult
+	events   []domain.MistakePatternEvent
+	quizBest int
+	streak   domain.Streak
+	levels   []domain.Level
 }
 
-func newHTTPGameStore() *httpGameStore { return &httpGameStore{attempts: map[int]domain.Attempt{}} }
+func newHTTPGameStore() *httpGameStore {
+	return &httpGameStore{attempts: map[int]domain.Attempt{}, quizBest: 80, streak: domain.Streak{Current: 3, Longest: 4, ActiveToday: true}, levels: []domain.Level{{ID: 1, Number: 1}, {ID: 2, Number: 2}, {ID: 3, Number: 3}, {ID: 4, Number: 4}}}
+}
 
 func (s *httpGameStore) Levels(int, domain.UserRole) ([]domain.Level, []domain.Progress, error) {
-	return []domain.Level{{ID: 1, Number: 1}, {ID: 2, Number: 2}, {ID: 3, Number: 3}, {ID: 4, Number: 4}}, []domain.Progress{{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}, {LevelID: 4, Stars: 1}}, nil
+	return append([]domain.Level(nil), s.levels...), []domain.Progress{{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}, {LevelID: 4, Stars: 1}}, nil
 }
 
 func (s *httpGameStore) PublishedScenario(level int, role domain.UserRole) (domain.Scenario, error) {
@@ -117,6 +137,17 @@ func (s *httpGameStore) PublishedScenario(level int, role domain.UserRole) (doma
 	}
 	return domain.Scenario{ID: 3, LevelID: 3, UserRole: role}, nil
 }
+
+func (s *httpGameStore) TopicLevels(userID int, role domain.UserRole, _ int) ([]domain.Level, []domain.Progress, bool, error) {
+	levels, progress, err := s.Levels(userID, role)
+	return levels, progress, true, err
+}
+
+func (s *httpGameStore) PublishedTopicScenario(level int, role domain.UserRole, _ int) (domain.Scenario, error) {
+	return s.PublishedScenario(level, role)
+}
+
+func (s *httpGameStore) Result(int) (domain.AttemptResult, error) { return s.result, nil }
 
 func (s *httpGameStore) FreePlayUnlocked(int, domain.UserRole) (bool, error) { return true, nil }
 
@@ -142,6 +173,10 @@ func (s *httpGameStore) FindInProgressFreePlay(int, domain.UserRole) (domain.Att
 }
 
 func (s *httpGameStore) CreateGameAttempt(attempt domain.Attempt) (domain.Attempt, error) {
+	if previous, exists := s.attempts[1]; exists && previous.Status == domain.AttemptStatusCompleted {
+		s.answers = nil
+		s.messages = nil
+	}
 	attempt.ID = 1
 	s.attempts[1] = attempt
 	return attempt, nil
@@ -232,5 +267,34 @@ func (s *httpGameStore) CompleteAttempt(attempt domain.Attempt) error {
 	return nil
 }
 
-func (s *httpGameStore) SaveProgress(domain.Progress) error           { return nil }
-func (s *httpGameStore) FinalizeLearning(*domain.AttemptResult) error { return nil }
+func (s *httpGameStore) SaveProgress(domain.Progress) error { return nil }
+func (s *httpGameStore) FinalizeLearning(result *domain.AttemptResult) error {
+	s.result = *result
+	return nil
+}
+func (s *httpGameStore) RecordMistakePatternEvents(_ int, _ int, _ int, _ domain.UserRole, events []domain.MistakePatternEvent) error {
+	s.events = append(s.events, events...)
+	return nil
+}
+func (s *httpGameStore) MistakePatternStats(int, domain.UserRole) ([]domain.MistakePatternStats, error) {
+	if len(s.events) == 0 && s.result.MicroQuestion != nil {
+		return []domain.MistakePatternStats{{PatternCode: s.result.MicroQuestion.PatternCode, UnsafeCount: 3, RecentUnsafe: 2}}, nil
+	}
+	if len(s.events) == 0 {
+		return nil, nil
+	}
+	stats := domain.MistakePatternStats{PatternCode: s.events[0].PatternCode}
+	for _, event := range s.events {
+		if event.IsSafe {
+			stats.SafeCount++
+		} else {
+			stats.UnsafeCount++
+			stats.RecentUnsafe++
+		}
+	}
+	return []domain.MistakePatternStats{stats}, nil
+}
+func (s *httpGameStore) SaveResult(result domain.AttemptResult) error {
+	s.result = result
+	return nil
+}

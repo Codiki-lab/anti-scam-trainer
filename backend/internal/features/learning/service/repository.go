@@ -29,6 +29,16 @@ type RecommendationRepository interface {
 	SaveRecommendation(userID int, activityDate time.Time, role domain.UserRole, action domain.ContinueAction) error
 }
 
+type SkillCheckRepository interface {
+	StartSkillCheck(userID, topicID int) (domain.SkillCheck, error)
+	SkillCheck(userID, checkID int) (domain.SkillCheck, error)
+	AnswerSkillCheck(userID, checkID int, answer bool) (domain.SkillCheck, error)
+}
+
+type MistakeProfileRepository interface {
+	MistakePatternStats(userID int, role domain.UserRole) ([]domain.MistakePatternStats, error)
+}
+
 type ContentRepository interface {
 	ListContent() ([]domain.Topic, error)
 	Content(id int) (domain.TopicContent, error)

@@ -173,6 +173,16 @@ cd backend
 go test ./...
 ```
 
+Закрытый Набор оценки из 120 синтетических Ответов запускается отдельно с локальным Ollama:
+
+```bash
+cd backend
+AI_EVALUATION_TEST=1 OLLAMA_URL=http://localhost:11434 OLLAMA_MODEL=qwen3:8b \
+  go test ./internal/tests/evaluation -run ConfiguredEvaluator -count=1 -v
+```
+
+Прогон печатает JSON с долей валидного structured output, распознаванием рискованных действий, ложными тревогами на безопасных Ответах, p95, повторами и fallback. Release thresholds: JSON не ниже 90%, распознавание риска не ниже 85%, ложные тревоги не выше 20%, p95 не выше 30 секунд и fallback не выше 10%. Обычный `make test` пропускает интеграционный прогон и не требует Ollama.
+
 Статический анализ Go-кода запускается из корня репозитория:
 
 ```bash
