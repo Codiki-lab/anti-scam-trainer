@@ -118,6 +118,16 @@ type ContinueAction struct {
 	AttemptID int    `json:"attempt_id,omitempty"`
 }
 
+// ChatRecommendation is the safe, public learning referral returned for an
+// anonymized chat snapshot. It intentionally carries no model data or source
+// chat identifiers.
+type ChatRecommendation struct {
+	Topic       Topic
+	Explanation string
+	NextAction  ContinueAction
+	IsFallback  bool
+}
+
 func QuizPassed(score int) bool { return score >= 80 }
 
 func TopicComplete(theoryRead, quizPassed bool, levels []TopicLevelProgress) bool {

@@ -16,7 +16,7 @@
 | [03-operations](03-operations/local-development.md) | Подготовка окружения и локальный запуск |
 | [03-operations/demo-checklist.md](03-operations/demo-checklist.md) | Репетиция полного MVP и публичного демо |
 | [03-operations/ai-calibration.md](03-operations/ai-calibration.md) | Русскоязычная калибровка qwen3:8b |
-| [04-guides](04-guides/backend-development.md) | Правила развития текущего бэкенда |
+| [04-guides](04-guides/backend-development.md) | Правила развития текущего бэкенда и [handoff демо-интеграции чата Avito](04-guides/avito-chat-integration-frontend.md) для frontend |
 | [08-frontend-api-contracts](08-frontend-api-contracts/current-http-api.md) | HTTP-контракт, который фактически реализован сейчас |
 | [submission](submission/one-page.md) | One-page командного решения для отправки на хакатон |
 

@@ -23,15 +23,16 @@ import (
 )
 
 type dependencies struct {
-	authentication  *authservice.Service
-	tokens          *authservice.JWTManager
-	learning        *learningservice.Service
-	learningContent *learningservice.ContentService
-	content         *scenariosservice.Service
-	game            *attemptsservice.GameService
-	registration    *ratelimit.Limiter
-	login           *ratelimit.Limiter
-	clientIP        *ratelimit.ClientIPResolver
+	authentication     *authservice.Service
+	tokens             *authservice.JWTManager
+	learning           *learningservice.Service
+	learningContent    *learningservice.ContentService
+	content            *scenariosservice.Service
+	game               *attemptsservice.GameService
+	registration       *ratelimit.Limiter
+	login              *ratelimit.Limiter
+	chatRecommendation *ratelimit.Limiter
+	clientIP           *ratelimit.ClientIPResolver
 }
 
 func newDependencies(cfg config.Config, db *pg.DB, provider aiprovider.Provider, log *logger.Logger) (dependencies, error) {
@@ -62,24 +63,26 @@ func newDependencies(cfg config.Config, db *pg.DB, provider aiprovider.Provider,
 		authentication: authservice.New(accounts, tokens), tokens: tokens,
 		learning: learning, learningContent: learningservice.NewContent(learningrepository.NewPostgres(db)),
 		content: scenariosservice.New(scenariosrepository.NewPostgres(db)), game: game,
-		registration: limits.registration, login: limits.login, clientIP: clientIP,
+		registration: limits.registration, login: limits.login, chatRecommendation: limits.chatRecommendation, clientIP: clientIP,
 	}, nil
 }
 
 type rateLimiters struct {
-	registration *ratelimit.Limiter
-	login        *ratelimit.Limiter
-	ai           *ratelimit.Limiter
-	freePlay     *ratelimit.Limiter
+	registration       *ratelimit.Limiter
+	login              *ratelimit.Limiter
+	ai                 *ratelimit.Limiter
+	freePlay           *ratelimit.Limiter
+	chatRecommendation *ratelimit.Limiter
 }
 
 func newRateLimiters(cfg config.Config, log *logger.Logger) rateLimiters {
 	limits := rateLimiters{
-		registration: ratelimit.New(ratelimit.Config{Limit: cfg.RegistrationRateLimit, Window: cfg.RegistrationRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
-		login:        ratelimit.New(ratelimit.Config{Limit: cfg.LoginRateLimit, Window: cfg.LoginRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
-		ai:           ratelimit.New(ratelimit.Config{Limit: cfg.AIFreeTextRateLimit, Window: cfg.AIFreeTextRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
-		freePlay:     ratelimit.New(ratelimit.Config{Limit: cfg.FreePlayRateLimit, Window: cfg.FreePlayRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
+		registration:       ratelimit.New(ratelimit.Config{Limit: cfg.RegistrationRateLimit, Window: cfg.RegistrationRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
+		login:              ratelimit.New(ratelimit.Config{Limit: cfg.LoginRateLimit, Window: cfg.LoginRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
+		ai:                 ratelimit.New(ratelimit.Config{Limit: cfg.AIFreeTextRateLimit, Window: cfg.AIFreeTextRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
+		freePlay:           ratelimit.New(ratelimit.Config{Limit: cfg.FreePlayRateLimit, Window: cfg.FreePlayRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
+		chatRecommendation: ratelimit.New(ratelimit.Config{Limit: cfg.ChatRecommendationRateLimit, Window: cfg.ChatRecommendationRateWindow, MaxBuckets: cfg.RateLimitMaxBuckets, IdleTTL: cfg.RateLimitBucketTTL}, time.Now),
 	}
-	log.Info("rate limits configured", zap.Int("registration_capacity", cfg.RegistrationRateLimit), zap.Duration("registration_window", cfg.RegistrationRateWindow), zap.Int("login_capacity", cfg.LoginRateLimit), zap.Duration("login_window", cfg.LoginRateWindow), zap.Int("ai_capacity", cfg.AIFreeTextRateLimit), zap.Duration("ai_window", cfg.AIFreeTextRateWindow), zap.Int("free_play_capacity", cfg.FreePlayRateLimit), zap.Duration("free_play_window", cfg.FreePlayRateWindow), zap.Int("max_buckets", cfg.RateLimitMaxBuckets), zap.Strings("trusted_proxy_cidrs", cfg.TrustedProxyCIDRs))
+	log.Info("rate limits configured", zap.Int("registration_capacity", cfg.RegistrationRateLimit), zap.Duration("registration_window", cfg.RegistrationRateWindow), zap.Int("login_capacity", cfg.LoginRateLimit), zap.Duration("login_window", cfg.LoginRateWindow), zap.Int("ai_capacity", cfg.AIFreeTextRateLimit), zap.Duration("ai_window", cfg.AIFreeTextRateWindow), zap.Int("free_play_capacity", cfg.FreePlayRateLimit), zap.Duration("free_play_window", cfg.FreePlayRateWindow), zap.Int("chat_recommendation_capacity", cfg.ChatRecommendationRateLimit), zap.Duration("chat_recommendation_window", cfg.ChatRecommendationRateWindow), zap.Int("max_buckets", cfg.RateLimitMaxBuckets), zap.Strings("trusted_proxy_cidrs", cfg.TrustedProxyCIDRs))
 	return limits
 }
