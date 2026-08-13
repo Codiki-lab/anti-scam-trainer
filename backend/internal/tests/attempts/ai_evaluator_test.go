@@ -92,7 +92,7 @@ func TestEvaluatorDoesNotFastTrackRefusalOfSafeAction(t *testing.T) {
 }
 
 func TestEvaluatorDoesNotFastTrackContradictoryCompoundRefusal(t *testing.T) {
-	for _, answer := range []string{"Не открою ссылку, а данные карты сообщу", "Не дам код и введу данные"} {
+	for _, answer := range []string{"Не открою ссылку, а данные карты сообщу", "Не дам код и введу данные", "Не открою ссылку, данные карты сообщу", "Не дам код. Введу данные"} {
 		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"account_takeover","detected_signals":["секретные данные"],"evaluation":"Ответ сочетает отказ с опасным действием","safe_action":"Не передавать данные"}`}}
 		modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 
