@@ -156,7 +156,7 @@ type topicRow struct {
 
 func (r *PostgresRepository) Topics(userID int, role domain.UserRole) ([]domain.Topic, error) {
 	var rows []topicRow
-	_, err := r.db.Query(&rows, `SELECT t.id,t.slug,t.user_role,t.title,t.description,t.sort_order,
+	_, err := r.db.Query(&rows, `SELECT t.id,t.slug,t.user_role,t.title,t.description,t.sort_order,t.content_status,
         (p.theory_read_at IS NOT NULL) theory_read,COALESCE(p.quiz_passed,FALSE) quiz_passed,COALESCE(p.quiz_best_score,0) quiz_score,
         (p.completed_at IS NOT NULL) completed
         FROM topics t LEFT JOIN user_topic_progress p ON p.topic_id=t.id AND p.user_id=?

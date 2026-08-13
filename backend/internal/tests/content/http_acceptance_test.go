@@ -143,6 +143,29 @@ func TestPostgresHTTPPublishesAndServesCompleteTopicAggregate(t *testing.T) {
 	}
 }
 
+func TestPostgresTopicsPreservePublishedStatusForChatRecommendations(t *testing.T) {
+	database := os.Getenv("POSTGRES_TEST_NAME")
+	if database == "" {
+		t.Skip("POSTGRES_TEST_NAME is not set")
+	}
+	db := pg.Connect(&pg.Options{Addr: os.Getenv("POSTGRES_HOST") + ":" + os.Getenv("POSTGRES_PORT"), User: os.Getenv("POSTGRES_USER"), Password: os.Getenv("POSTGRES_PASSWORD"), Database: database})
+	defer func() { _ = db.Close() }()
+
+	topics, err := learningrepository.NewPostgres(db).Topics(1, domain.UserRoleSeller)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, topic := range topics {
+		if topic.Slug == "seller-external-links" {
+			if topic.Status != domain.TopicStatusPublished {
+				t.Fatalf("seller-external-links status = %q, want %q", topic.Status, domain.TopicStatusPublished)
+			}
+			return
+		}
+	}
+	t.Fatal("seller-external-links is absent from published seller topics")
+}
+
 func responseID(t *testing.T, recorder *httptest.ResponseRecorder) int {
 	t.Helper()
 	var response struct {
