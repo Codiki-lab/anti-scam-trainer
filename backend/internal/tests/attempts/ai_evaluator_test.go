@@ -12,7 +12,7 @@ import (
 func TestEvaluatorRepairsOnceAndKeepsItsOwnProfile(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":9}`, `{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"Безопасный отказ","safe_action":"Проверить заказ в приложении"}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
-	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{Policy: "policy", RiskType: "phishing", ScenarioInstruction: "Сохраняй факты Сценария", Rubric: domain.JSONObject{"safe_action": "Остаться в сервисе"}, EvaluationContext: "context", Answer: "Не перейду"})
+	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{Policy: "policy", RiskType: "phishing", ScenarioInstruction: "Сохраняй факты Сценария", Rubric: domain.JSONObject{"safe_action": "Остаться в сервисе"}, EvaluationContext: "context", Answer: "Сначала проверю заказ"})
 	if err != nil || result.Score != 4 || len(provider.requests) != 2 {
 		t.Fatalf("Evaluate() = (%#v, %v), requests=%d", result, err, len(provider.requests))
 	}
@@ -58,7 +58,7 @@ func TestEvaluatorRecognizesShortRefusalWithoutCallingModel(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"phishing","detected_signals":[],"evaluation":"Небезопасно","safe_action":"Отказаться"}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 
-	for _, answer := range []string{"Нет", "Не буду", "Не буду так делать", "Отказываюсь", "Ни за что"} {
+	for _, answer := range []string{"Нет", "Нет, спасибо", "Не буду", "Не буду так делать", "Не буду открывать ссылку", "Не дам код", "Не собираюсь платить", "Отказываюсь", "Ни за что"} {
 		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: answer})
 		if err != nil || result.Score != 3 || !result.IsSafe || result.RiskType != "phishing" {
 			t.Fatalf("Evaluate(%q) = (%#v, %v); want immediate safe assessment", answer, result, err)
@@ -66,6 +66,18 @@ func TestEvaluatorRecognizesShortRefusalWithoutCallingModel(t *testing.T) {
 	}
 	if len(provider.requests) != 0 {
 		t.Fatalf("model requests = %d; want 0 for short refusals", len(provider.requests))
+	}
+}
+
+func TestEvaluatorDoesNotFastTrackRefusalWithSubstantiveSuffix(t *testing.T) {
+	for _, answer := range []string{"Нет 1234", "Нет, OK"} {
+		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"account_takeover","detected_signals":["код"],"evaluation":"Ответ содержит дополнительные данные","safe_action":"Не сообщать код"}`}}
+		modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
+
+		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "account_takeover", Answer: answer})
+		if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 1 {
+			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want model evaluation", answer, result, err, len(provider.requests))
+		}
 	}
 }
 

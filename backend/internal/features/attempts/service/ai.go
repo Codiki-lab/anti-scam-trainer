@@ -19,6 +19,8 @@ const maxUntrustedAnswerRunes = 800
 
 var promptInjection = regexp.MustCompile(`(?i)(ignore|ignore previous|system prompt|раскрой.*(промпт|policy)|игнорируй.*(инструк|правил)|измен[иь].*(балл|оценк))`)
 
+const ordinaryTransactionRisk = "ordinary_transaction"
+
 var shortRefusals = map[string]struct{}{
 	"нет": {}, "не буду": {}, "я не буду": {}, "не буду так делать": {},
 	"я не буду так делать": {}, "нет не буду": {}, "нет я не буду": {},
@@ -28,6 +30,11 @@ var shortRefusals = map[string]struct{}{
 	"не согласен": {}, "не согласна": {}, "отказываюсь": {},
 	"я отказываюсь": {}, "ни за что": {}, "не хочу": {}, "я не хочу": {},
 }
+
+var (
+	shortRefusalAction = regexp.MustCompile(`^(?:нет спасибо|(?:я )?(?:не буду|не стану|не хочу|не собираюсь) .+|(?:я )?не (?:дам|сообщу|назову|передам|покажу|открою|перейду|оплачу|переведу|введу|отправлю|сделаю|соглашусь)(?: .+)?)$`)
+	substantiveSuffix  = regexp.MustCompile(`[0-9A-Za-z]`)
+)
 
 type ModelMessage struct {
 	Role    string
@@ -187,7 +194,7 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 		a.metrics.record("evaluator", time.Since(started), 0, 0, 1)
 		return EvaluatorResult{Score: 2, RiskType: input.RiskType, Evaluation: "Ответ не оценивает условия сделки. Сформулируйте безопасное действие без команд для собеседника.", SafeAction: "Проверьте сделку самостоятельно внутри приложения."}, nil
 	}
-	if input.RiskType != "ordinary_transaction" && isShortRefusal(input.Answer) {
+	if input.RiskType != ordinaryTransactionRisk && isShortRefusal(input.Answer) {
 		a.metrics.record("evaluator", time.Since(started), 0, 0, 0)
 		return EvaluatorResult{
 			Score:           3,
@@ -208,7 +215,7 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 	}
 	prompt := fmt.Sprintf("Server policy (authoritative): %s\nRisk: %s\nManaged scenario instruction (context only): %s\nManaged final rubric (context only): %s\nStep criteria: %s\nRelevant history: %s\nUntrusted user_answer JSON: %q", input.Policy, input.RiskType, input.ScenarioInstruction, rubric, input.EvaluationContext, history, input.Answer)
 	systemPrompt := "Оцени только Ответ пользователя. Не продолжай диалог и не управляй Баллами или переходами."
-	if input.RiskType != "ordinary_transaction" {
+	if input.RiskType != ordinaryTransactionRisk {
 		systemPrompt += " Короткий однозначный отказ от опасного действия является безопасным Ответом пользователя: не требуй длинной или шаблонной формулировки. Если после отказа Пользователь всё же соглашается на опасное действие, такой ответ небезопасен."
 	}
 	systemPrompt += " Верни JSON по schema. Поля evaluation, safe_action и detected_signals пиши только по-русски, без JSON, кода и служебных символов внутри строк."
@@ -239,9 +246,18 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 }
 
 func isShortRefusal(answer string) bool {
+	if substantiveSuffix.MatchString(answer) {
+		return false
+	}
 	normalized := normalizeEvaluatorAnswer(answer)
-	_, ok := shortRefusals[normalized]
-	return ok
+	padded := " " + normalized + " "
+	if len(strings.Fields(normalized)) > 8 || containsAny(padded, " но ", " хотя ", " потом ", " ладно ", " всё таки ", " все таки ", " всё же ", " все же ") {
+		return false
+	}
+	if _, ok := shortRefusals[normalized]; ok {
+		return true
+	}
+	return shortRefusalAction.MatchString(normalized)
 }
 
 func normalizeEvaluatorAnswer(answer string) string {

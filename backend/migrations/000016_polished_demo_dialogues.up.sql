@@ -60,13 +60,13 @@ INSERT INTO chat_options(step_id,option_text,counterparty_reaction,explanation,p
 SELECT replacement_step.id,
        CASE
          WHEN original_option.option_text ~ '^Точно: ' THEN regexp_replace(original_option.option_text,'^Точно: ','')||CASE original_option.sort_order
-           WHEN 1 THEN ' Это моё окончательное решение.'
-           WHEN 2 THEN ' Пока продолжать сделку не буду.'
-           ELSE ' Сделаю это прямо сейчас.' END
+           WHEN 1 THEN ' Других вариантов не рассматриваю.'
+           WHEN 2 THEN ' До проверки ничего предпринимать не буду.'
+           ELSE ' Готов действовать без задержки.' END
          WHEN original_option.option_text ~ '^Сразу скажу: ' THEN regexp_replace(original_option.option_text,'^Сразу скажу: ','')||CASE original_option.sort_order
-           WHEN 1 THEN ' Так и начну разговор.'
-           WHEN 2 THEN ' Сначала ограничусь этим ответом.'
-           ELSE ' С этого и начну.' END
+           WHEN 1 THEN ' Продолжим только на этих условиях.'
+           WHEN 2 THEN ' После этого решу, продолжать ли сделку.'
+           ELSE ' Можно действовать сразу.' END
          ELSE original_option.option_text
        END,
        CASE WHEN original_option.counterparty_reaction IS NULL THEN NULL
