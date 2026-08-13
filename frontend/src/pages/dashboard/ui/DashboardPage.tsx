@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Dashboard } from '@/entities/progress'
 import { useCurrentAccount } from '@/entities/user'
 import { TrainingRoleSelector } from '@/features/change-training-role'
+import { LearningRecommendationCard } from '@/features/continue-learning'
 import { useStartFreePlay } from '@/features/start-training'
 import { useDashboardData } from '@/features/view-progress'
 import { ErrorState } from '@/shared/error-state'
@@ -63,6 +64,11 @@ export function DashboardPage({ previewDashboard }: { previewDashboard?: Dashboa
         </div>
 
         <div className={styles.sideColumn}>
+          <LearningRecommendationCard
+            role={account.trainingRole}
+            basePath={basePath}
+            disabled={isPreview}
+          />
           <div className={styles.quickActions}>
             <aside className={styles.dailyCard}>
               <span>Задание дня</span>

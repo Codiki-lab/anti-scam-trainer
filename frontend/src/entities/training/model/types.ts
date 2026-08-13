@@ -28,17 +28,38 @@ export interface TrainingSession {
   attemptId: number
   status: AttemptStatus
   scenarioId: number
+  scenarioTitle: string
+  scenarioDescription: string
   topicId: number
-  productContext: Record<string, unknown>
+  topicTitle: string
+  level: number
+  userRole: 'buyer' | 'seller'
+  counterpartyRole: 'buyer' | 'seller'
+  productContext: {
+    itemTitle: string
+    category: string
+    dealMethod: 'delivery' | 'meetup' | 'pickup'
+    price?: number
+    currency?: 'RUB'
+    location?: string
+    imageKey?: string
+  }
   mode: ResponseMode
-  progress: { currentStep: number; answeredSteps: number }
+  progress: { currentStep: number; answeredSteps: number; totalSteps: number }
   step: {
     id: number
     number: number
     counterpartyMessage: string
     options: TrainingOption[]
   }
-  answers: Array<{ stepId: number; optionId: number }>
+  answers: Array<{
+    stepId: number
+    answerType: 'option' | 'free_text'
+    optionId?: number
+    optionText?: string
+    freeText?: string
+    points: number
+  }>
   messages: TrainingMessage[]
   canFinishEarly: boolean
 }
@@ -49,12 +70,38 @@ export type TrainingAnswer =
 
 export interface DecisionReview {
   stepId: number
+  stepNumber: number
+  answerType: 'option' | 'free_text'
   optionId?: number
   optionText?: string
   freeText?: string
   points: number
+  assessment: 'unsafe' | 'risky' | 'mostly_safe' | 'safe'
   explanation: string
-  riskSignals: string[]
+  safeAction: string
+  riskSignals: RiskSignal[]
+}
+
+export interface RiskSignal {
+  code: string
+  label: string
+}
+
+export interface ResultFeedback {
+  reason: string
+  riskSignals: RiskSignal[]
+  safeAlternative: string
+}
+
+export interface MicroQuestion {
+  patternCode: string
+  question: string
+  options: [string, string]
+}
+
+export interface MicroQuestionAnswer {
+  isCorrect: boolean
+  safeAction: string
 }
 
 export interface AttemptResult {
@@ -62,8 +109,10 @@ export interface AttemptResult {
   score: number
   stars: number
   decisionReview: DecisionReview[]
-  riskSignals: string[]
+  riskSignals: RiskSignal[]
   safeActions: string[]
+  feedback: ResultFeedback
+  microQuestion?: MicroQuestion
   levelProgress: LevelProgress
   topicId: number
   isTopicCompleted: boolean

@@ -7,18 +7,18 @@ interface TrainingChatProps {
   session: TrainingSession
   isSubmitting: boolean
   error: string
-  onSubmit: (answer: TrainingAnswer) => void
+  onSubmit: (answer: TrainingAnswer) => Promise<boolean>
 }
 
 export function TrainingChat({ session, isSubmitting, error, onSubmit }: TrainingChatProps) {
   const [freeText, setFreeText] = useState('')
   const acceptsText = session.mode === 'mixed' || session.mode === 'free_text'
 
-  const submitText = () => {
+  const submitText = async () => {
     const text = freeText.trim()
     if (!text) return
-    onSubmit({ type: 'text', stepId: session.step.id, text })
-    setFreeText('')
+    const wasAccepted = await onSubmit({ type: 'text', stepId: session.step.id, text })
+    if (wasAccepted) setFreeText('')
   }
 
   return (
@@ -49,7 +49,7 @@ export function TrainingChat({ session, isSubmitting, error, onSubmit }: Trainin
                 disabled={isSubmitting}
                 type="button"
                 onClick={() =>
-                  onSubmit({ type: 'option', stepId: session.step.id, optionId: option.id })
+                  void onSubmit({ type: 'option', stepId: session.step.id, optionId: option.id })
                 }
               >
                 {option.text}
@@ -69,7 +69,7 @@ export function TrainingChat({ session, isSubmitting, error, onSubmit }: Trainin
               className={`${uiStyles.primaryButton} ${styles.sendButton}`}
               disabled={isSubmitting || !freeText.trim()}
               type="button"
-              onClick={submitText}
+              onClick={() => void submitText()}
             >
               Отправить
             </button>

@@ -1,7 +1,18 @@
 import { api } from '@/shared/http-client'
 import type { UserRole } from '@/entities/user'
-import type { AnswerCommandDto, AttemptResultDto, GameStateDto, LevelStateDto } from './contracts'
-import { attemptResultDtoSchema, gameStateDtoSchema, levelStateDtoSchema } from './contracts'
+import type {
+  AnswerCommandDto,
+  AttemptResultDto,
+  GameStateDto,
+  LevelStateDto,
+  MicroQuestionAnswerDto,
+} from './contracts'
+import {
+  attemptResultDtoSchema,
+  gameStateDtoSchema,
+  levelStateDtoSchema,
+  microQuestionAnswerDtoSchema,
+} from './contracts'
 import { mapAttemptResult, mapLevelState, mapTrainingSession } from '../lib/mappers'
 import type {
   AnswerResult,
@@ -9,6 +20,7 @@ import type {
   LevelState,
   TrainingAnswer,
   TrainingSession,
+  MicroQuestionAnswer,
 } from '../model/types'
 
 interface TopicLevelRequest {
@@ -23,6 +35,11 @@ interface StartLevelRequest extends TopicLevelRequest {
 interface SubmitAnswerRequest {
   attemptId: number
   answer: TrainingAnswer
+}
+
+interface AnswerMicroQuestionRequest {
+  attemptId: number
+  answerIndex: 0 | 1
 }
 
 export const trainingApi = api.injectEndpoints({
@@ -68,6 +85,17 @@ export const trainingApi = api.injectEndpoints({
         mapAttemptResult(attemptResultDtoSchema.parse(response)),
       providesTags: (_result, _error, attemptId) => [{ type: 'Attempt', id: attemptId }],
     }),
+    answerMicroQuestion: build.mutation<MicroQuestionAnswer, AnswerMicroQuestionRequest>({
+      query: ({ attemptId, answerIndex }) => ({
+        url: `/attempts/${attemptId}/micro-question/answer`,
+        method: 'POST',
+        body: { answer_index: answerIndex },
+      }),
+      transformResponse: (response: MicroQuestionAnswerDto) => {
+        const dto = microQuestionAnswerDtoSchema.parse(response)
+        return { isCorrect: dto.correct, safeAction: dto.safe_action }
+      },
+    }),
     submitAnswer: build.mutation<AnswerResult, SubmitAnswerRequest>({
       query: ({ attemptId, answer }) => {
         const body: AnswerCommandDto =
@@ -103,6 +131,7 @@ export const {
   useStartFreePlayMutation,
   useGetAttemptQuery,
   useGetAttemptResultQuery,
+  useAnswerMicroQuestionMutation,
   useSubmitAnswerMutation,
   useAbandonAttemptMutation,
 } = trainingApi

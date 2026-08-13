@@ -10,7 +10,7 @@ interface TrainingSessionState {
   error: string
   isLoading: boolean
   isSubmitting: boolean
-  submit: (answer: TrainingAnswer) => Promise<void>
+  submit: (answer: TrainingAnswer) => Promise<boolean>
 }
 
 export function useTrainingSession(
@@ -36,20 +36,29 @@ export function useTrainingSession(
     if (isPreview) {
       if (!preview) throw new Error('Training preview data is missing')
       setResult(preview.result)
-      return
+      return true
     }
 
     try {
       const response = await submitAnswer({ attemptId, answer }).unwrap()
       if (isAttemptResult(response)) setResult(response)
       else setSession(response)
+      return true
     } catch (requestError) {
-      if (getApiErrorCode(requestError) === 'STALE_STEP') {
+      const code = getApiErrorCode(requestError)
+      if (code === 'STALE_STEP') {
         await query.refetch()
         setError('Состояние тренировки обновилось. Проверьте новый шаг и ответьте ещё раз.')
-        return
+        return false
       }
-      setError(getApiErrorMessage(requestError))
+      if (code === 'RATE_LIMITED') {
+        setError('Модель обрабатывает много запросов. Подождите немного и повторите отправку.')
+      } else if (code === 'AI_UNAVAILABLE' || code === 'AI_INVALID_RESPONSE') {
+        setError('Не удалось проверить ответ. Он сохранён в поле — повторите отправку.')
+      } else {
+        setError(getApiErrorMessage(requestError))
+      }
+      return false
     }
   }
 

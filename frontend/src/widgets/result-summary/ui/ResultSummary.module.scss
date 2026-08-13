@@ -58,6 +58,24 @@
   }
 }
 
+.feedback {
+  margin-bottom: 30px;
+  padding: 22px;
+  border-left: 4px solid var(--color-avito-blue);
+  border-radius: 12px;
+  background: #f3f9fc;
+
+  h2 {
+    margin: 8px 0 12px;
+    font-size: 20px;
+  }
+
+  p:last-child {
+    margin: 0;
+    color: #55555d;
+  }
+}
+
 .risk {
   color: #d95a53 !important;
   background: #fff3f1 !important;

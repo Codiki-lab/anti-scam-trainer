@@ -1,4 +1,4 @@
-import type { Quiz, QuizOutcome, Theory, Topic } from '@/entities/learning'
+import type { Quiz, QuizOutcome, SkillCheck, Theory, Topic } from '@/entities/learning'
 import type { Achievements, Dashboard, Progress } from '@/entities/progress'
 import type { AttemptResult, LevelState, TrainingSession } from '@/entities/training'
 import type { Account, UserRole } from '@/entities/user'
@@ -133,6 +133,14 @@ export const previewQuizOutcome: QuizOutcome = {
   streak: previewAccount.streak,
 }
 
+export const previewSkillCheck: SkillCheck = {
+  id: 7001,
+  topicId: 1,
+  phase: 'after_locked',
+  beforeCorrect: false,
+  beforePattern: 'Открыть ссылку и проверить',
+}
+
 export const previewLevels: LevelState[] = [
   {
     number: 1,
@@ -172,10 +180,22 @@ export const previewSession: TrainingSession = {
   attemptId: 9001,
   status: 'IN_PROGRESS',
   scenarioId: 101,
+  scenarioTitle: 'Фишинговая ссылка в переписке',
+  scenarioDescription: 'Оставьте сделку внутри сервиса.',
   topicId: 1,
-  productContext: { item: 'Смартфон', price: 42000 },
+  topicTitle: 'Фишинговые ссылки',
+  level: 1,
+  userRole: 'seller',
+  counterpartyRole: 'buyer',
+  productContext: {
+    itemTitle: 'Смартфон',
+    category: 'Электроника',
+    dealMethod: 'delivery',
+    price: 42000,
+    currency: 'RUB',
+  },
   mode: 'multiple_choice',
-  progress: { currentStep: 2, answeredSteps: 1 },
+  progress: { currentStep: 2, answeredSteps: 1, totalSteps: 4 },
   step: {
     id: 2,
     number: 2,
@@ -187,7 +207,15 @@ export const previewSession: TrainingSession = {
       { id: 4, text: 'Лучше встретимся лично без проверки' },
     ],
   },
-  answers: [{ stepId: 1, optionId: 2 }],
+  answers: [
+    {
+      stepId: 1,
+      answerType: 'option',
+      optionId: 2,
+      optionText: 'Да, актуален.',
+      points: 100,
+    },
+  ],
   messages: [
     { role: 'assistant', text: 'Здравствуйте! Товар ещё актуален?' },
     { role: 'user', text: 'Да, актуален.' },
@@ -202,8 +230,18 @@ export const previewFreePlaySession: TrainingSession = {
   scenarioId: 0,
   topicId: 0,
   mode: 'free_text',
-  productContext: { item: 'Игровая приставка', price: 39000, difficulty: 'adaptive' },
-  progress: { currentStep: 1, answeredSteps: 0 },
+  scenarioTitle: 'Свободная игра',
+  scenarioDescription: 'Адаптивный диалог без подсказок.',
+  topicTitle: 'Свободная игра',
+  level: 4,
+  productContext: {
+    itemTitle: 'Игровая приставка',
+    category: 'Электроника',
+    dealMethod: 'delivery',
+    price: 39000,
+    currency: 'RUB',
+  },
+  progress: { currentStep: 1, answeredSteps: 0, totalSteps: 4 },
   step: {
     id: 1,
     number: 1,
@@ -227,23 +265,41 @@ export const previewResult: AttemptResult = {
   decisionReview: [
     {
       stepId: 1,
+      stepNumber: 1,
+      answerType: 'option',
       optionId: 2,
       optionText: 'Оформим доставку только внутри сервиса',
       points: 100,
+      assessment: 'safe',
       explanation: 'Безопасный способ.',
+      safeAction: 'Оставаться внутри сервиса.',
       riskSignals: [],
     },
     {
       stepId: 2,
+      stepNumber: 2,
+      answerType: 'option',
       optionId: 1,
       optionText: 'Проверю ссылку позже',
       points: 50,
+      assessment: 'risky',
       explanation: 'Ссылку лучше не открывать.',
-      riskSignals: ['external_link'],
+      safeAction: 'Проверять оплату только в приложении.',
+      riskSignals: [{ code: 'external_link', label: 'Внешняя ссылка' }],
     },
   ],
-  riskSignals: ['external_link'],
+  riskSignals: [{ code: 'external_link', label: 'Внешняя ссылка' }],
   safeActions: ['Оставаться внутри сервиса'],
+  feedback: {
+    reason: 'Собеседник предложил подтвердить сделку на внешней странице.',
+    riskSignals: [{ code: 'external_link', label: 'Внешняя ссылка' }],
+    safeAlternative: 'Оформите оплату и доставку только внутри сервиса.',
+  },
+  microQuestion: {
+    patternCode: 'external_link',
+    question: 'Какое действие безопаснее?',
+    options: ['Открыть ссылку и проверить', 'Проверить сделку внутри сервиса'],
+  },
   levelProgress: createPreviewTopics('buyer')[0].levels[0],
   topicId: 1,
   isTopicCompleted: false,

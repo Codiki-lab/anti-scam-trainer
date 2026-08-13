@@ -64,3 +64,33 @@ export interface QuizOutcome {
   isFirstPass: boolean
   streak: Streak
 }
+
+export interface LearningAction {
+  type: 'resume_attempt' | 'read_theory' | 'take_quiz' | 'start_level' | 'start_free_play'
+  topicId?: number
+  level?: number
+  attemptId?: number
+}
+
+export interface LearningRecommendation {
+  topic: Topic
+  explanation: string
+  nextAction: LearningAction
+  isFallback: boolean
+}
+
+export type SkillCheckPhase = 'before' | 'after_locked' | 'after' | 'completed'
+
+export interface SkillCheck {
+  id: number
+  topicId: number
+  phase: SkillCheckPhase
+  snapshot?: Array<{ role: 'user' | 'assistant'; text: string }>
+  beforeCorrect?: boolean
+  afterCorrect?: boolean
+  isVerdictImproved?: boolean
+  beforePattern?: string
+  afterPattern?: string
+  isPatternImproved?: boolean
+  isImproved?: boolean
+}

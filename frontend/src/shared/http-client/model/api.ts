@@ -10,6 +10,7 @@ export const apiTags = {
   dashboard: 'Dashboard',
   progress: 'Progress',
   achievements: 'Achievements',
+  skillChecks: 'SkillChecks',
   adminTopics: 'AdminTopics',
   adminScenarios: 'AdminScenarios',
 } as const

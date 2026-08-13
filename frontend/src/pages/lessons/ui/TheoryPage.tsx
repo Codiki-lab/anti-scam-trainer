@@ -36,6 +36,11 @@ export function TheoryPage({ previewTheory }: { previewTheory?: Theory }) {
           if (await finishTheory()) navigate(`${basePath}/${topicId}/quiz`)
         }}
       />
+      <div className={uiStyles.buttonRow}>
+        <Link className={uiStyles.secondaryButton} to={`${basePath}/${topicId}/skill-check`}>
+          Сравнить навык до и после обучения
+        </Link>
+      </div>
       {finishError && (
         <p className={uiStyles.formError} role="alert">
           {finishError}

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AttemptResult } from '@/entities/training'
 import { Stars } from '@/shared/stars'
@@ -8,9 +9,22 @@ interface ResultSummaryProps {
   result: AttemptResult
   basePath?: string
   nextActionHref?: string
+  microQuestion?: ReactNode
 }
 
-export function ResultSummary({ result, basePath = '', nextActionHref }: ResultSummaryProps) {
+const assessmentLabel = {
+  unsafe: 'опасно',
+  risky: 'риск',
+  mostly_safe: 'почти безопасно',
+  safe: 'безопасно',
+} as const
+
+export function ResultSummary({
+  result,
+  basePath = '',
+  nextActionHref,
+  microQuestion,
+}: ResultSummaryProps) {
   return (
     <section className={styles.result}>
       <p className={uiStyles.eyebrow}>Прохождение завершено</p>
@@ -25,16 +39,23 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
           <Stars value={result.stars} />
         </div>
       </div>
+      <section className={styles.feedback}>
+        <p className={uiStyles.eyebrow}>Почему такой Result</p>
+        <h2>{result.feedback.reason}</h2>
+        <p>
+          <b>Безопасная альтернатива:</b> {result.feedback.safeAlternative}
+        </p>
+      </section>
       <h2>Разбор сделки</h2>
       <div className={styles.checkList}>
         {result.decisionReview.map((answer, index) => (
-          <p key={answer.stepId} className={answer.points >= 75 ? undefined : styles.risk}>
-            {answer.points >= 75 ? '✓' : '!'}
+          <p key={answer.stepId} className={answer.assessment === 'safe' ? undefined : styles.risk}>
+            {answer.assessment === 'safe' ? '✓' : '!'}
             <span>
               <b>
-                Шаг {index + 1} — {answer.points >= 75 ? 'безопасно' : 'риск'}
+                Шаг {answer.stepNumber || index + 1} — {assessmentLabel[answer.assessment]}
               </b>
-              {answer.explanation}
+              {answer.explanation} <strong>{answer.safeAction}</strong>
             </span>
           </p>
         ))}
@@ -45,7 +66,7 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
             <h2>Сигналы риска</h2>
             <ul>
               {result.riskSignals.map((signal) => (
-                <li key={signal}>{signal}</li>
+                <li key={signal.code}>{signal.label}</li>
               ))}
             </ul>
           </div>
@@ -70,6 +91,7 @@ export function ResultSummary({ result, basePath = '', nextActionHref }: ResultS
           ))}
         </section>
       )}
+      {microQuestion}
       <div className={uiStyles.buttonRow}>
         <Link className={uiStyles.primaryButton} to={nextActionHref ?? `${basePath}/chats`}>
           Продолжить обучение

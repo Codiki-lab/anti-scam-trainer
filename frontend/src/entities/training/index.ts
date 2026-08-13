@@ -1,5 +1,6 @@
 export {
   useAbandonAttemptMutation,
+  useAnswerMicroQuestionMutation,
   useGetAttemptQuery,
   useGetAttemptResultQuery,
   useGetLevelsQuery,
@@ -16,4 +17,8 @@ export type {
   LevelState,
   TrainingAnswer,
   TrainingSession,
+  MicroQuestion,
+  MicroQuestionAnswer,
+  ResultFeedback,
+  RiskSignal,
 } from './model/types'

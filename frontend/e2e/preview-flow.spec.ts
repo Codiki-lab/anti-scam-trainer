@@ -39,3 +39,20 @@ test('unavailable training levels are visibly locked', async ({ page }) => {
   await expect(page.getByRole('button', { name: /закрыто/i })).toHaveCount(2)
   await expect(page.getByRole('button', { name: /закрыто/i }).first()).toBeDisabled()
 })
+
+test('result renders server feedback and keeps the micro-question optional', async ({ page }) => {
+  await page.goto('/preview/sessions/9001/result')
+
+  await expect(page.getByRole('heading', { name: /внешней странице/i })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Какое действие безопаснее?' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Продолжить обучение' })).toBeVisible()
+})
+
+test('skill check preview explains the locked after phase', async ({ page }) => {
+  await page.goto('/preview/lessons/1/skill-check')
+
+  await expect(
+    page.getByRole('heading', { name: 'Пройдите Тему, чтобы сравнить решение' }),
+  ).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Перейти к Теории' })).toBeVisible()
+})

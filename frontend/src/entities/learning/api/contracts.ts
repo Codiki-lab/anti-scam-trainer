@@ -98,6 +98,50 @@ export interface MarkTheoryReadResponse {
   streak: StreakDto
 }
 
+export const continueActionDtoSchema = z.object({
+  type: z.enum(['resume_attempt', 'read_theory', 'take_quiz', 'start_level', 'start_free_play']),
+  topic_id: z.number().int().positive().optional(),
+  level: z.number().int().min(1).max(4).optional(),
+  attempt_id: z.number().int().positive().optional(),
+})
+
+export const recommendationDtoSchema = z.object({
+  topic: topicContractSchema,
+  explanation: z.string(),
+  next_action: continueActionDtoSchema,
+  fallback: z.boolean(),
+})
+
+export const dialogueMessageDtoSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  text: z.string().max(400),
+})
+
+export const skillCheckDtoSchema = z.object({
+  id: z.number().int().positive(),
+  topic_id: z.number().int().positive(),
+  phase: z.enum(['before', 'after_locked', 'after', 'completed']),
+  snapshot: z.array(dialogueMessageDtoSchema).optional(),
+  before_correct: z.boolean().optional(),
+  after_correct: z.boolean().optional(),
+  verdict_improved: z.boolean().optional(),
+  before_pattern: z.string().optional(),
+  after_pattern: z.string().optional(),
+  pattern_improved: z.boolean().optional(),
+  improved: z.boolean().optional(),
+})
+
+export type RecommendationDto = z.infer<typeof recommendationDtoSchema>
+export type SkillCheckDto = z.infer<typeof skillCheckDtoSchema>
+
+export interface AvitoChatRecommendationRequestDto {
+  source: 'avito_chat_demo'
+  role: UserRole
+  messages: Array<{ role: 'user' | 'assistant'; text: string }>
+  risk_type: string
+  risk_signals: string[]
+}
+
 export const theoryResponseSchema = z.object({
   topic: topicContractSchema,
   blocks: z
