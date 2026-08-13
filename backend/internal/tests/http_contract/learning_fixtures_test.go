@@ -13,6 +13,19 @@ type learningStore struct {
 	lastRole      domain.UserRole
 	daily         map[string]domain.DailyTask
 	topics        []domain.Topic
+	stablePattern string
+	skillCheck    domain.SkillCheck
+}
+
+type chatRecommendationStore struct {
+	learningStore
+	topicsByRole map[domain.UserRole][]domain.Topic
+	topicCalls   int
+}
+
+func (s *chatRecommendationStore) Topics(_ int, role domain.UserRole) ([]domain.Topic, error) {
+	s.topicCalls++
+	return s.topicsByRole[role], nil
 }
 
 type stableLearningStore struct {
@@ -114,4 +127,32 @@ func (s *learningStore) User(int) (domain.User, error) {
 func (s *learningStore) InProgressAttempt(_ int, role domain.UserRole) (int, int, int, error) {
 	s.lastRole = role
 	return s.attemptID, 1, 2, nil
+}
+
+func (s *learningStore) MistakePatternStats(int, domain.UserRole) ([]domain.MistakePatternStats, error) {
+	if s.stablePattern == "" {
+		return nil, nil
+	}
+	return []domain.MistakePatternStats{{PatternCode: s.stablePattern, UnsafeCount: 3, RecentUnsafe: 2}}, nil
+}
+
+func (s *learningStore) StartSkillCheck(_ int, topicID int) (domain.SkillCheck, error) {
+	if s.skillCheck.ID == 0 {
+		s.skillCheck = domain.SkillCheck{ID: 9, TopicID: topicID, Before: domain.DialogueSnapshot{Messages: []domain.DialogueMessage{{Role: domain.MessageRoleAssistant, Text: "Откройте форму оплаты"}}, IsScam: true, PatternCode: "external_link"}, After: domain.DialogueSnapshot{Messages: []domain.DialogueMessage{{Role: domain.MessageRoleAssistant, Text: "Отправьте код возврата"}}, IsScam: true, PatternCode: "external_link"}}
+	}
+	return s.skillCheck, nil
+}
+
+func (s *learningStore) SkillCheck(_ int, _ int) (domain.SkillCheck, error) { return s.skillCheck, nil }
+
+func (s *learningStore) AnswerSkillCheck(_ int, _ int, answer bool) (domain.SkillCheck, error) {
+	switch {
+	case s.skillCheck.BeforeAnswer == nil:
+		s.skillCheck.BeforeAnswer = &answer
+	case s.skillCheck.TopicComplete && s.skillCheck.AfterAnswer == nil:
+		s.skillCheck.AfterAnswer = &answer
+	default:
+		return domain.SkillCheck{}, learningservice.ErrInvalidQuiz
+	}
+	return s.skillCheck, nil
 }

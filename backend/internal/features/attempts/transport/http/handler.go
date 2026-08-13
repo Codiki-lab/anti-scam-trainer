@@ -19,7 +19,19 @@ type Handler struct{ service *service.GameService }
 
 func New(service *service.GameService) *Handler { return &Handler{service: service} }
 func (h *Handler) Routes() []router.Route {
-	return []router.Route{{Path: "/training/levels", Handler: h.levels}, {Path: "/training/levels/", Handler: h.start}, {Path: "/training/free-play/start", Handler: h.startFreePlay}, {Path: "/attempts/", Handler: h.attempt}}
+	return []router.Route{{Path: "/training/levels", Handler: h.levels}, {Path: "/training/levels/", Handler: h.start}, {Path: "/training/free-play/start", Handler: h.startFreePlay}, {Path: "/ai/metrics", Handler: h.aiMetrics}, {Path: "/attempts/", Handler: h.attempt}}
+}
+
+func (h *Handler) aiMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := gameIdentity(r); !ok {
+		response.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	response.JSON(w, h.service.AIMetrics())
 }
 
 func gameIdentity(r *http.Request) (auth.Identity, bool) {
@@ -140,7 +152,7 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request) {
 	}
 	trimmed := strings.TrimPrefix(r.URL.Path, "/api/v1/attempts/")
 	parts := strings.Split(strings.Trim(trimmed, "/"), "/")
-	if len(parts) < 1 || len(parts) > 2 {
+	if len(parts) < 1 || len(parts) > 3 {
 		response.Error(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -206,6 +218,24 @@ func (h *Handler) attempt(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.JSON(w, resultDTO(result))
+	case r.Method == http.MethodPost && len(parts) == 3 && parts[1] == "micro-question" && parts[2] == "answer":
+		var input struct {
+			AnswerIndex *int `json:"answer_index"`
+		}
+		if err := request.DecodeStrictJSON(r, &input); err != nil {
+			response.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if input.AnswerIndex == nil {
+			response.Error(w, "micro-question is unavailable", http.StatusConflict)
+			return
+		}
+		answer, err := h.service.AnswerMicroQuestion(identity.UserID, id, *input.AnswerIndex)
+		if err != nil {
+			gameError(w, err)
+			return
+		}
+		response.JSON(w, map[string]any{"correct": answer.Correct, "safe_action": answer.SafeAction})
 	default:
 		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -257,7 +287,11 @@ func resultDTO(result domain.AttemptResult) map[string]interface{} {
 	for i, achievement := range result.NewAchievements {
 		achievements[i] = map[string]interface{}{"code": achievement.Code, "title": achievement.Title, "description": achievement.Description, "icon": achievement.Icon, "earned": achievement.Earned, "earned_at": achievement.EarnedAt, "progress": map[string]int{"current": achievement.Current, "target": achievement.Target}}
 	}
-	dto := map[string]interface{}{"attempt_id": result.AttemptID, "score": result.Score, "stars": result.Stars, "decision_review": result.DecisionReview, "risk_signals": result.RiskSignals, "safe_actions": result.SafeActions, "level_progress": result.LevelProgress, "topic_id": result.TopicID, "topic_completed": result.TopicCompleted, "next_action": result.NextAction, "new_achievements": achievements, "streak": result.Streak}
+	feedback := map[string]any{"reason": result.Feedback.Reason, "risk_signals": result.Feedback.RiskSignals, "safe_alternative": result.Feedback.SafeAlternative}
+	dto := map[string]interface{}{"attempt_id": result.AttemptID, "score": result.Score, "stars": result.Stars, "decision_review": result.DecisionReview, "risk_signals": result.RiskSignals, "safe_actions": result.SafeActions, "level_progress": result.LevelProgress, "topic_id": result.TopicID, "topic_completed": result.TopicCompleted, "next_action": result.NextAction, "new_achievements": achievements, "streak": result.Streak, "feedback": feedback}
+	if result.MicroQuestion != nil {
+		dto["micro_question"] = map[string]any{"pattern_code": result.MicroQuestion.PatternCode, "question": result.MicroQuestion.Question, "options": result.MicroQuestion.Options}
+	}
 	if result.IsScam != nil {
 		dto["is_scam"] = *result.IsScam
 	}

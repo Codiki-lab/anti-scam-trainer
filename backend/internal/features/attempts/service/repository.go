@@ -39,4 +39,7 @@ type GameCompletionStore interface {
 	CompleteAttempt(domain.Attempt) error
 	SaveProgress(domain.Progress) error
 	FinalizeLearning(*domain.AttemptResult) error
+	RecordMistakePatternEvents(userID, attemptID, topicID int, role domain.UserRole, events []domain.MistakePatternEvent) error
+	MistakePatternStats(userID int, role domain.UserRole) ([]domain.MistakePatternStats, error)
+	SaveResult(domain.AttemptResult) error
 }

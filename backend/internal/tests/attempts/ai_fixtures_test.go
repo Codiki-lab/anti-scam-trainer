@@ -2,12 +2,21 @@ package attempts_test
 
 import (
 	"anti-scam-trainer/backend/internal/core/aiprovider"
+	attemptsservice "anti-scam-trainer/backend/internal/features/attempts/service"
 	"context"
+	"errors"
 )
 
 type sequenceProvider struct {
 	contents []string
 	requests []aiprovider.StructuredRequest
+}
+
+type unavailableStructuredModel struct{ calls int }
+
+func (m *unavailableStructuredModel) GenerateStructured(context.Context, attemptsservice.StructuredModelRequest) (string, error) {
+	m.calls++
+	return "", errors.New("transport unavailable")
 }
 
 func (p *sequenceProvider) Generate(context.Context, []aiprovider.Message) (aiprovider.Result, error) {

@@ -506,16 +506,79 @@ func (s gameTransactionStore) FinalizeLearning(result *domain.AttemptResult) err
 			}
 		}
 	}
-	return s.saveResult(result)
+	return nil
 }
 
-func (s gameTransactionStore) saveResult(result *domain.AttemptResult) error {
-	encoded, err := json.Marshal(result)
+func (s gameTransactionStore) RecordMistakePatternEvents(userID, attemptID, topicID int, role domain.UserRole, events []domain.MistakePatternEvent) error {
+	for _, event := range events {
+		if _, err := s.db.Exec(`INSERT INTO mistake_pattern_events(user_id,attempt_id,topic_id,user_role,pattern_code,is_safe) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING`, userID, attemptID, topicID, role, event.PatternCode, event.IsSafe); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s gameTransactionStore) MistakePatternStats(userID int, role domain.UserRole) ([]domain.MistakePatternStats, error) {
+	var rows []domain.MistakePatternStats
+	_, err := s.db.Query(&rows, `SELECT pattern_code,unsafe_count,safe_count,recent_unsafe FROM mistake_pattern_stats
+		WHERE user_id=? AND user_role=? ORDER BY (unsafe_count - safe_count / 2) DESC,pattern_code`, userID, role)
+	return rows, err
+}
+
+func (s gameTransactionStore) SaveResult(result domain.AttemptResult) error {
+	encoded, err := json.Marshal(resultStorageDTO(result))
 	if err != nil {
 		return err
 	}
 	_, err = s.db.Exec(`INSERT INTO attempt_results(attempt_id,result) VALUES(?,?::jsonb) ON CONFLICT(attempt_id) DO NOTHING`, result.AttemptID, string(encoded))
 	return err
+}
+
+type feedbackStorageDTO struct {
+	Reason          string              `json:"reason"`
+	RiskSignals     []domain.RiskSignal `json:"risk_signals"`
+	SafeAlternative string              `json:"safe_alternative"`
+}
+
+type microQuestionStorageDTO struct {
+	PatternCode string   `json:"pattern_code"`
+	Question    string   `json:"question"`
+	Options     []string `json:"options"`
+	Correct     int      `json:"correct"`
+}
+
+type resultStorage struct {
+	AttemptID       int                       `json:"attempt_id"`
+	Score           int                       `json:"score"`
+	Stars           int                       `json:"stars"`
+	DecisionReview  []domain.AnswerBreakdown  `json:"decision_review"`
+	RiskSignals     []domain.RiskSignal       `json:"risk_signals"`
+	SafeActions     []string                  `json:"safe_actions"`
+	LevelProgress   domain.TopicLevelProgress `json:"level_progress"`
+	TopicID         int                       `json:"topic_id"`
+	TopicCompleted  bool                      `json:"topic_completed"`
+	NextAction      *domain.ContinueAction    `json:"next_action"`
+	NewAchievements []domain.Achievement      `json:"new_achievements"`
+	Streak          domain.Streak             `json:"streak"`
+	IsScam          *bool                     `json:"is_scam,omitempty"`
+	Feedback        feedbackStorageDTO        `json:"feedback"`
+	MicroQuestion   *microQuestionStorageDTO  `json:"micro_question,omitempty"`
+}
+
+func resultStorageDTO(result domain.AttemptResult) resultStorage {
+	stored := resultStorage{AttemptID: result.AttemptID, Score: result.Score, Stars: result.Stars, DecisionReview: result.DecisionReview, RiskSignals: result.RiskSignals, SafeActions: result.SafeActions, LevelProgress: result.LevelProgress, TopicID: result.TopicID, TopicCompleted: result.TopicCompleted, NextAction: result.NextAction, NewAchievements: result.NewAchievements, Streak: result.Streak, IsScam: result.IsScam, Feedback: feedbackStorageDTO{Reason: result.Feedback.Reason, RiskSignals: result.Feedback.RiskSignals, SafeAlternative: result.Feedback.SafeAlternative}}
+	if result.MicroQuestion != nil {
+		stored.MicroQuestion = &microQuestionStorageDTO{PatternCode: result.MicroQuestion.PatternCode, Question: result.MicroQuestion.Question, Options: result.MicroQuestion.Options, Correct: result.MicroQuestion.Correct}
+	}
+	return stored
+}
+
+func (stored resultStorage) domainResult() domain.AttemptResult {
+	result := domain.AttemptResult{AttemptID: stored.AttemptID, Score: stored.Score, Stars: stored.Stars, DecisionReview: stored.DecisionReview, RiskSignals: stored.RiskSignals, SafeActions: stored.SafeActions, LevelProgress: stored.LevelProgress, TopicID: stored.TopicID, TopicCompleted: stored.TopicCompleted, NextAction: stored.NextAction, NewAchievements: stored.NewAchievements, Streak: stored.Streak, IsScam: stored.IsScam, Feedback: domain.ResultFeedback{Reason: stored.Feedback.Reason, RiskSignals: stored.Feedback.RiskSignals, SafeAlternative: stored.Feedback.SafeAlternative}}
+	if stored.MicroQuestion != nil {
+		result.MicroQuestion = &domain.MicroQuestion{PatternCode: stored.MicroQuestion.PatternCode, Question: stored.MicroQuestion.Question, Options: stored.MicroQuestion.Options, Correct: stored.MicroQuestion.Correct}
+	}
+	return result
 }
 
 func scenarioFromGameRecord(record gameScenarioRecord) domain.Scenario {
@@ -557,7 +620,7 @@ func (r *PostgresRepository) Result(attemptID int) (domain.AttemptResult, error)
 	if err != nil {
 		return domain.AttemptResult{}, err
 	}
-	var result domain.AttemptResult
-	err = json.Unmarshal([]byte(raw), &result)
-	return result, err
+	var stored resultStorage
+	err = json.Unmarshal([]byte(raw), &stored)
+	return stored.domainResult(), err
 }

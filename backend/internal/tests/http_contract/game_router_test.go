@@ -1,6 +1,7 @@
 package http_contract_test
 
 import (
+	"anti-scam-trainer/backend/internal/core/domain"
 	"anti-scam-trainer/backend/internal/core/ratelimit"
 	"anti-scam-trainer/backend/internal/core/server/middleware"
 	"anti-scam-trainer/backend/internal/core/server/router"
@@ -9,6 +10,7 @@ import (
 	authservice "anti-scam-trainer/backend/internal/features/auth/service"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -152,7 +154,106 @@ func TestHTTPAIRateLimitRejectsBeforeProviderAndStateMutation(t *testing.T) {
 	}
 }
 
-func TestHTTPAllowsOnlyOneAIRequestInFlightPerUser(t *testing.T) {
+func TestHTTPMicroQuestionAnswerIsOptionalAndDoesNotChangeResult(t *testing.T) {
+	store := newHTTPGameStore()
+	store.attempts[1] = domain.Attempt{ID: 1, UserID: 1, Status: domain.AttemptStatusCompleted}
+	store.result = domain.AttemptResult{AttemptID: 1, Score: 75, Stars: 2, MicroQuestion: &domain.MicroQuestion{PatternCode: "phishing", Question: "Безопасное действие?", Options: []string{"Проверить", "Выполнить"}, Correct: 0}}
+	game := attemptsservice.NewGame(store)
+	handler := router.New()
+	handler.Register(router.V1, attemptshttp.New(game).Routes())
+	call := func(body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/micro-question/answer", strings.NewReader(body))
+		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder
+	}
+	if missing := call(`{}`); missing.Code != http.StatusConflict {
+		t.Fatalf("missing answer = (%d,%s)", missing.Code, missing.Body.String())
+	}
+	before := store.result
+	answered := call(`{"answer_index":0}`)
+	if answered.Code != http.StatusOK || !strings.Contains(answered.Body.String(), `"correct":true`) || !reflect.DeepEqual(store.result, before) {
+		t.Fatalf("answer = (%d,%s), result=%#v", answered.Code, answered.Body.String(), store.result)
+	}
+}
+
+func TestHTTPCompletedAttemptsDrivePatternThresholdAndSafeDecay(t *testing.T) {
+	store := newHTTPGameStore()
+	complete := func(safe bool) (*router.Router, string) {
+		game := attemptsservice.NewGameWithDependencies(store, profileContractAI{safe: safe}, profileContractAI{safe: safe}, func() bool { return true })
+		handler := router.New()
+		handler.Register(router.V1, attemptshttp.New(game).Routes())
+		start := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role=buyer", nil)
+		start = start.WithContext(authservice.WithIdentity(start.Context(), authservice.Identity{UserID: 1}))
+		startRecorder := httptest.NewRecorder()
+		handler.ServeHTTP(startRecorder, start)
+		if startRecorder.Code != http.StatusOK {
+			t.Fatalf("start = (%d,%s)", startRecorder.Code, startRecorder.Body.String())
+		}
+		body := ""
+		for turn := 1; turn <= 3; turn++ {
+			finish := ""
+			if turn == 3 {
+				finish = `,"finish":true`
+			}
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/answers", strings.NewReader(`{"step_id":`+strconv.Itoa(turn)+`,"free_text":"ответ"`+finish+`}`))
+			request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("turn %d = (%d,%s)", turn, recorder.Code, recorder.Body.String())
+			}
+			body = recorder.Body.String()
+		}
+		return handler, body
+	}
+
+	_, first := complete(false)
+	if strings.Contains(first, `"micro_question"`) {
+		t.Fatalf("one risky completion must not create a stable pattern: %s", first)
+	}
+	secondHandler, second := complete(false)
+	if !strings.Contains(second, `"micro_question"`) || !strings.Contains(second, "social_engineering") {
+		t.Fatalf("second risky completion must expose the pattern question: %s", second)
+	}
+	beforeResult := store.result
+	beforeAttempt := store.attempts[1]
+	beforeAnswers, beforeMessages := len(store.answers), len(store.messages)
+	beforeQuiz, beforeStreak, beforeLevels := store.quizBest, store.streak, append([]domain.Level(nil), store.levels...)
+	answer := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/1/micro-question/answer", strings.NewReader(`{"answer_index":0}`))
+	answer = answer.WithContext(authservice.WithIdentity(answer.Context(), authservice.Identity{UserID: 1}))
+	answerRecorder := httptest.NewRecorder()
+	secondHandler.ServeHTTP(answerRecorder, answer)
+	if answerRecorder.Code != http.StatusOK || !reflect.DeepEqual(store.result, beforeResult) || !reflect.DeepEqual(store.attempts[1], beforeAttempt) || len(store.answers) != beforeAnswers || len(store.messages) != beforeMessages || store.quizBest != beforeQuiz || !reflect.DeepEqual(store.streak, beforeStreak) || !reflect.DeepEqual(store.levels, beforeLevels) {
+		t.Fatalf("micro answer changed progression: code=%d body=%s", answerRecorder.Code, answerRecorder.Body.String())
+	}
+
+	_, third := complete(true)
+	if !strings.Contains(third, `"micro_question"`) {
+		t.Fatalf("one safe completion must reduce but not yet clear priority: %s", third)
+	}
+	_, fourth := complete(true)
+	if strings.Contains(fourth, `"micro_question"`) {
+		t.Fatalf("two safe completions must clear the stable pattern: %s", fourth)
+	}
+}
+
+func TestHTTPAIMetricsExposeOnlyAggregates(t *testing.T) {
+	store := newHTTPGameStore()
+	game := attemptsservice.NewGameWithAI(store, contractAI{}, contractAI{})
+	handler := router.New()
+	handler.Register(router.V1, attemptshttp.New(game).Routes())
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/ai/metrics", nil)
+	request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"evaluator"`) || strings.Contains(recorder.Body.String(), "policy") {
+		t.Fatalf("metrics = (%d,%s)", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestHTTPBoundsSharedProviderConcurrencyAcrossUsers(t *testing.T) {
 	store := newHTTPGameStore()
 	provider := &blockingContractAI{started: make(chan struct{}), release: make(chan struct{})}
 	limit := ratelimit.New(ratelimit.Config{Limit: 10, Window: time.Minute, MaxBuckets: 10, IdleTTL: time.Minute}, time.Now)
@@ -160,17 +261,17 @@ func TestHTTPAllowsOnlyOneAIRequestInFlightPerUser(t *testing.T) {
 	r := router.New()
 	r.Register(router.V1, attemptshttp.New(game).Routes())
 	handler := middleware.RequestID()(r)
-	start := func() *httptest.ResponseRecorder {
+	start := func(userID int) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/training/free-play/start?role=buyer", nil)
-		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 1}))
+		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: userID}))
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, request)
 		return rec
 	}
 	firstDone := make(chan *httptest.ResponseRecorder, 1)
-	go func() { firstDone <- start() }()
+	go func() { firstDone <- start(1) }()
 	<-provider.started
-	second := start()
+	second := start(2)
 	if second.Code != http.StatusTooManyRequests || !strings.Contains(second.Body.String(), `"code":"RATE_LIMITED"`) {
 		t.Fatalf("concurrent=(%d,%s)", second.Code, second.Body.String())
 	}

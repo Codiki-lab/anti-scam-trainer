@@ -18,7 +18,7 @@ func newHandler(cfg config.Config, log *logger.Logger, dependencies dependencies
 	versionedRouter := router.New()
 	versionedRouter.Register(router.V1, []router.Route{{Path: "/health", Handler: health}})
 	versionedRouter.Register(router.V1, authhttp.NewWithRateLimits(dependencies.authentication, dependencies.registration, dependencies.login, dependencies.clientIP).Routes())
-	versionedRouter.Register(router.V1, learninghttp.New(dependencies.learning).Routes())
+	versionedRouter.Register(router.V1, learninghttp.NewWithChatRecommendation(dependencies.learning, dependencies.chatRecommendation).Routes())
 	versionedRouter.Register(router.V1, learninghttp.NewAdmin(dependencies.learningContent).Routes())
 	versionedRouter.Register(router.V1, scenarioshttp.New(dependencies.content).Routes())
 	versionedRouter.Register(router.V1, attemptshttp.New(dependencies.game).Routes())

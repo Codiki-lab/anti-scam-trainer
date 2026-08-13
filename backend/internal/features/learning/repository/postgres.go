@@ -39,6 +39,106 @@ func (r *PostgresRepository) SaveRecommendation(userID int, date time.Time, role
 	return err
 }
 
+type skillCheckRow struct {
+	ID             int    `pg:"id"`
+	TopicID        int    `pg:"topic_id"`
+	BeforeMessages string `pg:"before_messages"`
+	BeforeIsScam   bool   `pg:"before_is_scam"`
+	BeforePattern  string `pg:"before_pattern_code"`
+	AfterMessages  string `pg:"after_messages"`
+	AfterIsScam    bool   `pg:"after_is_scam"`
+	AfterPattern   string `pg:"after_pattern_code"`
+	BeforeAnswer   *bool  `pg:"before_answer"`
+	AfterAnswer    *bool  `pg:"after_answer"`
+	TopicComplete  bool   `pg:"topic_complete"`
+}
+
+func (r *PostgresRepository) StartSkillCheck(userID, topicID int) (domain.SkillCheck, error) {
+	var existing skillCheckRow
+	_, err := r.db.QueryOne(&existing, `SELECT sc.id,sc.topic_id,p.before_messages::text,p.before_is_scam,p.before_pattern_code,p.after_messages::text,p.after_is_scam,p.after_pattern_code,sc.before_answer,sc.after_answer,COALESCE(utp.completed_at IS NOT NULL,FALSE) topic_complete
+		FROM skill_checks sc JOIN skill_check_pairs p ON p.id=sc.pair_id LEFT JOIN user_topic_progress utp ON utp.user_id=sc.user_id AND utp.topic_id=sc.topic_id
+		WHERE sc.user_id=? AND sc.topic_id=? AND sc.completed_at IS NULL ORDER BY sc.started_at DESC LIMIT 1`, userID, topicID)
+	if err == nil {
+		return skillCheckFromRow(existing)
+	}
+	if err != pg.ErrNoRows {
+		return domain.SkillCheck{}, err
+	}
+	var checkID int
+	_, err = r.db.QueryOne(pg.Scan(&checkID), `WITH chosen AS (SELECT id FROM skill_check_pairs WHERE topic_id=? ORDER BY random() LIMIT 1), inserted AS (
+		INSERT INTO skill_checks(user_id,topic_id,pair_id) SELECT ?,?,id FROM chosen
+		WHERE NOT EXISTS (SELECT 1 FROM user_topic_progress WHERE user_id=? AND topic_id=? AND completed_at IS NOT NULL)
+		ON CONFLICT (user_id,topic_id) WHERE completed_at IS NULL DO UPDATE SET user_id=EXCLUDED.user_id
+		RETURNING id) SELECT id FROM inserted`, topicID, userID, topicID, userID, topicID)
+	if err == pg.ErrNoRows {
+		return domain.SkillCheck{}, service.ErrInvalidQuiz
+	}
+	if err != nil {
+		return domain.SkillCheck{}, err
+	}
+	return r.SkillCheck(userID, checkID)
+}
+
+func (r *PostgresRepository) SkillCheck(userID, checkID int) (domain.SkillCheck, error) {
+	var row skillCheckRow
+	_, err := r.db.QueryOne(&row, `SELECT sc.id,sc.topic_id,p.before_messages::text,p.before_is_scam,p.before_pattern_code,p.after_messages::text,p.after_is_scam,p.after_pattern_code,sc.before_answer,sc.after_answer,COALESCE(utp.completed_at IS NOT NULL,FALSE) topic_complete
+		FROM skill_checks sc JOIN skill_check_pairs p ON p.id=sc.pair_id LEFT JOIN user_topic_progress utp ON utp.user_id=sc.user_id AND utp.topic_id=sc.topic_id
+		WHERE sc.id=? AND sc.user_id=?`, checkID, userID)
+	if err == pg.ErrNoRows {
+		return domain.SkillCheck{}, service.ErrTopicNotFound
+	}
+	if err != nil {
+		return domain.SkillCheck{}, err
+	}
+	return skillCheckFromRow(row)
+}
+
+func (r *PostgresRepository) AnswerSkillCheck(userID, checkID int, answer bool) (domain.SkillCheck, error) {
+	err := r.db.RunInTransaction(func(tx *pg.Tx) error {
+		var row skillCheckRow
+		_, err := tx.QueryOne(&row, `SELECT sc.id,sc.topic_id,p.before_messages::text,p.before_is_scam,p.before_pattern_code,p.after_messages::text,p.after_is_scam,p.after_pattern_code,sc.before_answer,sc.after_answer,COALESCE(utp.completed_at IS NOT NULL,FALSE) topic_complete
+			FROM skill_checks sc JOIN skill_check_pairs p ON p.id=sc.pair_id LEFT JOIN user_topic_progress utp ON utp.user_id=sc.user_id AND utp.topic_id=sc.topic_id
+			WHERE sc.id=? AND sc.user_id=? FOR UPDATE OF sc`, checkID, userID)
+		if err != nil {
+			return err
+		}
+		switch {
+		case row.BeforeAnswer == nil:
+			_, err = tx.Exec(`UPDATE skill_checks SET before_answer=? WHERE id=?`, answer, checkID)
+		case row.AfterAnswer == nil && row.TopicComplete:
+			_, err = tx.Exec(`UPDATE skill_checks SET after_answer=?,completed_at=NOW() WHERE id=?`, answer, checkID)
+		default:
+			return service.ErrInvalidQuiz
+		}
+		return err
+	})
+	if err != nil {
+		if err == pg.ErrNoRows {
+			return domain.SkillCheck{}, service.ErrTopicNotFound
+		}
+		return domain.SkillCheck{}, err
+	}
+	return r.SkillCheck(userID, checkID)
+}
+
+func skillCheckFromRow(row skillCheckRow) (domain.SkillCheck, error) {
+	var before, after []domain.DialogueMessage
+	if err := json.Unmarshal([]byte(row.BeforeMessages), &before); err != nil {
+		return domain.SkillCheck{}, err
+	}
+	if err := json.Unmarshal([]byte(row.AfterMessages), &after); err != nil {
+		return domain.SkillCheck{}, err
+	}
+	return domain.SkillCheck{ID: row.ID, TopicID: row.TopicID, Before: domain.DialogueSnapshot{Messages: before, IsScam: row.BeforeIsScam, PatternCode: row.BeforePattern}, After: domain.DialogueSnapshot{Messages: after, IsScam: row.AfterIsScam, PatternCode: row.AfterPattern}, BeforeAnswer: row.BeforeAnswer, AfterAnswer: row.AfterAnswer, TopicComplete: row.TopicComplete}, nil
+}
+
+func (r *PostgresRepository) MistakePatternStats(userID int, role domain.UserRole) ([]domain.MistakePatternStats, error) {
+	var rows []domain.MistakePatternStats
+	_, err := r.db.Query(&rows, `SELECT pattern_code,unsafe_count,safe_count,recent_unsafe FROM mistake_pattern_stats
+		WHERE user_id=? AND user_role=? ORDER BY (unsafe_count - safe_count / 2) DESC,pattern_code`, userID, role)
+	return rows, err
+}
+
 type topicRow struct {
 	ID            int    `pg:"id"`
 	Slug          string `pg:"slug"`

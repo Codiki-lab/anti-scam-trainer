@@ -56,7 +56,7 @@ func TestProductionFeaturesFollowADR0012(t *testing.T) {
 	}
 	for _, route := range []string{
 		"authhttp.NewWithRateLimits(dependencies.authentication",
-		"learninghttp.New(dependencies.learning).Routes()",
+		"learninghttp.NewWithChatRecommendation(dependencies.learning, dependencies.chatRecommendation).Routes()",
 		"scenarioshttp.New(dependencies.content).Routes()",
 		"attemptshttp.New(dependencies.game).Routes()",
 	} {
