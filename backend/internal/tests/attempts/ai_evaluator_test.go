@@ -81,6 +81,16 @@ func TestEvaluatorDoesNotFastTrackRefusalWithSubstantiveSuffix(t *testing.T) {
 	}
 }
 
+func TestEvaluatorDoesNotFastTrackRefusalOfSafeAction(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"fake_payment","detected_signals":[],"evaluation":"Пользователь отказывается от безопасной проверки","safe_action":"Проверить оплату самостоятельно"}`}}
+	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
+
+	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "fake_payment", Answer: "Не буду проверять оплату в банке"})
+	if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 1 {
+		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want contextual model evaluation", result, err, len(provider.requests))
+	}
+}
+
 func TestEvaluatorDoesNotFastTrackContradictoryRefusal(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"phishing","detected_signals":["согласие после отказа"],"evaluation":"Ответ заканчивается согласием на опасное действие","safe_action":"Не открывать ссылку"}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
