@@ -3,6 +3,7 @@ package http
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
 	apperrors "anti-scam-trainer/backend/internal/core/errors"
+	"anti-scam-trainer/backend/internal/core/ratelimit"
 	"anti-scam-trainer/backend/internal/core/server/request"
 	"anti-scam-trainer/backend/internal/core/server/response"
 	"anti-scam-trainer/backend/internal/core/server/router"
@@ -15,11 +16,17 @@ import (
 	"time"
 )
 
-type Handler struct{ service *service.Service }
+type Handler struct {
+	service                     *service.Service
+	chatRecommendationRateLimit *ratelimit.Limiter
+}
 
 func New(service *service.Service) *Handler { return &Handler{service: service} }
+func NewWithChatRecommendation(service *service.Service, limiter *ratelimit.Limiter) *Handler {
+	return &Handler{service: service, chatRecommendationRateLimit: limiter}
+}
 func (h *Handler) Routes() []router.Route {
-	return []router.Route{{Path: "/topics", Handler: h.topics}, {Path: "/topics/", Handler: h.topic}, {Path: "/progress", Handler: h.progress}, {Path: "/achievements", Handler: h.achievements}, {Path: "/dashboard", Handler: h.dashboard}, {Path: "/daily-tasks/answer", Handler: h.answerDailyTask}}
+	return []router.Route{{Path: "/topics", Handler: h.topics}, {Path: "/topics/", Handler: h.topic}, {Path: "/progress", Handler: h.progress}, {Path: "/achievements", Handler: h.achievements}, {Path: "/dashboard", Handler: h.dashboard}, {Path: "/daily-tasks/answer", Handler: h.answerDailyTask}, {Path: "/integrations/avito-chat/recommendations", Handler: h.chatRecommendation}}
 }
 
 func identity(r *http.Request) (auth.Identity, bool) { return auth.IdentityFromContext(r.Context()) }
@@ -275,6 +282,55 @@ func (h *Handler) answerDailyTask(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, map[string]any{"daily_task": dailyTaskDTOFrom(&task), "streak": streak})
 }
 
+func (h *Handler) chatRecommendation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user, ok := identity(r)
+	if !ok {
+		response.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var input struct {
+		Source      string            `json:"source"`
+		Role        domain.UserRole   `json:"role"`
+		Messages    []dailyMessageDTO `json:"messages"`
+		RiskType    string            `json:"risk_type"`
+		RiskSignals []string          `json:"risk_signals"`
+	}
+	if err := request.DecodeStrictJSON(r, &input); err != nil {
+		response.ErrorCode(w, "VALIDATION_ERROR", "invalid chat recommendation request", http.StatusBadRequest, nil)
+		return
+	}
+	messages := make([]domain.DialogueMessage, len(input.Messages))
+	for i, message := range input.Messages {
+		messages[i] = domain.DialogueMessage{Role: domain.MessageRole(message.Role), Text: message.Text}
+	}
+	command := service.ChatRecommendationCommand{Source: input.Source, Role: input.Role, Messages: messages, RiskType: input.RiskType, RiskSignals: input.RiskSignals}
+	if err := service.ValidateChatRecommendation(command); err != nil {
+		response.ErrorCode(w, "VALIDATION_ERROR", "chat snapshot must be anonymized", http.StatusBadRequest, nil)
+		return
+	}
+	if h.chatRecommendationRateLimit != nil {
+		if allowed, retry := h.chatRecommendationRateLimit.Allow(strconv.Itoa(user.UserID)); !allowed {
+			seconds := int64((retry + time.Second - 1) / time.Second)
+			if seconds < 1 {
+				seconds = 1
+			}
+			w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+			response.ErrorCode(w, "RATE_LIMITED", "too many chat recommendation requests", http.StatusTooManyRequests, map[string]any{"retry_after_seconds": seconds})
+			return
+		}
+	}
+	recommendation, err := h.service.RecommendFromChat(user.UserID, command)
+	if err != nil {
+		learningError(w, err)
+		return
+	}
+	response.JSON(w, map[string]any{"topic": topicDTO(recommendation.Topic), "explanation": recommendation.Explanation, "next_action": continueActionDTOFrom(&recommendation.NextAction), "fallback": recommendation.IsFallback})
+}
+
 func topicDTO(t domain.Topic) map[string]any {
 	levels := make([]map[string]any, len(t.Levels))
 	for i, l := range t.Levels {
@@ -328,6 +384,8 @@ func learningError(w http.ResponseWriter, err error) {
 		response.ErrorCode(w, "STATE_CONFLICT", "daily task is already answered", http.StatusConflict, nil)
 	case errors.Is(err, service.ErrInvalidDailyAnswer):
 		response.ErrorCode(w, "VALIDATION_ERROR", "answer must be a boolean", http.StatusBadRequest, nil)
+	case errors.Is(err, service.ErrInvalidChatReferral):
+		response.ErrorCode(w, "VALIDATION_ERROR", "chat snapshot must be anonymized", http.StatusBadRequest, nil)
 	default:
 		response.Error(w, "could not process learning request", 500)
 	}

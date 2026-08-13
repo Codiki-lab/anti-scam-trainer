@@ -15,6 +15,17 @@ type learningStore struct {
 	topics        []domain.Topic
 }
 
+type chatRecommendationStore struct {
+	learningStore
+	topicsByRole map[domain.UserRole][]domain.Topic
+	topicCalls   int
+}
+
+func (s *chatRecommendationStore) Topics(_ int, role domain.UserRole) ([]domain.Topic, error) {
+	s.topicCalls++
+	return s.topicsByRole[role], nil
+}
+
 type stableLearningStore struct {
 	*learningStore
 	recommendations map[string]domain.ContinueAction

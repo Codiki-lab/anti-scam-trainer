@@ -11,6 +11,7 @@ tags:
   - name: Обучение
   - name: Прохождения
   - name: Прогресс
+  - name: Демо-интеграция
   - name: Сценарии
   - name: Учебный контент
 paths:
@@ -214,6 +215,17 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/integrations/avito-chat/recommendations:
+    post:
+      tags: [Демо-интеграция]
+      description: После явного согласия Пользователя принимает только обезличенный Снимок диалога из demo-источника. Полный контекст не сохраняется, AI не вызывается.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ChatRecommendationRequest' } } } }
+      responses:
+        '200': { description: Опубликованная Тема выбранной Ролевой ветки, безопасное объяснение и серверное следующее действие, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/ChatRecommendation' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /api/v1/admin/topics:
     get: { tags: [Учебный контент], responses: { '200': { description: Все Темы независимо от lifecycle, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AdminTopic' } } } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' } } }
     post: { tags: [Учебный контент], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminTopic' } } } }, responses: { '201': { description: Черновик Темы, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/AdminTopic' } } } }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '409': { $ref: '#/components/responses/Conflict' } } }
@@ -324,6 +336,9 @@ components:
     RecentAttempt: { type: object, required: [attempt_id, topic_id, level, score, stars, finished_at], properties: { attempt_id: { type: integer }, topic_id: { type: integer }, level: { type: integer, minimum: 1, maximum: 4 }, score: { type: integer, minimum: 0, maximum: 100 }, stars: { type: integer, minimum: 0, maximum: 3 }, finished_at: { type: string, format: date-time } } }
     DashboardProfile: { type: object, required: [id, username, training_role], properties: { id: { type: integer }, username: { type: string }, training_role: { $ref: '#/components/schemas/UserRole' } } }
     Dashboard: { type: object, required: [profile, streak, topics, achievements, continue_action, daily_task], properties: { profile: { $ref: '#/components/schemas/DashboardProfile' }, streak: { $ref: '#/components/schemas/Streak' }, topics: { type: array, items: { $ref: '#/components/schemas/Topic' } }, achievements: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/Achievement' } }, continue_action: { $ref: '#/components/schemas/ContinueAction' }, daily_task: { $ref: '#/components/schemas/DailyTask' } } }
+    ChatRecommendationMessage: { type: object, required: [role, text], additionalProperties: false, properties: { role: { type: string, enum: [user, assistant] }, text: { type: string, minLength: 1, maxLength: 400 } } }
+    ChatRecommendationRequest: { type: object, required: [source, role, messages, risk_type], additionalProperties: false, properties: { source: { const: avito_chat_demo }, role: { $ref: '#/components/schemas/UserRole' }, messages: { type: array, minItems: 2, maxItems: 6, items: { $ref: '#/components/schemas/ChatRecommendationMessage' } }, risk_type: { type: string, minLength: 1, maxLength: 80, description: "Нормализованный риск; точные соответствия: phishing, prepayment, delivery, external_messenger, account_takeover, fake_payment, social_engineering. Для неизвестного или неточного значения сервер возвращает fallback." }, risk_signals: { type: array, maxItems: 3, items: { type: string, minLength: 1, maxLength: 180 } } } }
+    ChatRecommendation: { type: object, required: [topic, explanation, next_action, fallback], additionalProperties: false, properties: { topic: { $ref: '#/components/schemas/Topic' }, explanation: { type: string }, next_action: { $ref: '#/components/schemas/ContinueAction' }, fallback: { type: boolean, description: "true, если для риска нет точной Темы и сервер выбрал общую Тему безопасной сделки" } } }
     AdminTheoryBlock: { type: object, required: [sort_order, kind, title, body], properties: { id: { type: integer, readOnly: true }, sort_order: { type: integer, minimum: 1, maximum: 5 }, kind: { type: string, enum: [intro, risk, example, safe_action, summary] }, title: { type: string, minLength: 1 }, body: { type: string, minLength: 1 } }, additionalProperties: false }
     AdminQuizOption: { type: object, required: [sort_order, text, is_correct], properties: { id: { type: integer, readOnly: true }, sort_order: { type: integer, minimum: 1, maximum: 4 }, text: { type: string, minLength: 1 }, is_correct: { type: boolean } }, additionalProperties: false }
     AdminQuizQuestion: { type: object, required: [sort_order, text, explanation], properties: { id: { type: integer, readOnly: true }, sort_order: { type: integer, minimum: 1, maximum: 5 }, text: { type: string, minLength: 1 }, explanation: { type: string, minLength: 1 }, options: { type: array, items: { $ref: '#/components/schemas/AdminQuizOption' }, readOnly: true } }, additionalProperties: false }

@@ -6,8 +6,20 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"regexp"
 	"strings"
 	"time"
+)
+
+const chatRecommendationSource = "avito_chat_demo"
+
+var (
+	urlInSnapshot        = regexp.MustCompile(`(?i)\b(?:https?://|www\.|(?:[a-z0-9-]+\.)+[a-z]{2,})(?:[^\s]*)`)
+	phoneInSnapshot      = regexp.MustCompile(`(?:\+?\d[\d\s()\-]{8,}\d)`)
+	cardInSnapshot       = regexp.MustCompile(`(?:\d[\s-]*){12,19}`)
+	confirmationCodeText = regexp.MustCompile(`(?i)(?:код|code|парол)[^\d]{0,20}\d{4,8}`)
+	chatIdentifierText   = regexp.MustCompile(`(?i)(?:chat|чат|объявлен|listing|ad)[_\s-]*(?:id|№|number)?\s*[:#№-]?\s*\d{3,}`)
 )
 
 var (
@@ -16,7 +28,37 @@ var (
 	ErrDailyTaskUnavailable = errors.New("no valid daily task is available")
 	ErrDailyTaskAnswered    = errors.New("daily task is already answered")
 	ErrInvalidDailyAnswer   = errors.New("invalid daily task answer")
+	ErrInvalidChatReferral  = errors.New("invalid chat recommendation request")
 )
+
+type ChatRecommendationCommand struct {
+	Source      string
+	Role        domain.UserRole
+	Messages    []domain.DialogueMessage
+	RiskType    string
+	RiskSignals []string
+}
+
+func ValidateChatRecommendation(command ChatRecommendationCommand) error {
+	if command.Source != chatRecommendationSource || !domain.ValidUserRole(command.Role) || len(command.Messages) < 2 || len(command.Messages) > 6 || len(command.RiskSignals) > 3 || strings.TrimSpace(command.RiskType) == "" || len([]rune(command.RiskType)) > 80 {
+		return ErrInvalidChatReferral
+	}
+	for _, message := range command.Messages {
+		if (message.Role != domain.MessageRoleUser && message.Role != domain.MessageRoleAssistant) || strings.TrimSpace(message.Text) == "" || len([]rune(message.Text)) > 400 || containsSensitiveSnapshotData(message.Text) {
+			return ErrInvalidChatReferral
+		}
+	}
+	for _, signal := range command.RiskSignals {
+		if strings.TrimSpace(signal) == "" || len([]rune(signal)) > 180 || containsSensitiveSnapshotData(signal) {
+			return ErrInvalidChatReferral
+		}
+	}
+	return nil
+}
+
+func containsSensitiveSnapshotData(value string) bool {
+	return urlInSnapshot.MatchString(value) || phoneInSnapshot.MatchString(value) || cardInSnapshot.MatchString(value) || confirmationCodeText.MatchString(value) || chatIdentifierText.MatchString(value)
+}
 
 type DailyTaskGenerator interface {
 	GenerateDailyTask(context.Context, DailyTaskProfile, domain.UserRole) (domain.DailyTask, error)
@@ -107,6 +149,89 @@ func (s *Service) Progress(userID int, role domain.UserRole) ([]domain.Topic, []
 }
 func (s *Service) Achievements(userID int) ([]domain.Achievement, error) {
 	return s.repository.Achievements(userID)
+}
+
+func (s *Service) RecommendFromChat(userID int, command ChatRecommendationCommand) (domain.ChatRecommendation, error) {
+	if err := ValidateChatRecommendation(command); err != nil {
+		return domain.ChatRecommendation{}, err
+	}
+	topics, err := s.Topics(userID, command.Role)
+	if err != nil {
+		return domain.ChatRecommendation{}, err
+	}
+	slug, exact := chatRecommendationSlug(command.Role, command.RiskType)
+	if !exact {
+		slug = generalSafetyTopicSlug(command.Role)
+	}
+	for _, topic := range topics {
+		if topic.Slug == slug && topic.UserRole == command.Role && topic.Status == domain.TopicStatusPublished {
+			return s.chatRecommendationForTopic(userID, command.Role, topic, command.RiskType, exact), nil
+		}
+	}
+	if exact {
+		fallbackSlug := generalSafetyTopicSlug(command.Role)
+		for _, topic := range topics {
+			if topic.Slug == fallbackSlug && topic.UserRole == command.Role && topic.Status == domain.TopicStatusPublished {
+				return s.chatRecommendationForTopic(userID, command.Role, topic, command.RiskType, false), nil
+			}
+		}
+	}
+	return domain.ChatRecommendation{}, fmt.Errorf("%w: mapped topic is unavailable", ErrTopicNotFound)
+}
+
+func (s *Service) chatRecommendationForTopic(userID int, role domain.UserRole, topic domain.Topic, riskType string, exact bool) domain.ChatRecommendation {
+	action := nextTopicAction(topic)
+	if attemptID, topicID, _, err := s.repository.InProgressAttempt(userID, role); err == nil && attemptID != 0 && topicID == topic.ID {
+		action = domain.ContinueAction{Type: "resume_attempt", TopicID: topic.ID, AttemptID: attemptID}
+	}
+	return domain.ChatRecommendation{Topic: topic, Explanation: chatRecommendationExplanation(riskType, exact), NextAction: action, IsFallback: !exact}
+}
+
+func chatRecommendationSlug(role domain.UserRole, riskType string) (string, bool) {
+	mapping := map[domain.UserRole]map[string]string{
+		domain.UserRoleBuyer:  {"phishing": "buyer-phishing-links", "prepayment": "buyer-prepayment", "delivery": "buyer-fake-delivery", "external_messenger": "buyer-off-platform", "account_takeover": "buyer-sms-codes", "fake_payment": "buyer-phishing-links", "social_engineering": "buyer-too-good-offer"},
+		domain.UserRoleSeller: {"phishing": "seller-external-links", "prepayment": "seller-fake-payment", "delivery": "seller-fake-delivery", "external_messenger": "seller-off-platform", "account_takeover": "seller-confirmation-codes", "fake_payment": "seller-fake-payment", "social_engineering": "seller-pressure"},
+	}
+	slug, ok := mapping[role][riskType]
+	return slug, ok
+}
+
+func generalSafetyTopicSlug(role domain.UserRole) string {
+	if role == domain.UserRoleSeller {
+		return "seller-pressure"
+	}
+	return "buyer-too-good-offer"
+}
+
+func chatRecommendationExplanation(riskType string, exact bool) string {
+	if !exact {
+		return "Для этого сигнала нет точного учебного соответствия. Начните с общей Темы о безопасном порядке сделки."
+	}
+	explanations := map[string]string{
+		"phishing":           "Внешняя форма или ссылка может подменить штатное оформление. Разберите, как проверить сделку внутри сервиса.",
+		"prepayment":         "Предоплата до штатного оформления не подтверждает сделку. Разберите безопасный порядок проверки и оплаты.",
+		"delivery":           "Неожиданные платежи и условия доставки нужно проверять только внутри сервиса. Эта Тема поможет распознать подмену.",
+		"external_messenger": "Перенос общения во внешний мессенджер лишает сделку проверяемого контекста. Разберите безопасные действия в этой Теме.",
+		"account_takeover":   "Код подтверждения предназначен только владельцу аккаунта. Эта Тема объяснит, как защитить доступ к нему.",
+		"fake_payment":       "Чек, сообщение или форма собеседника не подтверждают оплату. Разберите, как проверить её самостоятельно.",
+		"social_engineering": "Срочность и давление не меняют безопасный порядок сделки. Эта Тема поможет вовремя взять паузу и проверить условия.",
+	}
+	return explanations[riskType]
+}
+
+func nextTopicAction(topic domain.Topic) domain.ContinueAction {
+	if !topic.TheoryRead {
+		return domain.ContinueAction{Type: "read_theory", TopicID: topic.ID}
+	}
+	if !topic.QuizPassed {
+		return domain.ContinueAction{Type: "take_quiz", TopicID: topic.ID}
+	}
+	for _, level := range topic.Levels {
+		if level.Opened && level.Stars == 0 {
+			return domain.ContinueAction{Type: "start_level", TopicID: topic.ID, Level: level.Number}
+		}
+	}
+	return domain.ContinueAction{Type: "read_theory", TopicID: topic.ID}
 }
 func (s *Service) Dashboard(userID int, role domain.UserRole) (domain.User, []domain.Topic, []domain.Achievement, *domain.ContinueAction, *domain.DailyTask, error) {
 	user, err := s.repository.User(userID)

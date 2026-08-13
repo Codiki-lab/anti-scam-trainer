@@ -9,37 +9,39 @@ import (
 )
 
 type Config struct {
-	DatabaseAddress           string
-	DatabaseUser              string
-	DatabasePassword          string
-	DatabaseName              string
-	Port                      string
-	LogLevel                  string
-	LogFolder                 string
-	OllamaURL                 string
-	OllamaModel               string
-	OllamaTimeout             time.Duration
-	OllamaContextWindowTokens int
-	OllamaOutputReserveTokens int
-	OllamaMediumRiskThreshold float64
-	OllamaHighRiskThreshold   float64
-	JWTSecret                 string
-	AdminUsername             string
-	AdminPassword             string
-	SwaggerUsername           string
-	SwaggerPassword           string
-	FrontendOrigins           []string
-	TrustedProxyCIDRs         []string
-	RegistrationRateLimit     int
-	RegistrationRateWindow    time.Duration
-	LoginRateLimit            int
-	LoginRateWindow           time.Duration
-	AIFreeTextRateLimit       int
-	AIFreeTextRateWindow      time.Duration
-	FreePlayRateLimit         int
-	FreePlayRateWindow        time.Duration
-	RateLimitMaxBuckets       int
-	RateLimitBucketTTL        time.Duration
+	DatabaseAddress              string
+	DatabaseUser                 string
+	DatabasePassword             string
+	DatabaseName                 string
+	Port                         string
+	LogLevel                     string
+	LogFolder                    string
+	OllamaURL                    string
+	OllamaModel                  string
+	OllamaTimeout                time.Duration
+	OllamaContextWindowTokens    int
+	OllamaOutputReserveTokens    int
+	OllamaMediumRiskThreshold    float64
+	OllamaHighRiskThreshold      float64
+	JWTSecret                    string
+	AdminUsername                string
+	AdminPassword                string
+	SwaggerUsername              string
+	SwaggerPassword              string
+	FrontendOrigins              []string
+	TrustedProxyCIDRs            []string
+	RegistrationRateLimit        int
+	RegistrationRateWindow       time.Duration
+	LoginRateLimit               int
+	LoginRateWindow              time.Duration
+	AIFreeTextRateLimit          int
+	AIFreeTextRateWindow         time.Duration
+	FreePlayRateLimit            int
+	FreePlayRateWindow           time.Duration
+	ChatRecommendationRateLimit  int
+	ChatRecommendationRateWindow time.Duration
+	RateLimitMaxBuckets          int
+	RateLimitBucketTTL           time.Duration
 }
 
 func Load() (Config, error) {
@@ -94,6 +96,12 @@ func Load() (Config, error) {
 		return Config{}, rateErr
 	}
 	if cfg.FreePlayRateWindow, rateErr = positiveEnvDuration("RATE_LIMIT_FREE_PLAY_WINDOW", time.Minute); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.ChatRecommendationRateLimit, rateErr = positiveEnvInt("RATE_LIMIT_CHAT_RECOMMENDATION_CAPACITY", 20); rateErr != nil {
+		return Config{}, rateErr
+	}
+	if cfg.ChatRecommendationRateWindow, rateErr = positiveEnvDuration("RATE_LIMIT_CHAT_RECOMMENDATION_WINDOW", time.Minute); rateErr != nil {
 		return Config{}, rateErr
 	}
 	if cfg.RateLimitMaxBuckets, rateErr = positiveEnvInt("RATE_LIMIT_MAX_BUCKETS", 10000); rateErr != nil {
