@@ -91,6 +91,18 @@ func TestEvaluatorDoesNotFastTrackRefusalOfSafeAction(t *testing.T) {
 	}
 }
 
+func TestEvaluatorDoesNotFastTrackContradictoryCompoundRefusal(t *testing.T) {
+	for _, answer := range []string{"Не открою ссылку, а данные карты сообщу", "Не дам код и введу данные"} {
+		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"account_takeover","detected_signals":["секретные данные"],"evaluation":"Ответ сочетает отказ с опасным действием","safe_action":"Не передавать данные"}`}}
+		modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
+
+		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "account_takeover", Answer: answer})
+		if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 1 {
+			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want model evaluation", answer, result, err, len(provider.requests))
+		}
+	}
+}
+
 func TestEvaluatorDoesNotFastTrackContradictoryRefusal(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"phishing","detected_signals":["согласие после отказа"],"evaluation":"Ответ заканчивается согласием на опасное действие","safe_action":"Не открывать ссылку"}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))

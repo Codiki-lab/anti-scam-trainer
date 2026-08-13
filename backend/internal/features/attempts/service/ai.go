@@ -251,7 +251,7 @@ func isShortRefusal(answer string) bool {
 	}
 	normalized := normalizeEvaluatorAnswer(answer)
 	padded := " " + normalized + " "
-	if len(strings.Fields(normalized)) > 8 || containsAny(padded, " но ", " хотя ", " потом ", " ладно ", " всё таки ", " все таки ", " всё же ", " все же ") {
+	if len(strings.Fields(normalized)) > 8 || containsAny(padded, " но ", " хотя ", " потом ", " ладно ", " всё таки ", " все таки ", " всё же ", " все же ", " и ", " а ", " затем ") {
 		return false
 	}
 	if _, ok := shortRefusals[normalized]; ok {
