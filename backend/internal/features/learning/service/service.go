@@ -151,6 +151,72 @@ func (s *Service) Achievements(userID int) ([]domain.Achievement, error) {
 	return s.repository.Achievements(userID)
 }
 
+func (s *Service) StartSkillCheck(userID, topicID int) (domain.SkillCheck, error) {
+	if _, err := s.repository.Topic(userID, topicID); err != nil {
+		return domain.SkillCheck{}, err
+	}
+	repository, ok := s.repository.(SkillCheckRepository)
+	if !ok {
+		return domain.SkillCheck{}, ErrTopicNotFound
+	}
+	return repository.StartSkillCheck(userID, topicID)
+}
+
+func (s *Service) SkillCheck(userID, checkID int) (domain.SkillCheck, error) {
+	repository, ok := s.repository.(SkillCheckRepository)
+	if !ok {
+		return domain.SkillCheck{}, ErrTopicNotFound
+	}
+	return repository.SkillCheck(userID, checkID)
+}
+
+func (s *Service) AnswerSkillCheck(userID, checkID int, answer bool) (domain.SkillCheck, error) {
+	repository, ok := s.repository.(SkillCheckRepository)
+	if !ok {
+		return domain.SkillCheck{}, ErrTopicNotFound
+	}
+	return repository.AnswerSkillCheck(userID, checkID, answer)
+}
+
+// PersonalRecommendation only selects content already available in the normal
+// learning path. The Profile is a hint, never an unlock mechanism.
+func (s *Service) PersonalRecommendation(userID int, role domain.UserRole) (domain.ChatRecommendation, error) {
+	profile, ok := s.repository.(MistakeProfileRepository)
+	if !ok {
+		return domain.ChatRecommendation{}, ErrTopicNotFound
+	}
+	stats, err := profile.MistakePatternStats(userID, role)
+	if err != nil {
+		return domain.ChatRecommendation{}, err
+	}
+	pattern, stable := "", false
+	for _, item := range stats {
+		if item.Stable() {
+			pattern, stable = item.PatternCode, true
+			break
+		}
+	}
+	topics, err := s.Topics(userID, role)
+	if err != nil {
+		return domain.ChatRecommendation{}, err
+	}
+	slug := generalSafetyTopicSlug(role)
+	if stable {
+		if mapped, exact := chatRecommendationSlug(role, pattern); exact {
+			slug = mapped
+		}
+	}
+	for _, topic := range topics {
+		if topic.Slug == slug {
+			return domain.ChatRecommendation{Topic: topic, Explanation: "Следующее действие выбрано по повторяющемуся паттерну и не меняет доступность контента.", NextAction: nextTopicAction(topic), IsFallback: !stable || topic.Slug != slug}, nil
+		}
+	}
+	if len(topics) == 0 {
+		return domain.ChatRecommendation{}, ErrTopicNotFound
+	}
+	return domain.ChatRecommendation{Topic: topics[0], Explanation: "Продолжайте доступную последовательность обучения.", NextAction: nextTopicAction(topics[0]), IsFallback: true}, nil
+}
+
 func (s *Service) RecommendFromChat(userID int, command ChatRecommendationCommand) (domain.ChatRecommendation, error) {
 	if err := ValidateChatRecommendation(command); err != nil {
 		return domain.ChatRecommendation{}, err
@@ -188,6 +254,9 @@ func (s *Service) chatRecommendationForTopic(userID int, role domain.UserRole, t
 }
 
 func chatRecommendationSlug(role domain.UserRole, riskType string) (string, bool) {
+	if canonical, ok := map[string]string{"external_link": "phishing", "fake_delivery": "delivery", "sms_code": "account_takeover", "pressure": "social_engineering"}[riskType]; ok {
+		riskType = canonical
+	}
 	mapping := map[domain.UserRole]map[string]string{
 		domain.UserRoleBuyer:  {"phishing": "buyer-phishing-links", "prepayment": "buyer-prepayment", "delivery": "buyer-fake-delivery", "external_messenger": "buyer-off-platform", "account_takeover": "buyer-sms-codes", "fake_payment": "buyer-phishing-links", "social_engineering": "buyer-too-good-offer"},
 		domain.UserRoleSeller: {"phishing": "seller-external-links", "prepayment": "seller-fake-payment", "delivery": "seller-fake-delivery", "external_messenger": "seller-off-platform", "account_takeover": "seller-confirmation-codes", "fake_payment": "seller-fake-payment", "social_engineering": "seller-pressure"},

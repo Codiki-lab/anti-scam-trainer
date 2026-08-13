@@ -29,3 +29,9 @@ ADR фиксирует архитектурное решение вместе с
 | [0012 — Единый шаблон продуктовой возможности](0012-uniform-feature-layout.md) | Принято |
 | [0013 — Frontend slices, state ownership и API boundary](0013-frontend-slices-state-and-api-boundaries.md) | Принято |
 | [0014 — Раздельные AI-порты evaluator и generator](0014-separate-ai-evaluator-generator.md) | Принято |
+| [0015 — Один локальный AI-provider с деградацией для MVP](0015-single-local-ai-provider-mvp-resilience.md) | Принято |
+| [0016 — Закрытый Набор оценки для качества evaluator-а](0016-closed-evaluation-set-for-evaluator.md) | Принято |
+| [0017 — Контролируемые Вариации тактики generator-а](0017-controlled-generator-tactic-variations.md) | Принято |
+| [0018 — Детерминированная устойчивость Профиля ошибок](0018-deterministic-mistake-profile-stability.md) | Принято |
+| [0019 — Многослойная защита AI от prompt injection](0019-layered-prompt-injection-defense.md) | Принято |
+| [0020 — Необязательная Проверка навыка до и после обучения](0020-optional-pre-post-skill-check.md) | Принято |

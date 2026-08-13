@@ -251,3 +251,10 @@ func (r *gameRepository) SaveProgress(p domain.Progress) error {
 }
 
 func (r *gameRepository) FinalizeLearning(*domain.AttemptResult) error { return nil }
+func (r *gameRepository) RecordMistakePatternEvents(int, int, int, domain.UserRole, []domain.MistakePatternEvent) error {
+	return nil
+}
+func (r *gameRepository) MistakePatternStats(int, domain.UserRole) ([]domain.MistakePatternStats, error) {
+	return nil, nil
+}
+func (r *gameRepository) SaveResult(domain.AttemptResult) error { return nil }

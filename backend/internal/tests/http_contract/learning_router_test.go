@@ -170,3 +170,50 @@ func TestHTTPDashboardOffersFreePlayOnlyAfterAllSixTopicsAreCompleted(t *testing
 		}
 	}
 }
+
+func TestHTTPSkillCheckPersistsPairAndNeverTouchesProgression(t *testing.T) {
+	store := &learningStore{}
+	handler := router.New()
+	handler.Register(router.V1, learninghttp.New(learningservice.New(store)).Routes())
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(method, path, strings.NewReader(body))
+		request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 7}))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder
+	}
+	beforeTheory, beforeActivity := store.theoryRead, store.activityCalls
+	start := call(http.MethodPost, "/api/v1/topics/1/skill-check/start", "")
+	if start.Code != http.StatusOK || !strings.Contains(start.Body.String(), `"phase":"before"`) || !strings.Contains(start.Body.String(), `"snapshot"`) {
+		t.Fatalf("start = (%d,%s)", start.Code, start.Body.String())
+	}
+	pre := call(http.MethodPost, "/api/v1/skill-checks/9/answers", `{"answer":false}`)
+	if pre.Code != http.StatusOK || !strings.Contains(pre.Body.String(), `"phase":"after_locked"`) || strings.Contains(pre.Body.String(), `"snapshot"`) {
+		t.Fatalf("pre = (%d,%s)", pre.Code, pre.Body.String())
+	}
+	store.skillCheck.TopicComplete = true
+	resume := call(http.MethodPost, "/api/v1/topics/1/skill-check/start", "")
+	if resume.Code != http.StatusOK || !strings.Contains(resume.Body.String(), `"phase":"after"`) || !strings.Contains(resume.Body.String(), "Отправьте код возврата") {
+		t.Fatalf("resume = (%d,%s)", resume.Code, resume.Body.String())
+	}
+	post := call(http.MethodPost, "/api/v1/skill-checks/9/answers", `{"answer":true}`)
+	if post.Code != http.StatusOK || !strings.Contains(post.Body.String(), `"phase":"completed"`) || !strings.Contains(post.Body.String(), `"verdict_improved":true`) || !strings.Contains(post.Body.String(), `"pattern_improved":true`) || !strings.Contains(post.Body.String(), `"improved":true`) {
+		t.Fatalf("post = (%d,%s)", post.Code, post.Body.String())
+	}
+	if store.theoryRead != beforeTheory || store.activityCalls != beforeActivity {
+		t.Fatalf("skill check changed progression: theory=%v activity=%d", store.theoryRead, store.activityCalls)
+	}
+}
+
+func TestHTTPPersonalRecommendationUsesStablePatternWithoutUnlockingLevel(t *testing.T) {
+	store := &learningStore{stablePattern: "external_link", topics: []domain.Topic{{ID: 1, Slug: "buyer-phishing-links", UserRole: domain.UserRoleBuyer, Status: domain.TopicStatusPublished, TheoryRead: true, QuizPassed: true, Levels: []domain.TopicLevelProgress{{Number: 1, Opened: true, Stars: 1}, {Number: 2, Opened: true}, {Number: 3, Opened: false}, {Number: 4, Opened: false}}}}}
+	handler := router.New()
+	handler.Register(router.V1, learninghttp.New(learningservice.New(store)).Routes())
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/recommendations/next?role=buyer", nil)
+	request = request.WithContext(authservice.WithIdentity(request.Context(), authservice.Identity{UserID: 7}))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"type":"start_level"`) || !strings.Contains(recorder.Body.String(), `"level":2`) || strings.Contains(recorder.Body.String(), `"level":3`) {
+		t.Fatalf("recommendation = (%d,%s)", recorder.Code, recorder.Body.String())
+	}
+}

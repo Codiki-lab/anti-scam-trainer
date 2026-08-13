@@ -42,7 +42,7 @@ func (a *DailyTaskGenerator) GenerateDailyTask(ctx context.Context, profile lear
 	release := func() {}
 	if a.gate != nil {
 		var ok bool
-		release, ok = a.gate.TryEnter(key)
+		release, ok = a.gate.TryEnter("local-ai-provider")
 		if !ok {
 			return domain.DailyTask{}, errors.New("daily task AI busy")
 		}
