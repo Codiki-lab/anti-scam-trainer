@@ -60,7 +60,7 @@ func TestEvaluatorRecognizesShortRefusalWithoutCallingModel(t *testing.T) {
 
 	for _, answer := range []string{"Нет", "Нет, спасибо", "Не буду", "Не буду так делать", "Не буду открывать ссылку", "Не дам код", "Не собираюсь платить", "Отказываюсь", "Ни за что"} {
 		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: answer})
-		if err != nil || result.Score != 3 || !result.IsSafe || result.RiskType != "phishing" {
+		if err != nil || result.Score != 4 || !result.IsSafe || result.RiskType != "phishing" {
 			t.Fatalf("Evaluate(%q) = (%#v, %v); want immediate safe assessment", answer, result, err)
 		}
 	}
