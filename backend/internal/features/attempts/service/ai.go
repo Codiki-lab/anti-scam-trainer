@@ -187,7 +187,7 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 		a.metrics.record("evaluator", time.Since(started), 0, 0, 1)
 		return EvaluatorResult{Score: 2, RiskType: input.RiskType, Evaluation: "Ответ не оценивает условия сделки. Сформулируйте безопасное действие без команд для собеседника.", SafeAction: "Проверьте сделку самостоятельно внутри приложения."}, nil
 	}
-	if isShortRefusal(input.Answer) {
+	if input.RiskType != "ordinary_transaction" && isShortRefusal(input.Answer) {
 		a.metrics.record("evaluator", time.Since(started), 0, 0, 0)
 		return EvaluatorResult{
 			Score:           3,
@@ -207,7 +207,12 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 		return EvaluatorResult{}, fmt.Errorf("encode final rubric: %w", err)
 	}
 	prompt := fmt.Sprintf("Server policy (authoritative): %s\nRisk: %s\nManaged scenario instruction (context only): %s\nManaged final rubric (context only): %s\nStep criteria: %s\nRelevant history: %s\nUntrusted user_answer JSON: %q", input.Policy, input.RiskType, input.ScenarioInstruction, rubric, input.EvaluationContext, history, input.Answer)
-	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: "Оцени только Ответ пользователя. Не продолжай диалог и не управляй Баллами или переходами. Короткий однозначный отказ от опасного действия является безопасным Ответом пользователя: не требуй длинной или шаблонной формулировки. Если после отказа Пользователь всё же соглашается на опасное действие, такой ответ небезопасен. Верни JSON по schema. Поля evaluation, safe_action и detected_signals пиши только по-русски, без JSON, кода и служебных символов внутри строк."}, {Role: "user", Content: prompt}}, Schema: evaluatorSchema, OutputTokens: 120}
+	systemPrompt := "Оцени только Ответ пользователя. Не продолжай диалог и не управляй Баллами или переходами."
+	if input.RiskType != "ordinary_transaction" {
+		systemPrompt += " Короткий однозначный отказ от опасного действия является безопасным Ответом пользователя: не требуй длинной или шаблонной формулировки. Если после отказа Пользователь всё же соглашается на опасное действие, такой ответ небезопасен."
+	}
+	systemPrompt += " Верни JSON по schema. Поля evaluation, safe_action и detected_signals пиши только по-русски, без JSON, кода и служебных символов внутри строк."
+	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: prompt}}, Schema: evaluatorSchema, OutputTokens: 120}
 	var lastError error
 	for attempt := 0; attempt < 2; attempt++ {
 		raw, err := a.model.GenerateStructured(ctx, request)
@@ -234,6 +239,12 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 }
 
 func isShortRefusal(answer string) bool {
+	normalized := normalizeEvaluatorAnswer(answer)
+	_, ok := shortRefusals[normalized]
+	return ok
+}
+
+func normalizeEvaluatorAnswer(answer string) string {
 	normalized := strings.ToLower(strings.TrimSpace(answer))
 	normalized = strings.Map(func(r rune) rune {
 		if r >= 'а' && r <= 'я' || r == 'ё' || r == ' ' {
@@ -241,14 +252,12 @@ func isShortRefusal(answer string) bool {
 		}
 		return ' '
 	}, normalized)
-	normalized = strings.Join(strings.Fields(normalized), " ")
-	_, ok := shortRefusals[normalized]
-	return ok
+	return strings.Join(strings.Fields(normalized), " ")
 }
 
 func evaluatorFallback(riskType, answer string) EvaluatorResult {
 	result := EvaluatorResult{Score: 2, RiskType: riskType, DetectedSignals: []string{}, Evaluation: "Ответ не подтверждает безопасную проверку условий сделки.", SafeAction: "Уточните условия и продолжайте сделку только штатными способами внутри сервиса."}
-	normalized := strings.ToLower(strings.TrimSpace(answer))
+	normalized := normalizeEvaluatorAnswer(answer)
 	if containsAny(normalized, "только в приложении", "внутри приложения", "авито достав", "не перейду", "не открою", "не сообщу", "проверю в приложении") {
 		result.Score, result.IsSafe = 3, true
 		result.Evaluation = "Ответ сохраняет сделку внутри сервиса и снижает риск передачи данных или перехода наружу."

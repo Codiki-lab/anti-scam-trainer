@@ -79,6 +79,16 @@ func TestEvaluatorDoesNotFastTrackContradictoryRefusal(t *testing.T) {
 	}
 }
 
+func TestEvaluatorDoesNotTreatRefusalAsSafeInOrdinaryTransaction(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`{"score":2,"is_safe":false,"risk_type":"ordinary_transaction","detected_signals":[],"evaluation":"Ответ не помогает продолжить обычную сделку","safe_action":"Уточнить безопасные условия сделки"}`}}
+	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
+
+	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "ordinary_transaction", Answer: "Нет"})
+	if err != nil || result.Score != 2 || result.IsSafe || len(provider.requests) != 1 {
+		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want contextual model evaluation", result, err, len(provider.requests))
+	}
+}
+
 func TestEvaluatorReturnsNeutralFeedbackForPromptInjectionWithoutCallingModel(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"x","safe_action":"x"}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))

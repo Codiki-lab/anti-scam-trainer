@@ -30,7 +30,8 @@ func TestPublishedContentMatrix(t *testing.T) {
 		t.Fatalf("content counts=(%d,%d,%d,%d), want (12,60,60,48)", topics, theory, quiz, scenarios)
 	}
 	var invalid int
-	_, err = db.QueryOne(pg.Scan(&invalid), `SELECT COUNT(*) FROM (
+	var genericDialogueFragments int
+	_, err = db.QueryOne(pg.Scan(&genericDialogueFragments), `SELECT COUNT(*) FROM (
 		SELECT c.id,l.level_number,COUNT(DISTINCT s.id) steps,MIN(s.step_number) first_step,MAX(s.step_number) last_step,
 			COUNT(DISTINCT o.id) options,
 			COUNT(DISTINCT s.id) FILTER (WHERE s.response_type='multiple_choice') multiple_choice_steps,
@@ -125,7 +126,11 @@ func TestPublishedContentMatrix(t *testing.T) {
 		UNION ALL
 		SELECT counterparty_reaction FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id
 		WHERE c.content_status='published' AND c.archived_at IS NULL AND counterparty_reaction IS NOT NULL
+		UNION ALL
+		SELECT counterparty_message FROM chat_steps s JOIN chats c ON c.id=s.chat_id
+		WHERE c.content_status='published' AND c.archived_at IS NULL
 	) content WHERE text ~ '^(Точно:|Сразу скажу:)' OR text IN (
+		'Откройте форму получения 67 000 ₽ и подтвердите свою карту.',
 		'Проверяйте, но я всё равно предлагаю оформить быстрее.',
 		'Хорошо, но для продолжения всё равно понадобится подтверждение.',
 		'Тогда переходите к оформлению по моей инструкции.',
@@ -136,8 +141,8 @@ func TestPublishedContentMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if invalid != 0 {
-		t.Fatalf("published scenarios with mechanical prefixes or generic reactions=%d", invalid)
+	if genericDialogueFragments != 0 {
+		t.Fatalf("published scenarios with mechanical prefixes or generic reactions=%d", genericDialogueFragments)
 	}
 	var theorySignatures, quizSignatures, scenarioSignatures int
 	_, err = db.QueryOne(pg.Scan(&theorySignatures, &quizSignatures, &scenarioSignatures), `SELECT
@@ -290,7 +295,7 @@ func TestCompleteAvitoCurriculumReplacesEveryPublishedScenario(t *testing.T) {
 		UNION ALL SELECT concat_ws('|','scenario_option',t.slug,l.level_number,s.step_number,o.sort_order,o.option_text,coalesce(o.counterparty_reaction,''),o.explanation,o.points) FROM chat_options o JOIN chat_steps s ON s.id=o.step_id JOIN chats c ON c.id=s.chat_id JOIN topics t ON t.id=c.topic_id JOIN levels l ON l.id=c.level_id WHERE c.content_status='published' AND c.archived_at IS NULL
 		UNION ALL SELECT concat_ws('|','free_play',user_role,product_context::text,system_prompt,final_rubric::text) FROM free_play_configs
 	) curriculum`)
-	if err != nil || digest != "ee6913b40c4d4cdef57378c57b5d64ef" {
+	if err != nil || digest != "515d621d98e50082ba444c139dcf67b6" {
 		t.Fatalf("complete curriculum digest=%q err=%v", digest, err)
 	}
 
