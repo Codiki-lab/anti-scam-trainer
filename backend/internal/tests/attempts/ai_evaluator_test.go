@@ -70,7 +70,7 @@ func TestEvaluatorRecognizesShortRefusalWithoutCallingModel(t *testing.T) {
 }
 
 func TestEvaluatorEvaluatesBareRefusalAgainstStepMeaning(t *testing.T) {
-	for _, answer := range []string{"Не буду", "Нет, спасибо"} {
+	for _, answer := range []string{"Не буду", "Нет, спасибо", "Не соглашусь"} {
 		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"fake_payment","detected_signals":[],"evaluation":"Пользователь отказывается от самостоятельной проверки оплаты","safe_action":"Проверить поступление самостоятельно"}`}}
 		modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "fake_payment", Answer: answer})
