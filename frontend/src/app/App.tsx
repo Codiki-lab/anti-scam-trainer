@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import {
   CurrentAccountProvider,
   useCurrentAccount,
@@ -45,6 +45,7 @@ function LoadingScreen() {
 function ProtectedLayout() {
   const { data: account, isLoading, isError } = useGetMeQuery()
   const [updateRole] = useUpdateTrainingRoleMutation()
+  const location = useLocation()
 
   if (isLoading) return <LoadingScreen />
   if (isError || !account) return <Navigate to="/login" replace />
@@ -56,8 +57,8 @@ function ProtectedLayout() {
   return (
     <CurrentAccountProvider value={{ account, changeTrainingRole }}>
       <div>
-        <AppHeader account={account} />
-        <main className={styles.page}>
+        {location.pathname !== '/integration/avito-chat' && <AppHeader account={account} />}
+        <main className={location.pathname === '/integration/avito-chat' ? undefined : styles.page}>
           <Outlet />
         </main>
       </div>
