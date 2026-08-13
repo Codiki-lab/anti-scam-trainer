@@ -1,4 +1,4 @@
-import type { ContinueAction } from '@/entities/progress'
+import type { ContinueAction } from '@/entities/learning-path'
 
 export function getContinuePath(action: ContinueAction | null, basePath: string): string {
   if (!action) return `${basePath}/lessons`

@@ -1,5 +1,6 @@
 import type { AttemptResultDto, GameStateDto, LevelStateDto } from '../api/contracts'
 import type { AttemptResult, LevelState, TrainingSession } from '../model/types'
+import { mapContinueAction } from '@/entities/learning-path'
 import { mapStreak } from '@/entities/user'
 
 export function mapLevelState(dto: LevelStateDto): LevelState {
@@ -90,14 +91,7 @@ export function mapAttemptResult(dto: AttemptResultDto): AttemptResult {
     },
     topicId: dto.topic_id,
     isTopicCompleted: dto.topic_completed,
-    nextAction: dto.next_action
-      ? {
-          type: dto.next_action.type,
-          topicId: dto.next_action.topic_id,
-          level: dto.next_action.level,
-          attemptId: dto.next_action.attempt_id,
-        }
-      : null,
+    nextAction: mapContinueAction(dto.next_action),
     newAchievements: dto.new_achievements.map((achievement) => ({
       code: achievement.code,
       title: achievement.title,

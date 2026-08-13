@@ -1,57 +1,48 @@
-# Design QA
+# Design QA — Progress page from Figma
 
-- Source visual truth: `/var/folders/r5/ygzzxvl54vgcvmr136bwfzsh0000gn/T/codex-clipboard-5c54a4f5-6287-480f-9e9b-f6dfeb9c00cb.png`
-- Training source: `/var/folders/r5/ygzzxvl54vgcvmr136bwfzsh0000gn/T/TemporaryItems/NSIRD_screencaptureui_gpdRJe/Снимок экрана 2026-08-09 в 22.30.10.png`
-- Implementation: `http://127.0.0.1:5173/preview/dashboard`
-- Implementation captures were taken locally during verification and are intentionally not committed to the repository.
-- Browser viewport: 1280 × 720 CSS px, device density 1.
-- Source pixels: 1280 × 832. Implementation dashboard pixels: 1280 × 1542.
-- Normalization: compared at equal 1280 px width; browser chrome in the source and the longer implementation page were excluded from layout judgments below the matching content region.
-- State: preview user, buyer role, three-day streak.
+- Figma file: `Avito Anti-Scam Trainer`
+- Figma page: `Screens`
+- Target frame: `10:217` — `10 Прогресс / Progress`
+- Source reference: `/var/folders/r5/ygzzxvl54vgcvmr136bwfzsh0000gn/T/TemporaryItems/NSIRD_screencaptureui_l7aIgJ/Снимок экрана 2026-08-12 в 23.50.00.png`
+- Implementation screenshot: `frontend/design-qa-progress-implementation-1440.png`
+- Target and implementation viewport: `1440 × 1024` CSS px
+- State: preview Progress for the buyer role with one completed Прохождение and one earned Достижение.
 
 ## Full-view comparison evidence
 
-The implementation preserves the source hierarchy, navigation, page width, typography scale, topic grid, progress panel and training rows. The dashboard now uses two independent columns: the topic grid follows the role selector without inheriting the height of the daily-task and free-play cards. Training lock states are clearer than in the source while retaining its quiet neutral treatment.
+The implementation follows the Figma composition: four equal summary cards, a wide content area, recent training history on the left and earned Achievements on the right. The existing completed-Topics panel is retained between the summary and the lower columns because it visualizes a real `ProgressSummary` field and was present in the product's current Progress design.
 
-## Focused region comparison evidence
+## Backend contract mapping
 
-- Header: the former approximate CSS mark was replaced by the official vector wordmark; it remains sharp and aligned at header size.
-- Role control: the native select was replaced by a two-option segmented control with visible selected, hover and disabled states.
-- Topic access: all six topic cards are links and no topic-level lock is rendered.
-- Free play: the primary action navigates to `/preview/sessions/free-play` and renders a free-text adaptive dialogue.
-- Topic routing: every topic link resolves its own numeric id or stable slug; selecting «Предоплата» renders the «Предоплата» theory at `/preview/lessons/2`.
-- Training availability: levels 3 and 4 are visibly muted, carry lock icons, explain the opening condition and use disabled buttons.
-- Chat and result: their main containers use centered max-width layouts.
-- Achievements: earned and in-progress items are separated into readable groups; incomplete achievements expose progress bars and counts.
+The Figma sample values `тренировок`, `лучший результат` and `достижения` are not all available from `GET /api/v1/progress`. They were not inferred from the ten-item recent history.
+
+- `completed_levels` → `уровней пройдено`
+- `average_score` → `средний результат`
+- `stars` → `звёзд получено`
+- `completed_topics` / `total_topics` → `тем завершено` and the Topics progress bar
+- `recent_attempts` → linked recent Прохождения
+- `GET /api/v1/achievements` → earned Achievements column
+
+The frontend DTO, Zod schema and mapper already match these OpenAPI fields; no contract changes were required.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: existing system font stack and heading hierarchy preserved; no visible wrapping or truncation regression.
-- Spacing and layout rhythm: original grid and section rhythm preserved. The extra free-play card intentionally increases the first section height.
-- Colors and visual tokens: existing accent, purple daily-task and pale-blue training palette retained with adequate contrast.
-- Image quality and assets: official SVG Avito logo is used; no raster scaling artifacts are visible.
-- Copy and content: daily task, role choice, topic states, training count and adaptive free-play behavior are explained in product language.
+- Typography: existing Inter stack with the Figma hierarchy of 32px summary values and compact muted labels.
+- Layout: four equal cards, 16px gaps, rounded neutral surfaces and a two-column content area matching the desktop frame.
+- History: bordered 78px rows with topic, level, Stars and Score.
+- Achievements: compact neutral cards with the existing Phosphor icon set; no handcrafted or substitute image assets.
+- Responsive behavior: the lower columns stack below 840px and all summary cards stack on mobile.
 
-## Interaction and runtime checks
+## Interaction and technical QA
 
-- Segmented role buttons rendered and remained interactive.
-- Free-play button opened the adaptive free-text chat.
-- All six lesson cards were independently accessible.
-- A non-first lesson opened its own theory instead of falling back to phishing links.
-- Two unavailable preview levels rendered as disabled, visibly locked actions.
-- No browser console errors were reported.
-- Formatting, ESLint, TypeScript, unit tests and production build passed.
-
-## Findings
-
-No actionable P0, P1 or P2 findings remain.
+- Result link resolves to `/preview/sessions/9000/result`.
+- `Все →` successfully navigates to `/preview/achievements` and browser back restores Progress.
+- At `1440 × 1024`, `scrollWidth` equals `clientWidth` and the page has no horizontal overflow.
+- Browser console contains no application errors.
+- `npm run check` passed: formatting, ESLint, TypeScript, 38 Vitest tests and production build.
 
 ## Follow-up polish
 
-- P3: after real backend data is connected, tune the dashboard's free-play description using the actual difficulty label returned or inferred by the server.
-
-## Comparison history
-
-The dashboard gap, preview topic routing and ambiguous training lock states were corrected. The final browser comparison and interaction checks passed without P0/P1/P2 findings.
+- P3: the Figma sample uses three earned Achievement cards, while preview data contains one. The implementation correctly renders the real response length rather than inventing rewards.
 
 final result: passed

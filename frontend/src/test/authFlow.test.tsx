@@ -31,4 +31,27 @@ describe('registration flow', () => {
 
     expect(await screen.findByText('Главная открыта')).toBeInTheDocument()
   })
+
+  it('accepts credentials allowed by the backend contract', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <Provider store={createTestStore()}>
+        <PreviewModeProvider>
+          <MemoryRouter initialEntries={['/preview/register']}>
+            <Routes>
+              <Route path="/preview/register" element={<AuthForm mode="register" />} />
+              <Route path="/preview/dashboard" element={<p>Главная открыта</p>} />
+            </Routes>
+          </MemoryRouter>
+        </PreviewModeProvider>
+      </Provider>,
+    )
+
+    await user.type(screen.getByRole('textbox', { name: /логин/i }), 'a')
+    await user.type(screen.getByLabelText(/пароль/i), '1')
+    await user.click(screen.getByRole('button', { name: /создать аккаунт/i }))
+
+    expect(await screen.findByText('Главная открыта')).toBeInTheDocument()
+  })
 })

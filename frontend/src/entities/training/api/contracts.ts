@@ -1,6 +1,8 @@
 import type { StreakDto } from '../../user'
 import type { TopicLevelProgress } from '@/entities/learning'
+import type { ContinueActionDto } from '@/entities/learning-path'
 import { z } from 'zod'
+import { continueActionDtoSchema } from '@/entities/learning-path'
 import { streakDtoSchema } from '@/entities/user'
 import { topicLevelProgressSchema } from '@/entities/learning'
 
@@ -107,13 +109,6 @@ export interface AchievementDto {
   progress: { current: number; target: number }
 }
 
-export interface ContinueActionDto {
-  type: 'resume_attempt' | 'read_theory' | 'take_quiz' | 'start_level' | 'start_free_play'
-  topic_id?: number
-  level?: number
-  attempt_id?: number
-}
-
 export interface AttemptResultDto {
   attempt_id: number
   score: number
@@ -201,13 +196,6 @@ const achievementDtoSchema = z.object({
     current: z.number().int().nonnegative(),
     target: z.number().int().positive(),
   }),
-})
-
-const continueActionDtoSchema = z.object({
-  type: z.enum(['resume_attempt', 'read_theory', 'take_quiz', 'start_level', 'start_free_play']),
-  topic_id: z.number().int().optional(),
-  level: z.number().int().optional(),
-  attempt_id: z.number().int().optional(),
 })
 
 export const attemptResultDtoSchema = z.object({

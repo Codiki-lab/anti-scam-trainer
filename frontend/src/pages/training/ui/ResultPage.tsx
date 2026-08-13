@@ -6,7 +6,6 @@ import { useIsPreview } from '@/shared/runtime-mode'
 import { LoadingState, uiStyles } from '@/shared/ui-kit'
 import { parsePositiveInteger } from '@/shared/url'
 import { ResultSummary } from '@/widgets/result-summary'
-import { getNextActionPath } from '../lib/getNextActionPath'
 
 export function ResultPage({ previewResult }: { previewResult?: AttemptResult }) {
   const { sessionId } = useParams()
@@ -28,11 +27,5 @@ export function ResultPage({ previewResult }: { previewResult?: AttemptResult })
   if (!result) return <p className={uiStyles.formError}>Result пока недоступен.</p>
 
   const basePath = isPreview ? '/preview' : ''
-  return (
-    <ResultSummary
-      result={result}
-      basePath={basePath}
-      nextActionHref={getNextActionPath(result, basePath)}
-    />
-  )
+  return <ResultSummary result={result} basePath={basePath} />
 }

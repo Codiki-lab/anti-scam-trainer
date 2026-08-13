@@ -1,4 +1,5 @@
 import type { Topic } from '@/entities/learning'
+import type { ContinueAction } from '@/entities/learning-path'
 import type { Streak, UserRole } from '@/entities/user'
 
 export interface Achievement {
@@ -10,13 +11,6 @@ export interface Achievement {
   earnedAt?: string
   current: number
   target: number
-}
-
-export interface ContinueAction {
-  type: 'resume_attempt' | 'read_theory' | 'take_quiz' | 'start_level' | 'start_free_play'
-  topicId?: number
-  level?: number
-  attemptId?: number
 }
 
 export interface DailyTask {

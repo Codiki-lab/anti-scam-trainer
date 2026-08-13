@@ -41,7 +41,6 @@ import type {
   AdminTheoryBlock,
   AdminTopic,
   AdminTopicDraft,
-  ContentStatus,
 } from '../model/types'
 
 interface TopicItem<T> {
@@ -328,9 +327,3 @@ export const {
   useUpdateAdminScenarioOptionMutation,
   useDeleteAdminScenarioOptionMutation,
 } = adminContentApi
-
-export const statusLabels: Record<ContentStatus, string> = {
-  draft: 'Черновик',
-  published: 'Опубликовано',
-  archived: 'В архиве',
-}

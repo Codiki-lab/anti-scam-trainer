@@ -1,4 +1,5 @@
 import type { LevelProgress } from '../../learning'
+import type { ContinueAction } from '@/entities/learning-path'
 import type { Streak } from '../../user'
 
 export type ResponseMode = 'multiple_choice' | 'similar_choice' | 'mixed' | 'free_text'
@@ -92,12 +93,7 @@ export interface AttemptResult {
   levelProgress: LevelProgress
   topicId: number
   isTopicCompleted: boolean
-  nextAction: {
-    type: 'resume_attempt' | 'read_theory' | 'take_quiz' | 'start_level' | 'start_free_play'
-    topicId?: number
-    level?: number
-    attemptId?: number
-  } | null
+  nextAction: ContinueAction | null
   newAchievements: Array<{
     code: string
     title: string

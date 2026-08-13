@@ -1,3 +1,14 @@
-export * from './api/progressApi'
-export * from './lib/mappers'
-export type * from './model/types'
+export {
+  useAnswerDailyTaskMutation,
+  useGetAchievementsQuery,
+  useGetDashboardQuery,
+  useGetProgressQuery,
+} from './api/progressApi'
+export type {
+  Achievement,
+  Achievements,
+  DailyTask,
+  DailyTaskAnswer,
+  Dashboard,
+  Progress,
+} from './model/types'
