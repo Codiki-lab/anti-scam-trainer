@@ -31,12 +31,29 @@ func TestEvaluatorRepairsOnceAndKeepsItsOwnProfile(t *testing.T) {
 	}
 }
 
+func TestEvaluatorRepairsContradictorySafetyAndScore(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{
+		`{"score":1,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"Безопасный ответ","safe_action":"Проверить заказ в приложении"}`,
+		`{"score":4,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"Безопасный ответ","safe_action":"Проверить заказ в приложении"}`,
+	}}
+	evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+
+	result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Я подумаю над условиями"})
+
+	if err != nil || result.Score != 4 || !result.IsSafe || len(provider.requests) != 2 {
+		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want repaired consistent result", result, err, len(provider.requests))
+	}
+	if prompt := provider.requests[0].Messages[0].Content; !strings.Contains(prompt, "1 — опасный") || !strings.Contains(prompt, "4 — безопасный") || !strings.Contains(prompt, "Согласие относится к последней просьбе") || !strings.Contains(prompt, "оставляет возможность выполнить опасную просьбу") || !strings.Contains(prompt, "Уход от темы") || !strings.Contains(prompt, "опечатки, сленг, эмодзи") || !strings.Contains(prompt, "харашо, зделаю как вы прасите") || !strings.Contains(prompt, "is_safe=true только для score 3 или 4") {
+		t.Fatalf("evaluator scale is absent from system prompt: %s", prompt)
+	}
+}
+
 func TestEvaluatorFallsBackWhenOllamaReturnsInvalidJSONTwice(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":9}`, `{"score":9}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 
-	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Перейду по ссылке"})
-	if err != nil || result.Score != 1 || result.IsSafe || result.RiskType != "phishing" || result.Evaluation == "" || result.SafeAction == "" || len(provider.requests) != 2 {
+	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Возможно, сначала посмотрю условия"})
+	if err != nil || result.Score != 2 || result.IsSafe || result.RiskType != "phishing" || result.Evaluation == "" || result.SafeAction == "" || len(provider.requests) != 2 {
 		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want safe fallback", result, err, len(provider.requests))
 	}
 	if metrics := modelAI.Metrics().Evaluator; metrics.Fallbacks != 1 || metrics.Retries != 1 {
@@ -55,17 +72,110 @@ func TestEvaluatorFallbackRecognizesExplicitSafeAnswer(t *testing.T) {
 }
 
 func TestEvaluatorRecognizesShortRefusalWithoutCallingModel(t *testing.T) {
-	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"phishing","detected_signals":[],"evaluation":"Небезопасно","safe_action":"Отказаться"}`}}
-	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
-
-	for _, answer := range []string{"Не буду открывать ссылку", "Не дам код", "Не собираюсь платить"} {
-		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: answer})
-		if err != nil || result.Score != 4 || !result.IsSafe || result.RiskType != "phishing" {
-			t.Fatalf("Evaluate(%q) = (%#v, %v); want immediate safe assessment", answer, result, err)
+	for _, test := range []struct{ riskType, answer string }{{"phishing", "Не буду открывать ссылку"}, {"account_takeover", "Не дам код"}, {"prepayment", "Не собираюсь платить"}} {
+		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"` + test.riskType + `","detected_signals":[],"evaluation":"Небезопасно","safe_action":"Отказаться"}`}}
+		modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
+		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: test.riskType, Answer: test.answer})
+		if err != nil || result.Score != 4 || !result.IsSafe || result.RiskType != test.riskType || len(provider.requests) != 0 {
+			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want immediate risk-specific safe assessment", test.answer, result, err, len(provider.requests))
 		}
 	}
-	if len(provider.requests) != 0 {
-		t.Fatalf("model requests = %d; want 0 for short refusals", len(provider.requests))
+}
+
+func TestEvaluatorSendsCrossRiskSafePhraseToModel(t *testing.T) {
+	for _, test := range []struct{ riskType, answer string }{{"prepayment", "Код никому не сообщаю"}, {"phishing", "Оплату проверю самостоятельно в банке"}} {
+		provider := &sequenceProvider{contents: []string{`{"score":2,"is_safe":false,"risk_type":"` + test.riskType + `","detected_signals":[],"evaluation":"Ответ не относится к текущей просьбе","safe_action":"Ответить на текущий риск"}`}}
+		evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+		result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: test.riskType, EvaluationContext: "Ответить на текущую рискованную просьбу", Answer: test.answer})
+		if err != nil || result.Score != 2 || result.IsSafe || len(provider.requests) != 1 {
+			t.Fatalf("Evaluate(%q for %s) = (%#v, %v), requests=%d; want contextual model evaluation", test.answer, test.riskType, result, err, len(provider.requests))
+		}
+	}
+}
+
+func TestEvaluatorSendsCrossRiskRiskyPhraseToModel(t *testing.T) {
+	for _, test := range []struct{ riskType, answer string }{{"phishing", "Оплачу страховку курьера"}, {"fake_payment", "Перейду в другой мессенджер"}} {
+		provider := &sequenceProvider{contents: []string{`{"score":2,"is_safe":false,"risk_type":"` + test.riskType + `","detected_signals":[],"evaluation":"Ответ не относится к текущей просьбе","safe_action":"Ответить на текущий риск"}`}}
+		evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+		result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: test.riskType, EvaluationContext: "Ответить на текущую рискованную просьбу", Answer: test.answer})
+		if err != nil || result.Score != 2 || result.IsSafe || len(result.DetectedSignals) != 0 || len(provider.requests) != 1 {
+			t.Fatalf("Evaluate(%q for %s) = (%#v, %v), requests=%d; want contextual model evaluation", test.answer, test.riskType, result, err, len(provider.requests))
+		}
+	}
+}
+
+func TestEvaluatorRecognizesExplicitSafeActionsWithoutCallingModel(t *testing.T) {
+	cases := []struct{ riskType, answer string }{
+		{"phishing", "Ссылки не открываю, проверю заказ в приложении ну"},
+		{"phishing", "Я не открою ссылку, спасибо"},
+		{"prepayment", "Без штатного оформления предоплату не перевожу"},
+		{"delivery", "Доставку проверю только внутри заказа"},
+		{"external_messenger", "Обсудим всё в этом чате"},
+		{"account_takeover", "Коды подтверждения никому не сообщаю"},
+		{"account_takeover", "Код не сообщу, спасибо"},
+		{"fake_payment", "Оплату проверю самостоятельно в банке"},
+		{"social_engineering", "Возьму паузу и проверю предложение в приложении"},
+	}
+	for _, test := range cases {
+		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"` + test.riskType + `","detected_signals":[],"evaluation":"Небезопасно","safe_action":"Остановиться"}`}}
+		evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+		result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: test.riskType, Answer: test.answer})
+		if err != nil || result.Score != 3 || !result.IsSafe || len(provider.requests) != 0 {
+			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want local safe result", test.answer, result, err, len(provider.requests))
+		}
+	}
+}
+
+func TestEvaluatorUsesScenarioRiskSignalForUnsafeAnswer(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"external_messenger","detected_signals":["внешняя ссылка"],"evaluation":"Ответ переносит сделку наружу","safe_action":"Остаться в чате"}`}}
+	evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+	result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "external_messenger", Answer: "Перейду в другой мессенджер"})
+	if err != nil || len(result.DetectedSignals) != 1 || result.DetectedSignals[0] != "внешний мессенджер" {
+		t.Fatalf("Evaluate() = (%#v, %v), want canonical scenario signal", result, err)
+	}
+}
+
+func TestEvaluatorPreservesValidatedModelSignals(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`{"score":2,"is_safe":false,"risk_type":"external_messenger","detected_signals":["внешняя ссылка"],"evaluation":"Ответ не относится к просьбе","safe_action":"Уточнить безопасные условия"}`}}
+	evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+
+	result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "external_messenger", Answer: "Возможно, сначала уточню условия"})
+
+	if err != nil || len(result.DetectedSignals) != 1 || result.DetectedSignals[0] != "внешняя ссылка" {
+		t.Fatalf("Evaluate() = (%#v, %v), want validated model signal unchanged", result, err)
+	}
+}
+
+func TestEvaluatorDoesNotInventSignalForAmbiguousFallback(t *testing.T) {
+	provider := &sequenceProvider{contents: []string{`not-json`, `still-not-json`}}
+	evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+
+	result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Возможно, сначала уточню условия"})
+
+	if err != nil || result.Score != 2 || len(result.DetectedSignals) != 0 {
+		t.Fatalf("Evaluate() = (%#v, %v), want ambiguous fallback without invented signal", result, err)
+	}
+}
+
+func TestEvaluatorRecognizesExplicitRiskyActionsWithoutCallingModel(t *testing.T) {
+	cases := []struct{ riskType, answer string }{
+		{"phishing", "Открою ссылку и оплачу там"},
+		{"prepayment", "Переведу деньги за бронь"},
+		{"delivery", "Оплачу страховку курьера"},
+		{"external_messenger", "Перейду в другой мессенджер"},
+		{"account_takeover", "Сообщу код из сообщения"},
+		{"fake_payment", "Вижу чек, отдам товар"},
+		{"social_engineering", "Оплачу сразу, пока цена не выросла"},
+		{"account_takeover", "Хорошо, сделаю"},
+		{"phishing", "Сначала проверю в приложении, но потом могу сделать как вы просите"},
+	}
+	for _, test := range cases {
+		provider := &sequenceProvider{contents: []string{`{"score":4,"is_safe":true,"risk_type":"` + test.riskType + `","detected_signals":[],"evaluation":"Безопасно","safe_action":"Продолжить"}`}}
+		evaluator := attemptsservice.NewModelAI(attemptsai.New(provider))
+		result, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: test.riskType, Answer: test.answer})
+		if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 0 || len(result.DetectedSignals) != 1 {
+			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want local risky result", test.answer, result, err, len(provider.requests))
+		}
 	}
 }
 
@@ -102,25 +212,25 @@ func TestEvaluatorDoesNotFastTrackRefusalOfSafeAction(t *testing.T) {
 	}
 }
 
-func TestEvaluatorDoesNotFastTrackContradictoryCompoundRefusal(t *testing.T) {
+func TestEvaluatorRecognizesContradictoryCompoundAsRisky(t *testing.T) {
 	for _, answer := range []string{"Не открою ссылку, а данные карты сообщу", "Не дам код и введу данные", "Не открою ссылку, данные карты сообщу", "Не дам код. Введу данные"} {
 		provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"account_takeover","detected_signals":["секретные данные"],"evaluation":"Ответ сочетает отказ с опасным действием","safe_action":"Не передавать данные"}`}}
 		modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 
 		result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "account_takeover", Answer: answer})
-		if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 1 {
-			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want model evaluation", answer, result, err, len(provider.requests))
+		if err != nil || result.Score != 1 || result.IsSafe {
+			t.Fatalf("Evaluate(%q) = (%#v, %v), requests=%d; want risky evaluation", answer, result, err, len(provider.requests))
 		}
 	}
 }
 
-func TestEvaluatorDoesNotFastTrackContradictoryRefusal(t *testing.T) {
+func TestEvaluatorRecognizesContradictoryRefusalAsRisky(t *testing.T) {
 	provider := &sequenceProvider{contents: []string{`{"score":1,"is_safe":false,"risk_type":"phishing","detected_signals":["согласие после отказа"],"evaluation":"Ответ заканчивается согласием на опасное действие","safe_action":"Не открывать ссылку"}`}}
 	modelAI := attemptsservice.NewModelAI(attemptsai.New(provider))
 
 	result, err := modelAI.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Не буду, но потом всё-таки открою ссылку"})
-	if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 1 {
-		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want model evaluation", result, err, len(provider.requests))
+	if err != nil || result.Score != 1 || result.IsSafe || len(provider.requests) != 0 {
+		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want local risky evaluation", result, err, len(provider.requests))
 	}
 }
 
@@ -142,17 +252,20 @@ func TestEvaluatorReturnsNeutralFeedbackForPromptInjectionWithoutCallingModel(t 
 	if err != nil || result.Score != 2 || result.Evaluation == "" || len(provider.requests) != 0 || strings.Contains(strings.ToLower(result.Evaluation), "prompt") {
 		t.Fatalf("Evaluate() = (%#v, %v), requests=%d; want neutral local response", result, err, len(provider.requests))
 	}
+	if metrics := modelAI.Metrics().Evaluator; metrics.Fallbacks != 0 || metrics.Errors != 0 || metrics.Retries != 0 {
+		t.Fatalf("guardrail metrics=%#v, want successful local decision", metrics)
+	}
 }
 
-func TestEvaluatorRetriesTransportOnceAndReturnsFailureWithoutFallbackScore(t *testing.T) {
+func TestEvaluatorDoesNotRetryTransportFailure(t *testing.T) {
 	model := &unavailableStructuredModel{}
 	evaluator := attemptsservice.NewModelAI(model)
 	_, err := evaluator.Evaluate(context.Background(), attemptsservice.EvaluationRequest{RiskType: "phishing", Answer: "Проверю заказ"})
-	if err == nil || model.calls != 2 {
-		t.Fatalf("err=%v calls=%d, want bounded retry and transport failure", err, model.calls)
+	if err == nil || model.calls != 1 {
+		t.Fatalf("err=%v calls=%d, want immediate transport failure", err, model.calls)
 	}
 	metrics := evaluator.Metrics().Evaluator
-	if metrics.Errors != 1 || metrics.Retries != 1 || metrics.Fallbacks != 0 {
+	if metrics.Errors != 1 || metrics.Retries != 0 || metrics.Fallbacks != 0 {
 		t.Fatalf("metrics=%#v", metrics)
 	}
 }

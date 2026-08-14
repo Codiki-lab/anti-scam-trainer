@@ -3,6 +3,7 @@ package attempts_test
 import (
 	"anti-scam-trainer/backend/internal/core/domain"
 	apperrors "anti-scam-trainer/backend/internal/core/errors"
+	attemptsai "anti-scam-trainer/backend/internal/features/attempts/aiprovider"
 	"anti-scam-trainer/backend/internal/features/attempts/service"
 	"context"
 	"errors"
@@ -107,6 +108,30 @@ func TestLevelFourUsesServerPhasesRollingHistoryAndFiveTurnLimit(t *testing.T) {
 	}
 	if ai.generations[4].Summary == "" || repo.attempts[state.Attempt.ID].CompactSummary == "" || repo.attempts[state.Attempt.ID].DialoguePhase != "resolution" {
 		t.Fatalf("persisted dialogue state=%#v, fifth request=%#v", repo.attempts[state.Attempt.ID], ai.generations[4])
+	}
+}
+
+func TestLevelFourUsesOneModelCallAndKeepsScenarioReply(t *testing.T) {
+	repo := newGameRepository()
+	repo.progressByRole = map[string][]domain.Progress{"buyer": {{LevelID: 1, Stars: 1}, {LevelID: 2, Stars: 1}, {LevelID: 3, Stars: 1}}}
+	repo.steps = map[int]domain.ScenarioStep{1: {ID: 41, ScenarioID: 4, Number: 1, ResponseType: domain.ResponseTypeFreeText, CounterpartyMessage: "Телефон в наличии.", AIInstruction: "Оценить безопасность", FallbackMessage: "Откройте присланную форму и оплатите заказ банковской картой."}}
+	provider := &sequenceProvider{contents: []string{`{"score":3,"is_safe":true,"risk_type":"phishing","detected_signals":[],"evaluation":"Ответ снижает риск","safe_action":"Проверить заказ в приложении"}`}}
+	ai := service.NewModelAI(attemptsai.New(provider))
+	game := service.NewGameWithAI(repo, ai, ai)
+	state, err := game.Start(1, 4, "buyer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer := "Я подумаю над условиями"
+	next, completed, err := game.SubmitAnswer(context.Background(), 1, state.Attempt.ID, service.AnswerCommand{FreeText: &answer})
+	if err != nil || completed != nil {
+		t.Fatalf("SubmitAnswer() = (%#v, %#v, %v)", next, completed, err)
+	}
+	if len(provider.requests) != 1 {
+		t.Fatalf("model requests=%d, want evaluator only", len(provider.requests))
+	}
+	if got := next.Messages[len(next.Messages)-1].Text; got != "Откройте присланную форму и оплатите заказ банковской картой." {
+		t.Fatalf("counterpart reply=%q, want scenario reply", got)
 	}
 }
 

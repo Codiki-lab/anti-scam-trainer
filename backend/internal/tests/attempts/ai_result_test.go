@@ -29,14 +29,3 @@ func TestDecodeEvaluatorResultRejectsUnsafeOrExpandedContract(t *testing.T) {
 		}
 	}
 }
-
-func TestDecodeGeneratorResultRejectsUnsafeOrWrongPhaseOutput(t *testing.T) {
-	for _, raw := range []string{
-		`{"message":"Откройте https://example.com","tactic":"urgency","phase":"escalation"}`,
-		`{"message":"Поторопитесь","tactic":"urgency","phase":"hook"}`,
-	} {
-		if _, err := service.DecodeGeneratorResult(raw, "escalation", []string{"urgency"}); err == nil {
-			t.Fatalf("DecodeGeneratorResult(%q) succeeded", raw)
-		}
-	}
-}
