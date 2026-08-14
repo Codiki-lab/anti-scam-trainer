@@ -19,6 +19,13 @@ const maxUntrustedAnswerRunes = 800
 
 var promptInjection = regexp.MustCompile(`(?i)(ignore|ignore previous|system prompt|раскрой.*(промпт|policy)|игнорируй.*(инструк|правил)|измен[иь].*(балл|оценк))`)
 
+const ordinaryTransactionRisk = "ordinary_transaction"
+
+var (
+	shortRefusalAction = regexp.MustCompile(`^(?:(?:я )?(?:не буду|не стану|не хочу|не собираюсь) (?:открывать ссылку|переходить по ссылке|платить|оплачивать|переводить|вводить данные|сообщать код|называть код|передавать данные|показывать код|отправлять код)|(?:я )?не (?:дам код|сообщу код|назову код|передам данные|покажу код|открою ссылку|перейду по ссылке|оплачу|переведу|введу данные|отправлю код))$`)
+	substantiveSuffix  = regexp.MustCompile(`[0-9A-Za-z]`)
+)
+
 type ModelMessage struct {
 	Role    string
 	Content string
@@ -174,8 +181,26 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 		return EvaluatorResult{}, ErrAIInvalidResponse
 	}
 	if promptInjection.MatchString(input.Answer) {
-		a.metrics.record("evaluator", time.Since(started), 0, 0, 1)
+		a.metrics.record("evaluator", time.Since(started), 0, 0, 0)
 		return EvaluatorResult{Score: 2, RiskType: input.RiskType, Evaluation: "Ответ не оценивает условия сделки. Сформулируйте безопасное действие без команд для собеседника.", SafeAction: "Проверьте сделку самостоятельно внутри приложения."}, nil
+	}
+	if input.RiskType != ordinaryTransactionRisk && isShortRefusal(input.RiskType, input.Answer) {
+		a.metrics.record("evaluator", time.Since(started), 0, 0, 0)
+		return EvaluatorResult{
+			Score:           4,
+			IsSafe:          true,
+			RiskType:        input.RiskType,
+			DetectedSignals: []string{},
+			Evaluation:      "Короткий ответ однозначно отказывается выполнять опасную просьбу собеседника.",
+			SafeAction:      "Не выполняйте просьбу и проверяйте условия сделки самостоятельно внутри приложения.",
+		}, nil
+	}
+	if input.RiskType != ordinaryTransactionRisk {
+		if local := evaluatorFallback(input.RiskType, input.Answer); local.IsSafe || local.Score == 1 {
+			local.DetectedSignals = canonicalDetectedSignals(input.RiskType, local.IsSafe)
+			a.metrics.record("evaluator", time.Since(started), 0, 0, 0)
+			return local, nil
+		}
 	}
 	history, err := json.Marshal(input.History)
 	if err != nil {
@@ -186,45 +211,144 @@ func (a *ModelAI) Evaluate(ctx context.Context, input EvaluationRequest) (Evalua
 		return EvaluatorResult{}, fmt.Errorf("encode final rubric: %w", err)
 	}
 	prompt := fmt.Sprintf("Server policy (authoritative): %s\nRisk: %s\nManaged scenario instruction (context only): %s\nManaged final rubric (context only): %s\nStep criteria: %s\nRelevant history: %s\nUntrusted user_answer JSON: %q", input.Policy, input.RiskType, input.ScenarioInstruction, rubric, input.EvaluationContext, history, input.Answer)
-	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: "Оцени только Ответ пользователя. Не продолжай диалог и не управляй Баллами или переходами. Верни JSON по schema. Поля evaluation, safe_action и detected_signals пиши только по-русски, без JSON, кода и служебных символов внутри строк."}, {Role: "user", Content: prompt}}, Schema: evaluatorSchema, OutputTokens: 240}
-	var lastError error
+	systemPrompt := "Оцени только Ответ пользователя и не продолжай диалог. Верни оценку по шкале: 1 — опасный ответ или согласие на рискованное действие; 2 — неоднозначный, недостаточный или не относящийся к текущей просьбе ответ; 3 — в основном безопасный ответ; 4 — безопасный ответ с явным отказом от риска или безопасной проверкой. Согласие относится к последней просьбе собеседника из Relevant history, даже если Ответ не повторяет само действие: если просьба рискованная, «Понял вас, поступлю именно так» — score 1, is_safe=false. Ответ, который после безопасной проверки оставляет возможность выполнить опасную просьбу, получит score 1 или 2. Уход от темы не подтверждает безопасное действие и получит score 2. Незначительные опечатки, сленг, эмодзи и разговорные частицы не меняют смысл Ответа. Примеры: «Сначала проверю в приложении, но потом могу сделать как вы просите» — score 1, is_safe=false; «Без штатного оформления предоплату не перевожу, ну» — score 4, is_safe=true; «харашо, зделаю как вы прасите» — score 1, is_safe=false; «А какая сегодня погода?» — score 2, is_safe=false. is_safe=true только для score 3 или 4, для score 1 или 2 верни is_safe=false. Не вычисляй итоговый Балл, Звёзды или переходы Прохождения."
+	if input.RiskType != ordinaryTransactionRisk {
+		systemPrompt += " Короткий однозначный отказ от опасного действия является безопасным Ответом пользователя: не требуй длинной или шаблонной формулировки. Если после отказа Пользователь всё же соглашается на опасное действие, такой ответ небезопасен."
+	}
+	systemPrompt += " Верни JSON по schema. Поля evaluation, safe_action и detected_signals пиши только по-русски, без JSON, кода и служебных символов внутри строк."
+	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: prompt}}, Schema: evaluatorSchema, OutputTokens: 120}
 	for attempt := 0; attempt < 2; attempt++ {
 		raw, err := a.model.GenerateStructured(ctx, request)
 		if err != nil {
-			lastError = err
-			if ctx.Err() != nil {
-				break
-			}
-			continue
+			a.metrics.record("evaluator", time.Since(started), 1, int64(attempt), 0)
+			return EvaluatorResult{}, err
 		}
 		decoded, decodeErr := DecodeEvaluatorResult(raw)
 		if decodeErr == nil && decoded.RiskType == input.RiskType {
 			a.metrics.record("evaluator", time.Since(started), 0, int64(attempt), 0)
 			return decoded, nil
 		}
-		request.Messages = append(request.Messages, ModelMessage{Role: "assistant", Content: raw}, ModelMessage{Role: "user", Content: "Исправь ответ: верни ровно schema, тот же risk_type, без URL, телефонов и реквизитов."})
-	}
-	if lastError != nil {
-		a.metrics.record("evaluator", time.Since(started), 1, 1, 0)
-		return EvaluatorResult{}, lastError
+		request.Messages = append(request.Messages, ModelMessage{Role: "assistant", Content: raw}, ModelMessage{Role: "user", Content: "Исправь ответ: верни ровно schema, тот же risk_type, is_safe=true только для score 3 или 4, без URL, телефонов и реквизитов."})
 	}
 	a.metrics.record("evaluator", time.Since(started), 0, 1, 1)
-	return evaluatorFallback(input.RiskType, input.Answer), nil
+	result := evaluatorFallback(input.RiskType, input.Answer)
+	if result.Score == 1 {
+		result.DetectedSignals = canonicalDetectedSignals(input.RiskType, false)
+	}
+	return result, nil
+}
+
+func isShortRefusal(riskType, answer string) bool {
+	if substantiveSuffix.MatchString(answer) {
+		return false
+	}
+	normalized := normalizeEvaluatorAnswer(answer)
+	padded := " " + normalized + " "
+	if len(strings.Fields(normalized)) > 8 || containsAny(padded, " но ", " хотя ", " потом ", " ладно ", " всё таки ", " все таки ", " всё же ", " все же ", " и ", " а ", " затем ") {
+		return false
+	}
+	return shortRefusalAction.MatchString(normalized) && matchesRiskAction(riskType, normalized)
+}
+
+func normalizeEvaluatorAnswer(answer string) string {
+	normalized := strings.ToLower(strings.TrimSpace(answer))
+	normalized = strings.Map(func(r rune) rune {
+		if r >= 'а' && r <= 'я' || r == 'ё' || r == ' ' {
+			return r
+		}
+		return ' '
+	}, normalized)
+	return strings.Join(strings.Fields(normalized), " ")
 }
 
 func evaluatorFallback(riskType, answer string) EvaluatorResult {
 	result := EvaluatorResult{Score: 2, RiskType: riskType, DetectedSignals: []string{}, Evaluation: "Ответ не подтверждает безопасную проверку условий сделки.", SafeAction: "Уточните условия и продолжайте сделку только штатными способами внутри сервиса."}
-	normalized := strings.ToLower(strings.TrimSpace(answer))
-	if containsAny(normalized, "только в приложении", "внутри приложения", "авито достав", "не перейду", "не открою", "не сообщу", "проверю в приложении") {
-		result.Score, result.IsSafe = 3, true
-		result.Evaluation = "Ответ сохраняет сделку внутри сервиса и снижает риск передачи данных или перехода наружу."
-		result.SafeAction = "Продолжайте проверять оформление самостоятельно внутри приложения."
-	} else if normalized == "да" || normalized == "хорошо" || containsAny(normalized, "перейду", "открою ссыл", "сообщу код", "данные карты", "оплачу сейчас") {
+	normalized := normalizeEvaluatorAnswer(answer)
+	if explicitRiskyAnswer(riskType, normalized) {
 		result.Score = 1
 		result.Evaluation = "Ответ выражает согласие без проверки и может привести к небезопасному действию."
 		result.SafeAction = "Не соглашайтесь автоматически: проверьте заказ внутри приложения и не передавайте секретные данные."
+	} else if explicitSafeAnswer(riskType, normalized) {
+		result.Score, result.IsSafe = 3, true
+		result.Evaluation = "Ответ сохраняет сделку внутри сервиса и снижает риск передачи данных или перехода наружу."
+		result.SafeAction = "Продолжайте проверять оформление самостоятельно внутри приложения."
 	}
 	return result
+}
+
+func explicitRiskyAnswer(riskType, normalized string) bool {
+	padded := " " + normalized + " "
+	unsafeContinuation := containsAny(padded, " но ", " потом ", " всё же ", " все же ") && containsAny(normalized, "как вы просите", "могу сделать", "сделаю", "выполню", "всё таки", "все таки")
+	genericAgreement := normalized == "да" || normalized == "хорошо" || normalized == "сделаю" || normalized == "хорошо сделаю" || normalized == "ладно сделаю" || unsafeContinuation
+	return genericAgreement || matchesRiskAction(riskType, normalized) && containsAffirmedAction(normalized,
+		"перейду", "открою ссыл", "сообщу код", "перешлю код", "данные карты сообщу", "введу данные", "оплачу сейчас", "оплачу сразу", "оплачу страхов", "переведу деньги", "отдам товар", "сделаю как вы просите")
+}
+
+func containsAffirmedAction(value string, fragments ...string) bool {
+	for _, fragment := range fragments {
+		searchFrom := 0
+		for {
+			relative := strings.Index(value[searchFrom:], fragment)
+			if relative < 0 {
+				break
+			}
+			index := searchFrom + relative
+			prefix := strings.TrimSpace(value[:index])
+			if !strings.HasSuffix(prefix, "не") {
+				return true
+			}
+			searchFrom = index + len(fragment)
+		}
+	}
+	return false
+}
+
+func explicitSafeAnswer(riskType, normalized string) bool {
+	padded := " " + normalized + " "
+	if containsAny(padded, " но ", " потом ", " всё же ", " все же ") {
+		return false
+	}
+	return matchesRiskAction(riskType, normalized) && containsAny(normalized,
+		"только в приложении", "внутри приложения", "проверю в приложении", "проверю заказ в приложении", "авито достав",
+		"не перейду", "не открою", "не открываю", "форму не открою", "не сообщу", "не сообщаю", "не перешлю",
+		"не перевожу", "не оплачиваю", "внутри заказа", "в этом чате", "только в чате", "продолжу общение только",
+		"проверю самостоятельно", "оплату проверю", "возьму паузу", "сначала проверю деньги")
+}
+
+func matchesRiskAction(riskType, normalized string) bool {
+	switch riskType {
+	case "phishing":
+		return containsAny(normalized, "ссыл", "форм", "откро", "заказ в приложении", "внутри приложения")
+	case "prepayment":
+		return containsAny(normalized, "предоплат", "перев", "оплач", "плат", "брон", "штатного оформления")
+	case "delivery":
+		return containsAny(normalized, "достав", "курьер", "страхов", "внутри заказа")
+	case "external_messenger":
+		return containsAny(normalized, "мессендж", "телеграм", "ватсап", "в этом чате", "только в чате", "общение только")
+	case "account_takeover", "sms_code":
+		return containsAny(normalized, "код", "данн")
+	case "fake_payment":
+		return containsAny(normalized, "оплат", "деньг", "банк", "чек", "поступлен", "товар")
+	case "social_engineering":
+		return containsAny(normalized, "пауз", "спеш", "давлен", "тороп", "сразу", "пока", "предложение в приложении")
+	default:
+		return false
+	}
+}
+
+func canonicalDetectedSignals(riskType string, isSafe bool) []string {
+	if isSafe {
+		return []string{}
+	}
+	signal := map[string]string{
+		"phishing": "внешняя ссылка", "prepayment": "предоплата", "delivery": "сторонняя доставка",
+		"external_messenger": "внешний мессенджер", "account_takeover": "код подтверждения", "sms_code": "код из сообщения",
+		"fake_payment": "неподтверждённая оплата", "social_engineering": "давление",
+	}[riskType]
+	if signal == "" {
+		return []string{}
+	}
+	return []string{signal}
 }
 
 func containsAny(value string, fragments ...string) bool {
@@ -236,57 +360,23 @@ func containsAny(value string, fragments ...string) bool {
 	return false
 }
 
-func (a *ModelAI) GenerateReply(ctx context.Context, input GenerationRequest) (GeneratorResult, error) {
+func (a *ModelAI) GenerateReply(_ context.Context, input GenerationRequest) (GeneratorResult, error) {
 	started := time.Now()
-	history, err := json.Marshal(input.History)
-	if err != nil {
-		return GeneratorResult{}, fmt.Errorf("encode dialogue history: %w", err)
-	}
-	facts, err := json.Marshal(input.ScenarioFacts)
-	if err != nil {
-		return GeneratorResult{}, fmt.Errorf("encode scenario facts: %w", err)
-	}
 	variations := tacticVariations(input.AllowedTactics, input.UserRole, input.CounterpartKind)
-	allowedMessages := make([]string, 0, len(input.AllowedTactics)*2)
-	for _, tactic := range input.AllowedTactics {
-		allowedMessages = append(allowedMessages, variations[tactic]...)
-	}
-	if len(allowedMessages) == 0 {
+	if len(input.AllowedTactics) == 0 {
+		a.metrics.record("generator", time.Since(started), 1, 0, 0)
 		return GeneratorResult{}, ErrAIInvalidResponse
 	}
-	rubric, err := json.Marshal(input.Rubric)
-	if err != nil {
-		return GeneratorResult{}, fmt.Errorf("encode final rubric: %w", err)
-	}
-	counterpartRole := "seller"
-	if input.UserRole == "seller" {
-		counterpartRole = "buyer"
-	}
-	prompt := fmt.Sprintf("Player role: %s\nYour role: %s\nCounterpart type: %s\nServer policy (authoritative): %s\nRisk: %s\nManaged scenario instruction (context only): %s\nManaged final rubric (context only): %s\nPhase: %s\nAllowed tactics: %s\nScenario facts: %s\nAllowed messages: %s\nSummary: %s\nRolling history: %s", input.UserRole, counterpartRole, input.CounterpartKind, input.Policy, input.RiskType, input.ScenarioInstruction, rubric, input.Phase, strings.Join(input.AllowedTactics, ","), facts, strings.Join(allowedMessages, " | "), input.Summary, history)
-	request := StructuredModelRequest{Messages: []ModelMessage{{Role: "system", Content: "Ты — виртуальный собеседник в чате сделки. Отвечай только от лица своей роли, никогда не говори за Пользователя и не меняй роли. Выбери ровно одну короткую разрешённую реплику виртуального собеседника и допустимую тактику. Не добавляй факты, ссылки, контакты, реквизиты, комиссии или оценку Пользователя. Не меняй фазу. Верни JSON по schema."}, {Role: "user", Content: prompt}}, Schema: generatorSchemaFor(allowedMessages), OutputTokens: 120, Temperature: .3, TopP: .8, TopK: 20, RepeatPenalty: 1.1}
-	hadError := false
-	for attempt := 0; attempt < 2; attempt++ {
-		raw, err := a.model.GenerateStructured(ctx, request)
-		if err != nil {
-			hadError = true
-			if ctx.Err() != nil {
-				break
-			}
-			continue
-		}
-		decoded, decodeErr := DecodeGeneratorResult(raw, input.Phase, input.AllowedTactics)
-		if decodeErr == nil && contains(variations[decoded.Tactic], decoded.Message) && !assistantMessageExists(input.History, decoded.Message) {
-			a.metrics.record("generator", time.Since(started), 0, int64(attempt), 0)
-			return decoded, nil
-		}
-		request.Messages = append(request.Messages, ModelMessage{Role: "assistant", Content: raw}, ModelMessage{Role: "user", Content: "Исправь ответ: только разрешённая, ещё не показанная реплика этой фазы и тактика, без URL, телефона, карты и новых фактов."})
+	if fallback := strings.TrimSpace(input.Fallback); safeModelText(fallback) && !assistantMessageExists(input.History, fallback) {
+		a.metrics.record("generator", time.Since(started), 0, 0, 0)
+		return GeneratorResult{Message: fallback, Tactic: input.AllowedTactics[0], Phase: input.Phase}, nil
 	}
 	fallback, fallbackTactic := firstUnusedTacticMessage(input.AllowedTactics, variations, input.History)
-	errors := int64(0)
-	if hadError {
-		errors = 1
+	if fallback == "" {
+		a.metrics.record("generator", time.Since(started), 1, 0, 0)
+		return GeneratorResult{}, ErrAIInvalidResponse
 	}
-	a.metrics.record("generator", time.Since(started), errors, 1, 1)
+	a.metrics.record("generator", time.Since(started), 0, 0, 0)
 	return GeneratorResult{Message: fallback, Tactic: fallbackTactic, Phase: input.Phase}, nil
 }
 
@@ -341,7 +431,7 @@ func firstUnusedTacticMessage(tactics []string, variations map[string][]string, 
 			}
 		}
 	}
-	return variations[tactics[0]][0], tactics[0]
+	return "", ""
 }
 
 func assistantMessageExists(history []domain.DialogueMessage, message string) bool {
@@ -351,18 +441,6 @@ func assistantMessageExists(history []domain.DialogueMessage, message string) bo
 		}
 	}
 	return false
-}
-
-func generatorSchemaFor(messages []string) map[string]any {
-	return map[string]any{
-		"type": "object", "additionalProperties": false,
-		"required": []string{"message", "tactic", "phase"},
-		"properties": map[string]any{
-			"message": map[string]any{"type": "string", "enum": messages},
-			"tactic":  map[string]any{"type": "string"},
-			"phase":   map[string]any{"type": "string"},
-		},
-	}
 }
 
 func DecodeEvaluatorResult(raw string) (EvaluatorResult, error) {
@@ -382,24 +460,13 @@ func DecodeEvaluatorResult(raw string) (EvaluatorResult, error) {
 		return EvaluatorResult{}, ErrAIInvalidResponse
 	}
 	result := EvaluatorResult{Score: *wire.Score, IsSafe: *wire.IsSafe, RiskType: *wire.RiskType, DetectedSignals: *wire.DetectedSignals, Evaluation: *wire.Evaluation, SafeAction: *wire.SafeAction}
-	if result.Score < 1 || result.Score > 4 || strings.TrimSpace(result.RiskType) == "" || len(result.DetectedSignals) > 3 || !safeRussianModelText(result.Evaluation) || !safeRussianModelText(result.SafeAction) {
+	if result.Score < 1 || result.Score > 4 || result.IsSafe != (result.Score >= 3) || strings.TrimSpace(result.RiskType) == "" || len(result.DetectedSignals) > 3 || !safeRussianModelText(result.Evaluation) || !safeRussianModelText(result.SafeAction) {
 		return EvaluatorResult{}, ErrAIInvalidResponse
 	}
 	for _, signal := range result.DetectedSignals {
 		if !safeRussianModelText(signal) {
 			return EvaluatorResult{}, ErrAIInvalidResponse
 		}
-	}
-	return result, nil
-}
-
-func DecodeGeneratorResult(raw, phase string, allowedTactics []string) (GeneratorResult, error) {
-	var result GeneratorResult
-	if err := decodeStrict(raw, &result); err != nil {
-		return GeneratorResult{}, err
-	}
-	if result.Phase != phase || len([]rune(result.Message)) > 280 || !safeModelText(result.Message) || !contains(allowedTactics, result.Tactic) {
-		return GeneratorResult{}, ErrAIInvalidResponse
 	}
 	return result, nil
 }
@@ -432,15 +499,6 @@ var (
 
 func safeRussianModelText(value string) bool {
 	return safeModelText(value) && cyrillicPattern.MatchString(value) && !latinPattern.MatchString(value) && !servicePattern.MatchString(value)
-}
-
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func PointsForEvaluatorScore(score int) int {

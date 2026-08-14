@@ -31,4 +31,21 @@ describe('account API boundary', () => {
       streak: { current: 3, longest: 5, isActiveToday: true },
     })
   })
+
+  it('sends only credential fields when logging in', async () => {
+    server.use(
+      http.post('http://localhost/api/v1/auth/login', async ({ request }) => {
+        expect(await request.json()).toEqual({ username: 'admin', password: 'admin-password' })
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const store = createTestStore()
+    const formValues = {
+      username: 'admin',
+      password: 'admin-password',
+      trainingRole: 'buyer' as const,
+    }
+    await store.dispatch(userApi.endpoints.login.initiate(formValues)).unwrap()
+  })
 })

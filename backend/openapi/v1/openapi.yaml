@@ -196,7 +196,7 @@ paths:
     get:
       tags: [Прохождения]
       responses:
-        '200': { description: Агрегированные метрики evaluator/generator без пользовательских данных, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/AIMetrics' } } } }
+        '200': { description: Агрегированные метрики evaluator и детерминированного generator без пользовательских данных, headers: { X-Request-ID: { $ref: '#/components/headers/RequestID' } }, content: { application/json: { schema: { $ref: '#/components/schemas/AIMetrics' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/recommendations/next:
     get:

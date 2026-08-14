@@ -1,5 +1,5 @@
 import type { AccountDto, RegistrationDto, StreakDto } from '../api/contracts'
-import type { Account, Registration, Streak } from '../model/types'
+import type { Account, Credentials, Registration, Streak } from '../model/types'
 
 export function mapStreak(dto: StreakDto): Streak {
   return {
@@ -25,5 +25,12 @@ export function mapRegistration(model: Registration): RegistrationDto {
     username: model.username,
     password: model.password,
     training_role: model.trainingRole,
+  }
+}
+
+export function mapCredentials(model: Credentials): Credentials {
+  return {
+    username: model.username,
+    password: model.password,
   }
 }

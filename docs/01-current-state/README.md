@@ -36,7 +36,7 @@
 | Защита нагрузки | Регистрация, вход и AI-генерации имеют конфигурируемые bounded rate limits; на Пользователя допускается одна активная генерация |
 | PostgreSQL | Описан в Docker Compose; versioned-миграция создаёт начальную SQL-схему |
 | Ollama | Описан отдельным Compose-файлом, модель загружается по `OLLAMA_MODEL` |
-| AI provider | Игровой сервис раздельно вызывает Evaluator и ScammerGenerator через qwen3:8b/Ollama, использует compact policy и строго валидирует JSON до записи состояния |
+| AI provider | Игровой сервис вызывает qwen3:8b/Ollama только для Evaluator-а; реплики выбирает детерминированный Generator из контента Сценария и Вариаций тактики |
 | Веб-интеграция | Credentialed CORS ограничен localhost-origin; Nginx на `localhost:3000` проксирует `/api` и отдаёт веб-клиент, собранный в Docker-образе |
 | HTTP middleware | Добавляет `X-Request-ID`, журналирует запросы, преобразует непойманную панику в `500` и записывает задержку обработки |
 | Проверка состояния | `GET /api/v1/health` возвращает `{"status":"ok"}` |

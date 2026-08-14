@@ -17,7 +17,7 @@
 - В административных DTO `product_context` является типизированным объектом товара: обязательны `item_title`, `category`, `deal_method`; необязательны `price`, `currency`, `location`, `image_key`. `image_key` выбирается только из серверного набора, удалённые URL не принимаются. `final_rubric` передаётся JSON-объектом.
 - `risk_type` Сценария — один из `phishing`, `prepayment`, `fake_payment`, `delivery`, `external_messenger`, `account_takeover`, `sms_code`, `social_engineering`; публикация другого значения запрещена.
 - Административный вариант ответа принимает необязательное `counterparty_reaction` до 280 символов. После выбора GameState показывает Сообщения в порядке «Ответ пользователя → реакция → следующая общая реплика»; пустая реакция пропускается.
-- Публичные GameState и Result не возвращают policy, контекст evaluator-а, rubric, compact summary или фазу generator-а.
+- Публичные GameState и Result не возвращают policy, контекст evaluator-а, rubric, compact summary или внутреннюю фазу generator-а.
 - Транспортная или непоправимая ошибка AI возвращается как `502` или `503` и гарантирует отсутствие изменений Прохождения. Если evaluator дважды вернул невалидный structured JSON, сервер продолжает Прохождение с детерминированной консервативной fallback-оценкой `score=1..3` по явным безопасным и рискованным формулировкам Ответа пользователя.
 - Ограничение частоты возвращает `429`, `RATE_LIMITED`, целочисленный `Retry-After` и общий error envelope; отклонённая AI-операция не меняет GameState.
 - Credentialed CORS разрешён только origin из `FRONTEND_ORIGINS`; для демо предпочтителен same-origin `/api` через Nginx.
@@ -43,7 +43,7 @@
 - `GET /api/v1/progress?role=...`, `GET /api/v1/achievements` — тематический Прогресс, средний Балл только завершённых Прохождений, последние завершённые Прохождения и восемь Достижений.
 - `GET /api/v1/recommendations/next?role=...` — детерминированная персональная рекомендация уже доступной Теории, Quiz или Открытого уровня; при отсутствии устойчивого паттерна возвращается безопасный fallback.
 - `POST /api/v1/topics/{id}/skill-check/start`, `GET /api/v1/skill-checks/{id}`, `POST /api/v1/skill-checks/{id}/answers` — необязательная Проверка навыка. Сервер сохраняет случайную пару Снимков диалога, показывает второй Снимок только после завершения Темы и возвращает детерминированное before/after-сравнение вердиктов и рискованных паттернов без AI-вызова и без изменения прогрессии.
-- `GET /api/v1/ai/metrics` — аутентифицированные агрегаты вызовов, ошибок, повторов, fallback и p95 отдельно для evaluator-а и generator-а. Пользовательские Ответы, prompt, policy и rubric не возвращаются.
+- `GET /api/v1/ai/metrics` — аутентифицированные агрегаты вызовов, ошибок, повторов, fallback и p95 отдельно для evaluator-а и детерминированного generator-а. Пользовательские Ответы, prompt, policy и rubric не возвращаются.
 
 ## Демо-интеграция чата Avito
 

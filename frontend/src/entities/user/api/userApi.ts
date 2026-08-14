@@ -1,6 +1,6 @@
 import { api } from '@/shared/http-client'
 import { accountDtoSchema, type AccountDto, type UpdateTrainingRoleDto } from './contracts'
-import { mapAccount, mapRegistration } from '../lib/mappers'
+import { mapAccount, mapCredentials, mapRegistration } from '../lib/mappers'
 import type { Account, Credentials, Registration, UserRole } from '../model/types'
 
 export const userApi = api.injectEndpoints({
@@ -15,7 +15,12 @@ export const userApi = api.injectEndpoints({
       transformResponse: (response: AccountDto) => mapAccount(accountDtoSchema.parse(response)),
     }),
     login: build.mutation<void, Credentials>({
-      query: (body) => ({ url: '/auth/login', method: 'POST', body, responseHandler: 'text' }),
+      query: (body) => ({
+        url: '/auth/login',
+        method: 'POST',
+        body: mapCredentials(body),
+        responseHandler: 'text',
+      }),
       invalidatesTags: ['Account'],
     }),
     logout: build.mutation<void, void>({
